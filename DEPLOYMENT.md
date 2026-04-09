@@ -28,17 +28,17 @@
 
 ## 安装步骤
 
-### 方式一：从源码安装
+### 方式一：从 GitHub 克隆（推荐）
 
 #### 1. 获取代码
 
 ```bash
 # 克隆仓库
-git clone <repository-url>
-cd FileMakerMCP
-
-# 或直接下载 ZIP 解压
+git clone https://github.com/dataonfirecn/filemaker-mcp.git
+cd filemaker-mcp
 ```
+
+或从 GitHub Releases 页面下载预编译的 ZIP 包。
 
 #### 2. 安装依赖
 
@@ -63,7 +63,7 @@ node dist/index.js
 # 按 Ctrl+C 退出
 ```
 
-### 方式二：使用 npm 全局安装（待发布）
+### 方式二：使用 npm 全局安装（开发中）
 
 ```bash
 npm install -g filemaker-mcp-server
@@ -95,7 +95,7 @@ npm install -g filemaker-mcp-server
     "filemaker": {
       "command": "node",
       "args": [
-        "/path/to/FileMakerMCP/dist/index.js"
+        "/path/to/filemaker-mcp/dist/index.js"
       ],
       "env": {
         "FILEMAKER_HOST": "https://your-filemaker-server.com",
@@ -134,7 +134,7 @@ npm install -g filemaker-mcp-server
     "filemaker": {
       "command": "node",
       "args": [
-        "C:\\path\\to\\FileMakerMCP\\dist\\index.js"
+        "C:\\path\\to\\filemaker-mcp\\dist\\index.js"
       ],
       "env": {
         "FILEMAKER_HOST": "https://your-filemaker-server.com",
@@ -158,7 +158,7 @@ npm install -g filemaker-mcp-server
   "mcpServers": {
     "filemaker": {
       "command": "node",
-      "args": ["/path/to/FileMakerMCP/dist/index.js"],
+      "args": ["/path/to/filemaker-mcp/dist/index.js"],
       "env": {
         "FILEMAKER_HOST": "https://your-filemaker-server.com",
         "FILEMAKER_DATABASE": "YourDatabaseName",
@@ -241,9 +241,9 @@ curl https://your-filemaker-server.com/fmi/data/v2/databases/YourDB/layouts \
 
 Windows 路径需要使用双反斜杠或正斜杠：
 ```json
-"args": ["C:\\Users\\YourName\\FileMakerMCP\\dist\\index.js"]
+"args": ["C:\\Users\\YourName\\filemaker-mcp\\dist\\index.js"]
 // 或
-"args": ["C:/Users/YourName/FileMakerMCP/dist/index.js"]
+"args": ["C:/Users/YourName/filemaker-mcp/dist/index.js"]
 ```
 
 ---
