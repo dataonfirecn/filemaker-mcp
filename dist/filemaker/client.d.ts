@@ -40,7 +40,10 @@ export declare class FileMakerClient {
     private isTokenExpired;
     private getToken;
     private request;
-    findRecords(layout: string, query?: Record<string, unknown>): Promise<QueryResult>;
+    findRecords(layout: string, query?: Record<string, unknown>, limit?: number, offset?: number, sort?: Array<{
+        fieldName: string;
+        sortOrder: 'ascend' | 'descend';
+    }>): Promise<QueryResult>;
     getRecord(layout: string, recordId: string): Promise<Record<string, unknown>>;
     createRecord(layout: string, data: Record<string, unknown>): Promise<CreateResult>;
     updateRecord(layout: string, recordId: string, data: Record<string, unknown>): Promise<UpdateResult>;

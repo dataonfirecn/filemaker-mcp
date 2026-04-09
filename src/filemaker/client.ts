@@ -68,7 +68,8 @@ export class FileMakerClient {
     }
 
     // Token is expired or doesn't exist, get a new one
-    const url = `${this.config.host}/fmi/data/v2/databases/${this.config.database}/sessions`;
+    const encodedDb = this.encodeParam(this.config.database);
+    const url = `${this.config.host}/fmi/data/v2/databases/${encodedDb}/sessions`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -97,7 +98,8 @@ export class FileMakerClient {
     options?: RequestInit
   ): Promise<unknown> {
     const token = await this.getToken();
-    const url = `${this.config.host}/fmi/data/v2/databases/${this.config.database}${endpoint}`;
+    const encodedDb = this.encodeParam(this.config.database);
+    const url = `${this.config.host}/fmi/data/v2/databases/${encodedDb}${endpoint}`;
 
     const response = await fetch(url, {
       ...options,
@@ -123,34 +125,66 @@ export class FileMakerClient {
 
   async findRecords(
     layout: string,
-    query: Record<string, unknown> = {}
+    query: Record<string, unknown> = {},
+    limit: number = 100,
+    offset: number = 1,
+    sort?: Array<{ fieldName: string; sortOrder: 'ascend' | 'descend' }>
   ): Promise<QueryResult> {
     const encodedLayout = this.encodeParam(layout);
-    // If query is empty, use GET /records endpoint to get all records
-    if (Object.keys(query).length === 0) {
-      const result = (await this.request(`/layouts/${encodedLayout}/records?_limit=100`, {
-        method: 'GET',
+
+    // Use _find POST endpoint when sort is specified (required for sorting)
+    if (sort && sort.length > 0) {
+      // FileMaker requires at least one query criterion for _find
+      // Use a wildcard on a common field to match all records
+      const effectiveQuery = Object.keys(query).length > 0 ? query : { 'ID': '*' };
+
+      const requestBody: Record<string, unknown> = {
+        query: [effectiveQuery],
+        limit,
+        offset,
+        sort,
+      };
+
+      const result = (await this.request(`/layouts/${encodedLayout}/_find`, {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
       })) as any;
 
       return {
         data: result.response.data,
-        foundCount: result.response.dataInfo.foundCount || result.response.dataInfo.totalRecordCount,
+        foundCount: result.response.dataInfo.foundCount,
         returnedCount: result.response.dataInfo.returnedCount,
       };
     }
 
-    // Otherwise use _find with query
-    const result = (await this.request(`/layouts/${encodedLayout}/_find`, {
-      method: 'POST',
-      body: JSON.stringify({
+    // Use _find for queries, GET /records for simple listing
+    if (Object.keys(query).length > 0) {
+      const requestBody: Record<string, unknown> = {
         query: [query],
-        limit: 100,
-      }),
+        limit,
+        offset,
+      };
+
+      const result = (await this.request(`/layouts/${encodedLayout}/_find`, {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      })) as any;
+
+      return {
+        data: result.response.data,
+        foundCount: result.response.dataInfo.foundCount,
+        returnedCount: result.response.dataInfo.returnedCount,
+      };
+    }
+
+    // No query and no sort - use simple GET /records endpoint
+    const result = (await this.request(`/layouts/${encodedLayout}/records?_limit=${limit}&_offset=${offset}`, {
+      method: 'GET',
     })) as any;
 
     return {
       data: result.response.data,
-      foundCount: result.response.dataInfo.foundCount,
+      foundCount: result.response.dataInfo.foundCount || result.response.dataInfo.totalRecordCount,
       returnedCount: result.response.dataInfo.returnedCount,
     };
   }

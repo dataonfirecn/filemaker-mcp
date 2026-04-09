@@ -2,7 +2,7 @@ import { ToolDefinition } from './index.js';
 
 export const findRecordsTool: ToolDefinition = {
   name: 'fm_find_records',
-  description: 'Find records in a FileMaker layout using query criteria',
+  description: 'Find records in a FileMaker layout using query criteria. Supports sorting, pagination (limit/offset), and field-based queries.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -20,17 +20,43 @@ export const findRecordsTool: ToolDefinition = {
         description: 'Maximum number of records to return',
         default: 100,
       },
+      offset: {
+        type: 'number',
+        description: 'Starting record number for pagination (1-based)',
+        default: 1,
+      },
+      sort: {
+        type: 'array',
+        description: 'Sort criteria. Each item has fieldName and sortOrder ("ascend" or "descend"). Example: [{"fieldName": "Amount", "sortOrder": "descend"}]',
+        items: {
+          type: 'object',
+          properties: {
+            fieldName: {
+              type: 'string',
+              description: 'The field name to sort by',
+            },
+            sortOrder: {
+              type: 'string',
+              enum: ['ascend', 'descend'],
+              description: 'Sort direction: "ascend" for ascending, "descend" for descending',
+            },
+          },
+          required: ['fieldName', 'sortOrder'],
+        },
+      },
     },
     required: ['layout'],
   },
   handler: async (client, args) => {
-    const { layout, query = {}, limit } = args as {
+    const { layout, query = {}, limit, offset, sort } = args as {
       layout: string;
       query?: Record<string, unknown>;
       limit?: number;
+      offset?: number;
+      sort?: Array<{ fieldName: string; sortOrder: 'ascend' | 'descend' }>;
     };
 
-    const result = await client.findRecords(layout, query);
+    const result = await client.findRecords(layout, query, limit, offset, sort);
 
     return {
       content: [
