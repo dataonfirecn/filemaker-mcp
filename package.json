@@ -1,0 +1,33 @@
+{
+  "name": "filemaker-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for FileMaker Pro database integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "filemaker-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "filemaker",
+    "database",
+    "model-context-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
