@@ -1,112 +1,239 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <fmxmlsnippet type="FMObjectList">
-  <BaseTable id="1" name="API_Test">
-    <FieldCatalog>
-      <ObjectList membercount="13">
-        <Field DefaultStyle="" id="1" name="id" fieldtype="Normal" datatype="Text" comment="Business UUID primary key for API_Test records.">
-          <AutoEnter type="Calculated" prohibitModification="True" overwriteExisting="True" alwaysEvaluate="False">
-            <Calculated>
-              <Calculation>
-                <Text><![CDATA[Get ( UUID )]]></Text>
-              </Calculation>
-            </Calculated>
-          </AutoEnter>
-          <Validation type="Always" allowOverride="False" notEmpty="True" unique="True" existing="False"></Validation>
-          <Storage autoIndex="True" index="Minimal" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="2" name="eventId" fieldtype="Normal" datatype="Text" comment="MES callback event identifier. Required and unique for idempotent updates.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="Always" allowOverride="False" notEmpty="True" unique="True" existing="False"></Validation>
-          <Storage autoIndex="True" index="Minimal" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="3" name="source" fieldtype="Normal" datatype="Text" comment="Callback source, for example mes or layout.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="4" name="workOrderNo" fieldtype="Normal" datatype="Text" comment="Work order number from the MES payload.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="5" name="mesStatus" fieldtype="Normal" datatype="Text" comment="Status value from the MES payload.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="6" name="message" fieldtype="Normal" datatype="Text" comment="MES message, note, or human-readable callback detail.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="7" name="payloadJson" fieldtype="Normal" datatype="Text" comment="Formatted payload JSON extracted from the script parameter.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="8" name="rawScriptParameter" fieldtype="Normal" datatype="Text" comment="Full raw script parameter JSON received by FileMaker.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="9" name="filemakerResultJson" fieldtype="Normal" datatype="Text" comment="Formatted JSON returned by the FileMaker script.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="10" name="lastError" fieldtype="Normal" datatype="Text" comment="Last script error message, cleared on successful processing.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="Unicode" id="2"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="11" name="processedAt" fieldtype="Normal" datatype="Timestamp" comment="Timestamp when the callback script last processed this event.">
-          <AutoEnter type="" prohibitModification="False"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
-            <Strict>FourDigitYear</Strict>
-          </Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="English" id="21"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="12" name="createdAt" fieldtype="Normal" datatype="Timestamp" comment="Creation timestamp.">
-          <AutoEnter type="CreationTimestamp" prohibitModification="True"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
-            <Strict>FourDigitYear</Strict>
-          </Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="English" id="21"></LanguageReference>
-          </Storage>
-        </Field>
-        <Field DefaultStyle="" id="13" name="updatedAt" fieldtype="Normal" datatype="Timestamp" comment="Modification timestamp.">
-          <AutoEnter type="ModificationTimestamp" prohibitModification="True"></AutoEnter>
-          <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
-            <Strict>FourDigitYear</Strict>
-          </Validation>
-          <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
-            <LanguageReference name="English" id="21"></LanguageReference>
-          </Storage>
-        </Field>
-      </ObjectList>
-    </FieldCatalog>
+  <BaseTable comment="" name="API_Test">
+    <Field id="1" dataType="Text" fieldType="Normal" name="id">
+      <Comment>Business UUID primary key for API_Test records.</Comment>
+      <AutoEnter allowEditing="False" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Get( UUID )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="True"/>
+        <Unique value="True"/>
+        <Existing value="False"/>
+        <StrictValidation value="True"/>
+      </Validation>
+      <Storage autoIndex="True" index="Minimal" indexLanguage="Unicode_Raw" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="2" dataType="Text" fieldType="Normal" name="eventId">
+      <Comment>MES callback event identifier.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="Minimal" indexLanguage="Unicode_Raw" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="3" dataType="Text" fieldType="Normal" name="source">
+      <Comment>Callback source, for example mes or layout.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="4" dataType="Text" fieldType="Normal" name="workOrderNo">
+      <Comment>Work order number from the MES payload.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="Minimal" indexLanguage="Unicode_Raw" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="5" dataType="Text" fieldType="Normal" name="mesStatus">
+      <Comment>Status value from the MES payload.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="6" dataType="Text" fieldType="Normal" name="message">
+      <Comment>MES message, note, or human-readable callback detail.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="7" dataType="Text" fieldType="Normal" name="payloadJson">
+      <Comment>Formatted payload JSON extracted from the script parameter.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="8" dataType="Text" fieldType="Normal" name="rawScriptParameter">
+      <Comment>Full raw script parameter JSON received by FileMaker.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="9" dataType="Text" fieldType="Normal" name="filemakerResultJson">
+      <Comment>Formatted JSON returned by the FileMaker script.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="10" dataType="Text" fieldType="Normal" name="lastError">
+      <Comment>Last script error message, cleared on successful processing.</Comment>
+      <AutoEnter allowEditing="True" overwriteExistingValue="True" alwaysEvaluate="False" constant="False" furigana="False" lookup="False" calculation="True">
+        <ConstantData/>
+        <Calculation table="API_Test"><![CDATA[Trim ( TextFormatRemove ( Self ) )]]></Calculation>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="11" dataType="TimeStamp" fieldType="Normal" name="processedAt">
+      <Comment>Timestamp when the callback script last processed this event.</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <StrictDataType value="FourDigitYear"/>
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="12" dataType="TimeStamp" fieldType="Normal" name="createdAt">
+      <Comment>Creation timestamp.</Comment>
+      <AutoEnter allowEditing="False" value="CreationTimeStamp" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <StrictDataType value="FourDigitYear"/>
+        <NotEmpty value="True"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="True"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="13" dataType="TimeStamp" fieldType="Normal" name="updatedAt">
+      <Comment>Modification timestamp.</Comment>
+      <AutoEnter allowEditing="False" value="ModificationTimeStamp" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <StrictDataType value="FourDigitYear"/>
+        <NotEmpty value="True"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="True"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="Chinese_Stroke" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
   </BaseTable>
 </fmxmlsnippet>

@@ -18,6 +18,7 @@ __pycache__/
 
 # Environment variables
 .env
+SERVER_CREDENTIALS.md
 
 # IDE
 .idea/

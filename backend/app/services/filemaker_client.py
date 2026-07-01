@@ -1,12 +1,16 @@
 import asyncio
 import base64
+import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class FileMakerAPIError(RuntimeError):
@@ -20,7 +24,8 @@ class FileMakerClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._token: str | None = None
-        self._token_expires_at: float = 0
+        self._token_obtained_at: float = 0
+        self._token_last_used_at: float = 0
         self._token_lock = asyncio.Lock()
         self._client = httpx.AsyncClient(
             timeout=settings.filemaker_timeout_seconds,
@@ -28,7 +33,52 @@ class FileMakerClient:
         )
 
     async def close(self) -> None:
+        await self.release_token()
         await self._client.aclose()
+
+    def token_status(self) -> dict[str, Any]:
+        now = time.time()
+        has_token = bool(self._token)
+        token_age_seconds = (
+            max(0, int(now - self._token_obtained_at))
+            if has_token and self._token_obtained_at
+            else None
+        )
+        seconds_since_last_use = (
+            max(0, int(now - self._token_last_used_at))
+            if has_token and self._token_last_used_at
+            else None
+        )
+        return {
+            "hasToken": has_token,
+            "tokenObtainedAt": self._format_timestamp(self._token_obtained_at),
+            "tokenLastUsedAt": self._format_timestamp(self._token_last_used_at),
+            "tokenAgeSeconds": token_age_seconds,
+            "secondsSinceLastUse": seconds_since_last_use,
+            "inactivityTimeoutSeconds": (
+                self.settings.filemaker_token_inactivity_timeout_seconds
+            ),
+            "refreshStrategy": "reuse_until_401",
+        }
+
+    async def release_token(self) -> None:
+        async with self._token_lock:
+            token = self._token
+            self._clear_token()
+
+        if not token:
+            return
+
+        await self._delete_session(token)
+
+    async def _delete_session(self, token: str) -> None:
+        try:
+            await self._client.delete(
+                f"{self._base_url()}/sessions/{self._encode_param(token)}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.RequestError:
+            logger.exception("Unable to release FileMaker Data API session")
 
     def _encode_param(self, value: str) -> str:
         return quote(value, safe="").replace("%20", "+")
@@ -39,15 +89,22 @@ class FileMakerClient:
         version = self.settings.filemaker_api_version
         return f"{host}/fmi/data/{version}/databases/{database}"
 
-    def _token_expired(self) -> bool:
-        return not self._token or time.time() >= self._token_expires_at
+    def _clear_token(self) -> None:
+        self._token = None
+        self._token_obtained_at = 0
+        self._token_last_used_at = 0
+
+    def _format_timestamp(self, value: float) -> str | None:
+        if not value:
+            return None
+        return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
 
     async def get_token(self) -> str:
-        if self._token and not self._token_expired():
+        if self._token:
             return self._token
 
         async with self._token_lock:
-            if self._token and not self._token_expired():
+            if self._token:
                 return self._token
 
             if not self.settings.filemaker_configured:
@@ -83,8 +140,14 @@ class FileMakerClient:
             if not token:
                 raise FileMakerAPIError("No token received from FileMaker API")
 
+            now = time.time()
             self._token = token
-            self._token_expires_at = time.time() + self.settings.filemaker_token_ttl_seconds
+            self._token_obtained_at = now
+            self._token_last_used_at = now
+            logger.info(
+                "FileMaker Data API token acquired; inactivity_timeout_seconds=%s",
+                self.settings.filemaker_token_inactivity_timeout_seconds,
+            )
             return token
 
     async def request(
@@ -115,8 +178,7 @@ class FileMakerClient:
             ) from exc
 
         if response.status_code == 401 and retry_on_unauthorized:
-            self._token = None
-            self._token_expires_at = 0
+            self._clear_token()
             return await self.request(
                 endpoint,
                 method=method,
@@ -132,6 +194,7 @@ class FileMakerClient:
                 self._safe_json(response),
             )
 
+        self._token_last_used_at = time.time()
         if response.content:
             return response.json()
         return None

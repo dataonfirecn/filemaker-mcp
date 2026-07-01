@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +22,13 @@ class Settings(BaseSettings):
     filemaker_username: str = ""
     filemaker_password: str = ""
     filemaker_api_version: str = "v2"
-    filemaker_token_ttl_seconds: int = 14 * 60
+    filemaker_token_inactivity_timeout_seconds: int = Field(
+        default=15 * 60,
+        validation_alias=AliasChoices(
+            "FILEMAKER_TOKEN_INACTIVITY_TIMEOUT_SECONDS",
+            "FILEMAKER_TOKEN_TTL_SECONDS",
+        ),
+    )
     filemaker_timeout_seconds: float = 30.0
     filemaker_ssl_verify: bool = False
 

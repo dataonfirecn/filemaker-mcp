@@ -12,10 +12,9 @@
 
 1. 打开 `File > Manage > Database...`，切到 `Tables` 标签页。
 2. 把 `00-api-test-table-with-fields.fmxmlsnippet.xml` 写入 FileMaker 剪贴板格式，直接粘贴。它会创建 `API_Test` 表和字段。
-   如果只创建了空表，删除空表后试 `00-api-test-table-with-fields-direct-fallback.fmxmlsnippet.xml`。
-3. 在 Script Workspace 里粘贴 `02-mes-update-workorder-test-script.fmxmlsnippet.xml`。如果完整脚本对象粘贴不稳定，就手动新建脚本 `MES_UpdateWorkOrder_Test`，再粘贴 `02-mes-update-workorder-test-script-steps.fmxmlsnippet.xml`。
+3. 在 Script Workspace 里粘贴 `02-mes-update-workorder-test-script.fmxmlsnippet.xml`。
 4. 创建布局 `API_Test`，显示记录来自表 occurrence `API_Test`。
-5. 从目标布局任意复制一个对象，取得它的 `<ThemeName>`，把 `03-api-test-layout-objects.fmxmlsnippet.xml` 里的 `THEME_NAME_REPLACE_ME` 全部替换成真实值，再切到布局模式粘贴。
+5. 进入布局模式，把 `03-api-test-layout-objects.fmxmlsnippet.xml` 写入 FileMaker 剪贴板格式后直接粘贴。它已经使用从目标文件复制出来的 `com.filemaker.theme.apex_blue` 主题和真实对象样式，并排成 1024 宽的两栏简约布局，不需要再替换主题名。
 6. 后端 `.env` 使用：
 
 ```bash
@@ -29,14 +28,12 @@ MES_FILEMAKER_SCRIPT_NAME=MES_UpdateWorkOrder_Test
 
 ## 文件
 
-- `00-api-test-table.md`：表、字段、布局、脚本的人工核对说明。
 - `00-api-test-table-with-fields.fmxmlsnippet.xml`：表定义和字段定义，贴到 Manage Database 的 `Tables` 标签页。
-- `00-api-test-table-with-fields-direct-fallback.fmxmlsnippet.xml`：不包 `ObjectList` 的备用表定义。
-- `01-api-test-fields.fmxmlsnippet.xml`：字段定义，贴到 Manage Database 的 `API_Test` 表。
 - `02-mes-update-workorder-test-script.fmxmlsnippet.xml`：完整脚本对象。
-- `02-mes-update-workorder-test-script-steps.fmxmlsnippet.xml`：只有脚本步骤的备用版本。
-- `03-api-test-layout-objects.fmxmlsnippet.xml`：布局 UI 对象，贴到 `API_Test` 布局模式。
+- `03-api-test-layout-objects.fmxmlsnippet.xml`：从目标 FileMaker 布局复制出来的真实样式布局对象，已排列为 1024 宽两栏布局，贴到 `API_Test` 布局模式。
 - `04-test-callback-payload.json`：后端 callback 测试请求体。
+- `FILEMAKER_TABLE_XML_NOTES.md`：本次成功创建表和字段的格式记录、失败原因和检查命令。
+- `FILEMAKER_LAYOUT_XML_NOTES.md`：本次布局对象显示问题的原因、成功策略和检查命令。
 
 ## 参考
 

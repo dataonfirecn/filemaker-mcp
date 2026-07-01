@@ -16,6 +16,14 @@ python scripts/test_connection.py
 python scripts/test_records.py
 ```
 
+FastAPI 进程会在 `app.state.filemaker_client` 中持有一个 FileMaker Data API token。FileMaker Data API token 是 15 分钟非活动滑动过期：每次成功使用都会续期。后端不会按本地计时主动刷新 token，而是一直复用现有 token；只有收到 401 授权失败时才重新登录并重试一次。应用关闭时会主动释放当前 Data API session。`FILEMAKER_TOKEN_INACTIVITY_TIMEOUT_SECONDS` 只用于状态展示和文档说明，不用于主动销毁 token。
+
+可用这个接口检查当前进程的 token 状态；它不会触发登录，也不会返回 token 明文：
+
+```bash
+curl http://localhost:8000/api/filemaker/session
+```
+
 ## 关键接口
 
 - `GET /healthz`

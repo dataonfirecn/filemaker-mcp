@@ -28,6 +28,13 @@ async def list_layouts(
         raise filemaker_error_response(exc) from exc
 
 
+@router.get("/session")
+async def get_session_status(
+    client: FileMakerClient = Depends(get_filemaker_client),
+) -> dict[str, object]:
+    return client.token_status()
+
+
 @router.get("/layouts/{layout}/fields")
 async def get_layout_fields(
     layout: str,
