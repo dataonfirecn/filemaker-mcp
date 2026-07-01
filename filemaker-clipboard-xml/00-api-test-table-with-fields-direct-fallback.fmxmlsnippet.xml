@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <BaseTable id="1" name="API_Test">
+    <FieldCatalog>
+      <Field DefaultStyle="" id="1" name="id" fieldtype="Normal" datatype="Text" comment="Business UUID primary key for API_Test records.">
+        <AutoEnter type="Calculated" prohibitModification="True" overwriteExisting="True" alwaysEvaluate="False">
+          <Calculated>
+            <Calculation>
+              <Text><![CDATA[Get ( UUID )]]></Text>
+            </Calculation>
+          </Calculated>
+        </AutoEnter>
+        <Validation type="Always" allowOverride="False" notEmpty="True" unique="True" existing="False"></Validation>
+        <Storage autoIndex="True" index="Minimal" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="2" name="eventId" fieldtype="Normal" datatype="Text" comment="MES callback event identifier. Required and unique for idempotent updates.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="Always" allowOverride="False" notEmpty="True" unique="True" existing="False"></Validation>
+        <Storage autoIndex="True" index="Minimal" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="3" name="source" fieldtype="Normal" datatype="Text" comment="Callback source, for example mes or layout.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="4" name="workOrderNo" fieldtype="Normal" datatype="Text" comment="Work order number from the MES payload.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="5" name="mesStatus" fieldtype="Normal" datatype="Text" comment="Status value from the MES payload.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="6" name="message" fieldtype="Normal" datatype="Text" comment="MES message, note, or human-readable callback detail.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="7" name="payloadJson" fieldtype="Normal" datatype="Text" comment="Formatted payload JSON extracted from the script parameter.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="8" name="rawScriptParameter" fieldtype="Normal" datatype="Text" comment="Full raw script parameter JSON received by FileMaker.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="9" name="filemakerResultJson" fieldtype="Normal" datatype="Text" comment="Formatted JSON returned by the FileMaker script.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="10" name="lastError" fieldtype="Normal" datatype="Text" comment="Last script error message, cleared on successful processing.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False"></Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="Unicode" id="2"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="11" name="processedAt" fieldtype="Normal" datatype="Timestamp" comment="Timestamp when the callback script last processed this event.">
+        <AutoEnter type="" prohibitModification="False"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
+          <Strict>FourDigitYear</Strict>
+        </Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="English" id="21"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="12" name="createdAt" fieldtype="Normal" datatype="Timestamp" comment="Creation timestamp.">
+        <AutoEnter type="CreationTimestamp" prohibitModification="True"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
+          <Strict>FourDigitYear</Strict>
+        </Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="English" id="21"></LanguageReference>
+        </Storage>
+      </Field>
+      <Field DefaultStyle="" id="13" name="updatedAt" fieldtype="Normal" datatype="Timestamp" comment="Modification timestamp.">
+        <AutoEnter type="ModificationTimestamp" prohibitModification="True"></AutoEnter>
+        <Validation type="OnlyDuringDataEntry" allowOverride="True" notEmpty="False" unique="False" existing="False">
+          <Strict>FourDigitYear</Strict>
+        </Validation>
+        <Storage autoIndex="True" index="None" global="False" maxRepetitions="1">
+          <LanguageReference name="English" id="21"></LanguageReference>
+        </Storage>
+      </Field>
+    </FieldCatalog>
+  </BaseTable>
+</fmxmlsnippet>

@@ -1,0 +1,1 @@
+"""StarRC backend application package."""

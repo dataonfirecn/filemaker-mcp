@@ -1,84 +1,54 @@
-# FileMaker MCP Server
+# StarRC FileMaker Service
 
-A Model Context Protocol (MCP) server that enables AI assistants to interact with FileMaker Pro databases via the FileMaker Data API.
+前后端分离的 FileMaker 集成服务：
 
-## Features
+- `frontend/`: React + Vite + Nginx，给 FileMaker WebViewer 使用
+- `backend/`: FastAPI，接收 MES callback、调用 FileMaker Data API、生成二维码
+- `legacy/filemaker-mcp/`: 原 TypeScript MCP 项目，保留作为参考和工具
 
-- **Query Records**: Search and retrieve records from any layout
-- **Create Records**: Add new records with field data
-- **Update Records**: Modify existing records
-- **Delete Records**: Remove records from the database
-- **Run Scripts**: Execute FileMaker scripts with optional parameters
-- **Schema Discovery**: List layouts and inspect field metadata
+## 本地 Docker 部署
 
-## Requirements
-
-- FileMaker Server 18 or later
-- FileMaker Data API enabled
-- Node.js 18+ and npm
-
-## Installation
+先按 `.env.example` 补好 `.env`，至少需要 FileMaker 连接信息。
 
 ```bash
-npm install
-npm run build
+docker compose up --build -d
 ```
 
-## Configuration
+访问：
 
-Create a `.env` file with your FileMaker credentials:
+- 前端：`http://localhost:8080`
+- 后端健康检查：`http://localhost:8000/healthz`
+- API 文档：`http://localhost:8000/docs`
+
+## MES Callback
 
 ```bash
-cp .env.example .env
+curl -X POST http://localhost:8000/api/mes/callback \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $MES_CALLBACK_API_KEY" \
+  -d '{"eventId":"demo-001","status":"finished"}'
 ```
 
-Edit `.env` with your server details:
+callback 会先写入 `backend/data/app.db`，再由后台 worker 调用 FileMaker。默认会调用：
 
-```
-FILEMAKER_HOST=https://your-filemaker-server.com
-FILEMAKER_DATABASE=YourDatabaseName
-FILEMAKER_USERNAME=api_user
-FILEMAKER_PASSWORD=your_password
+```text
+layout: MES_FILEMAKER_LAYOUT
+script: MES_FILEMAKER_SCRIPT_NAME
 ```
 
-## Usage
+也可以在 callback payload 中显式指定 FileMaker 操作：
 
-### Running the Server
-
-```bash
-npm start
+```json
+{
+  "eventId": "demo-002",
+  "filemaker": {
+    "operation": "run_script",
+    "layout": "MES_API",
+    "scriptName": "MES_UpdateWorkOrder",
+    "scriptParam": {
+      "workOrderNo": "WO-001",
+      "status": "finished"
+    }
+  }
+}
 ```
-
-### MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `fm_find_records` | Find records with query criteria |
-| `fm_get_record` | Get a single record by ID |
-| `fm_create_record` | Create a new record |
-| `fm_update_record` | Update an existing record |
-| `fm_delete_record` | Delete a record |
-| `fm_run_script` | Execute a FileMaker script |
-| `fm_list_layouts` | List all available layouts |
-| `fm_get_layout_fields` | Get field metadata for a layout |
-
-## Development
-
-```bash
-# Watch mode for development
-npm run dev
-
-# Type checking
-npm run check
-
-# Run tests
-npm test
-```
-
-## License
-
-MIT
-
-## Deployment
-
-For detailed installation and configuration instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).

@@ -1,8 +1,20 @@
 # Dependencies
 node_modules/
+.venv/
 
-# Build output (keep dist/ for npm distribution)
-# dist/
+# Build output
+dist/
+frontend/dist/
+
+# Runtime data
+backend/data/
+*.sqlite
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Environment variables
 .env
