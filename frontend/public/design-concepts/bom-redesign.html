@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BOM WebViewer Design Concepts</title>
+    <style>
+      :root {
+        --bg: #f7f9fb;
+        --ink: #18212b;
+        --muted: #667382;
+        --line: #dbe3ea;
+        --line-soft: #edf1f5;
+        --surface: #ffffff;
+        --teal: #0f766e;
+        --blue: #2563eb;
+        --amber: #b7791f;
+        --green: #147a4d;
+        --red: #b42318;
+        font-family:
+          Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 1440px;
+        min-height: 1024px;
+      }
+
+      .sheet {
+        width: 1440px;
+        min-height: 1024px;
+        margin: 0 auto;
+        overflow: visible;
+        background: var(--bg);
+      }
+
+      .num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0 10px;
+        color: #354351;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .pill.pending {
+        border-color: #ecd19c;
+        background: #fff8e6;
+        color: #805900;
+      }
+
+      .pill.readonly {
+        border-color: #bcd7e9;
+        background: #eef8ff;
+        color: #0b5c8d;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        background: #fff;
+      }
+
+      thead th {
+        height: 36px;
+        border-right: 1px solid #e5ebf0;
+        border-bottom: 1px solid #d7e0e7;
+        background: #f5f8fb;
+        color: #485667;
+        font-size: 12px;
+        font-weight: 800;
+        text-align: left;
+      }
+
+      thead th:last-child,
+      tbody td:last-child {
+        border-right: 0;
+      }
+
+      tbody td {
+        height: 38px;
+        border-right: 1px solid #f0f4f7;
+        border-bottom: 1px solid #edf2f6;
+        color: #25313d;
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      tbody tr:nth-child(even) td {
+        background: #fbfdff;
+      }
+
+      tbody tr:hover td {
+        background: #eef7ff;
+      }
+
+      .part-link {
+        color: #0b5f88;
+        font-weight: 800;
+      }
+
+      .concept-1 {
+        padding: 18px 22px;
+      }
+
+      .concept-1 .topline {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: start;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .concept-1 h1 {
+        margin: 0;
+        font-size: 23px;
+        line-height: 1.25;
+        letter-spacing: 0;
+      }
+
+      .concept-1 .subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .concept-1 .actions,
+      .concept-2 .actions,
+      .concept-3 .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        height: 34px;
+        border: 1px solid #cfd8e3;
+        border-radius: 7px;
+        background: #fff;
+        color: #263341;
+        padding: 0 13px;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .btn.primary {
+        border-color: var(--teal);
+        background: var(--teal);
+        color: #fff;
+      }
+
+      .concept-1 .identity {
+        display: grid;
+        grid-template-columns: 150px 250px minmax(0, 1fr) 120px 180px;
+        column-gap: 18px;
+        row-gap: 6px;
+        padding: 14px 0 12px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .meta-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .meta-value {
+        margin-top: 3px;
+        color: #17212c;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.35;
+      }
+
+      .concept-1 .meta-wide .meta-value {
+        white-space: normal;
+      }
+
+      .concept-1 .toolbar {
+        display: grid;
+        grid-template-columns: 260px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        height: 52px;
+      }
+
+      .searchbox,
+      .filter-chip {
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        color: #6b7786;
+        display: flex;
+        align-items: center;
+        padding: 0 11px;
+        font-size: 13px;
+      }
+
+      .concept-1 .table-shell {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .concept-1 th,
+      .concept-1 td {
+        padding: 0 12px;
+      }
+
+      .concept-2 {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        background: #f5f7f9;
+      }
+
+      .concept-2 .rail {
+        background: #222b35;
+        color: #d9e2eb;
+        padding: 18px 12px;
+      }
+
+      .concept-2 .rail-title {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: #f4f8fb;
+        color: #14212d;
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .concept-2 .rail-tab {
+        margin-top: 18px;
+        border-left: 3px solid transparent;
+        padding: 9px 0 9px 9px;
+        color: #aebdcb;
+        font-size: 12px;
+        font-weight: 800;
+        writing-mode: vertical-rl;
+        letter-spacing: 0.12em;
+      }
+
+      .concept-2 .rail-tab.active {
+        border-color: #63d6be;
+        color: #ffffff;
+      }
+
+      .concept-2 .workspace {
+        padding: 18px 22px 22px;
+      }
+
+      .concept-2 .bar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .concept-2 h1 {
+        margin: 0;
+        font-size: 21px;
+        letter-spacing: 0;
+      }
+
+      .concept-2 .product-line {
+        margin-top: 7px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        color: #596675;
+        font-size: 13px;
+      }
+
+      .concept-2 .product-line strong {
+        color: #15212d;
+      }
+
+      .concept-2 .flowline {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 0;
+      }
+
+      .step {
+        height: 44px;
+        border-top: 3px solid #cad5df;
+        background: #fff;
+        padding: 8px 10px 0;
+        color: #617082;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .step.active {
+        border-color: var(--amber);
+        color: #805900;
+        background: #fffaf0;
+      }
+
+      .concept-2 .grid-area {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .concept-2 .grid-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        height: 46px;
+        border-bottom: 1px solid var(--line);
+        padding: 0 12px;
+      }
+
+      .concept-2 .grid-head strong,
+      .concept-3 .grid-head strong {
+        font-size: 14px;
+      }
+
+      .concept-2 th,
+      .concept-2 td {
+        padding: 0 11px;
+      }
+
+      .concept-3 {
+        padding: 16px 20px;
+        background: #f8faf8;
+      }
+
+      .concept-3 .document {
+        min-height: 992px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        overflow: visible;
+        padding: 0;
+      }
+
+      .concept-3 .section-panel {
+        border: 1px solid #d7e1dc;
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgba(18, 28, 38, 0.04);
+      }
+
+      .concept-3 .section-panel + .section-panel {
+        margin-top: 16px;
+      }
+
+      .concept-3 .nav-row {
+        display: flex;
+        justify-content: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .concept-3 .doc-header {
+        display: flex;
+        align-items: center;
+        min-height: auto;
+        padding: 18px 18px 0;
+        border-bottom: 0;
+        background: linear-gradient(180deg, #fbfdfc 0%, #ffffff 100%);
+      }
+
+      .concept-3 h1 {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      .concept-3 .details {
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) 200px 160px;
+        gap: 12px;
+        border-bottom: 0;
+        padding: 14px 18px 18px;
+      }
+
+      .concept-3 .details > div {
+        min-height: 64px;
+        border: 1px solid #e7eee9;
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px 14px;
+      }
+
+      .concept-3 .details .meta-value {
+        white-space: normal;
+      }
+
+      .concept-3 .details .status-meta,
+      .concept-3 .details .status-meta .meta-label {
+        text-align: right;
+      }
+
+      .concept-3 .source-section {
+        border-color: #14362f;
+        border-bottom: 1px solid #14362f;
+        background:
+          radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.05), transparent 24%),
+          linear-gradient(145deg, #102923 0%, #183a33 55%, #0d211d 100%);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+          0 1px 2px rgba(18, 28, 38, 0.06);
+      }
+
+      .concept-3 .source-title {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        border-bottom: 0;
+        padding: 16px 18px 0;
+      }
+
+      .concept-3 .source-title h2 {
+        margin: 0;
+        color: #edf7ef;
+        font-size: 15px;
+        font-weight: 800;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+      }
+
+      .concept-3 .source-equation {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 72px 170px;
+        gap: 12px;
+        align-items: stretch;
+        padding: 14px 18px 18px;
+      }
+
+      .concept-3 .equation-product,
+      .concept-3 .equation-qty {
+        border: 1px solid rgba(237, 247, 239, 0.18);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .concept-3 .equation-product {
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .concept-3 .equation-product-code {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .concept-3 .equation-product-code span,
+      .concept-3 .equation-qty span {
+        color: rgba(237, 247, 239, 0.72);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .concept-3 .equation-product-code strong {
+        color: #f8fff8;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .concept-3 .equation-product-name b {
+        display: block;
+        color: #fffdf0;
+        font-size: 17px;
+      }
+
+      .concept-3 .equation-product-name em {
+        display: block;
+        margin-top: 4px;
+        color: rgba(237, 247, 239, 0.76);
+        font-size: 14px;
+        font-style: normal;
+      }
+
+      .concept-3 .equation-symbol {
+        display: grid;
+        place-items: center;
+        min-height: 88px;
+        color: #d9f4df;
+        font-size: 34px;
+        font-weight: 900;
+        text-shadow: 0 0 1px rgba(255, 255, 255, 0.65);
+      }
+
+      .concept-3 .equation-qty {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.075);
+      }
+
+      .concept-3 .equation-qty strong {
+        margin-top: 6px;
+        color: #e7ffe9;
+        font-size: 32px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .concept-3 .grid-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        height: 48px;
+        padding: 0 18px;
+        border-bottom: 1px solid #dce6e1;
+      }
+
+      .concept-3 .grid-tools {
+        display: grid;
+        grid-template-columns: minmax(300px, 430px);
+        gap: 8px;
+        align-items: center;
+        justify-content: start;
+        min-height: 42px;
+        border-bottom: 1px solid #dfe7ed;
+        background: #f8fafc;
+        padding: 6px 18px;
+      }
+
+      .concept-3 .mock-search {
+        height: 32px;
+        border: 1px solid #d4dbe2;
+        border-radius: 7px;
+        background: #fff;
+        color: #66766f;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        font-size: 13px;
+      }
+
+      .concept-3 table {
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+
+      .concept-3 .adaptive-table {
+        overflow: visible;
+      }
+
+      .concept-3 .adaptive-table.long-table {
+        max-height: none;
+        overflow: visible;
+      }
+
+      .concept-3 th,
+      .concept-3 td {
+        padding: 0 13px;
+      }
+
+      .concept-3 th.row-index,
+      .concept-3 td.row-index {
+        color: #6a7888;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        font-weight: 750;
+      }
+
+      .concept-3 thead th {
+        background: #f5f8fb;
+        border-bottom-color: #d7e0e7;
+      }
+
+      .concept-3 thead .filter-row th {
+        height: 34px;
+        background: #fff;
+        border-bottom-color: #dfe7ed;
+        padding: 4px 8px;
+      }
+
+      .concept-3 .mini-filter {
+        display: flex;
+        align-items: center;
+        height: 24px;
+        border: 1px solid #d4dbe2;
+        border-radius: 6px;
+        background: #fff;
+        color: #7a8794;
+        padding: 0 8px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .concept-3 .filter-row th.num .mini-filter {
+        justify-content: flex-end;
+      }
+
+      .concept-3 tbody tr:nth-child(even) td {
+        background: #fbfdfb;
+      }
+
+      .concept-3 .mock-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 14px;
+        height: 38px;
+        border-top: 1px solid #dfe7ed;
+        background: #fbfcfd;
+        color: #354351;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        padding: 0 18px;
+      }
+
+      .concept-3 .mock-pagination button {
+        width: 26px;
+        height: 26px;
+        border: 1px solid #d4dbe2;
+        border-radius: 6px;
+        background: #fff;
+        color: #536171;
+        font-weight: 800;
+      }
+
+      .concept-3 .page-size-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .concept-3 .page-size-label select {
+        height: 28px;
+        border: 1px solid #d4dbe2;
+        border-radius: 6px;
+        background: #fff;
+        color: #354351;
+        padding: 0 8px;
+        font: inherit;
+      }
+
+      .concept-3 .detail-submit-row {
+        display: flex;
+        justify-content: flex-end;
+        border-top: 1px solid #dfe7ed;
+        background: #fbfcfd;
+        padding: 12px 18px;
+      }
+
+      .concept-3 .page-footer-spacer {
+        height: 80px;
+      }
+
+      .danger {
+        color: var(--red);
+        font-weight: 800;
+      }
+
+      .ok {
+        color: var(--green);
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" class="sheet"></main>
+    <script>
+      const rows = [
+        ["AL08045-00", "", "", "", "1/8 灵魂车RTR 二楼板-F 140x140x3 1/6", 1, 0, 100, "", ""],
+        ["AL08045-00DBS", "", "A32-D-30", "", "灵魂车RTR二楼板-F 电镀不锈色8033", 1, 60, 100, "", ""],
+        ["AL08045-00PS", "", "", "", "HT 灵魂车RTR 二楼板-F 喷砂", 1, 0, 100, "", ""],
+        ["BAG-009", "包装部", "B1D-11", "", "零件包袋 10X10cm 6c PE 不打孔", 1, 53479, 100, "", ""],
+        ["BQZ-001", "包装部", "", "", "标签贴纸 82x15mm 条形码用", 1, 57, 100, "", ""],
+        ["TG-FRHT15", "包装部", "B1C-14", "", "法国吊卡 1号吊卡 100x120mm", 1, 27184, 100, "", ""],
+        ["M3X8-SS", "五金仓", "C03-09", "02", "不锈钢杯头螺丝 M3x8", 4, 12800, 400, "", ""],
+        ["WASH-3", "五金仓", "C02-18", "01", "M3 平垫片", 4, 9600, 400, "", ""],
+        ["DECAL-RTR", "包装部", "B2A-08", "", "RTR 车身贴纸套装", 1, 34, 100, "", ""],
+        ["BOX-821", "包装部", "B5C-02", "", "821RTR 外箱", 1, 480, 100, "", ""],
+        ["MANUAL-821", "包装部", "B4D-19", "", "821RTR 说明书", 1, 2100, 100, "", ""],
+        ["FOAM-821", "包装部", "B3B-06", "", "821RTR 内衬泡棉", 2, 800, 200, "", ""]
+      ];
+
+      const fmt = (value) => Number(value).toLocaleString("zh-CN");
+
+      function tableMarkup(kind) {
+        const compact = kind === 1;
+        const columns = compact
+          ? ["序号", "零件编号", "零件名称", "BOM", "库存", "计算数量", "实发", "发料时间", "仓库", "位置1", "位置2"]
+          : ["序号", "零件编号", "零件名称", "BOM 数量", "库存", "计算数量", "实发数量", "发料时间", "仓库", "位置1", "位置2"];
+        const widths = compact
+          ? ["68px", "150px", "auto", "80px", "105px", "115px", "92px", "150px", "92px", "95px", "80px"]
+          : ["68px", "160px", "auto", "96px", "110px", "120px", "110px", "150px", "100px", "105px", "90px"];
+        const numericLabels = new Set(["BOM", "BOM 数量", "库存", "计算数量", "实发", "实发数量"]);
+        return `
+          <table>
+            <colgroup>${widths.map((width) => `<col style="width:${width}" />`).join("")}</colgroup>
+            <thead>
+              <tr>${columns
+                .map((label) => `<th class="${label === "序号" ? "row-index" : numericLabels.has(label) ? "num" : ""}">${label}</th>`)
+                .join("")}</tr>
+              <tr class="filter-row">${columns
+                .map(
+                  (label) =>
+                    `<th class="${label === "序号" ? "row-index" : numericLabels.has(label) ? "num" : ""}">${
+                      label === "序号"
+                        ? ""
+                        : `<span class="mini-filter">${
+                      numericLabels.has(label) ? "数字筛选" : "筛选..."
+                    }</span>`
+                    }</th>`
+                )
+                .join("")}</tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (row, index) => `
+                    <tr>
+                      <td class="row-index">${index + 1}</td>
+                      <td><span class="part-link">${row[0]}</span></td>
+                      <td>${row[4]}</td>
+                      <td class="num">${fmt(row[5])}</td>
+                      <td class="num ${row[6] < row[7] ? "danger" : "ok"}">${fmt(row[6])}</td>
+                      <td class="num">${fmt(row[7])}</td>
+                      <td class="num">${row[8]}</td>
+                      <td>${row[9]}</td>
+                      <td>${row[1]}</td>
+                      <td>${row[2]}</td>
+                      <td>${row[3]}</td>
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      function conceptOne() {
+        return `
+          <section class="concept-1">
+            <div class="topline">
+              <div>
+                <h1>零件包发料分类单据</h1>
+                <div class="subtitle">生成后待确认，可搜索零件库替换零件编号；FileMaker 只读。</div>
+              </div>
+              <div class="actions">
+                <span class="pill pending">待确认</span>
+                <span class="pill readonly">FileMaker 只读</span>
+                <button class="btn">返回产品BOM</button>
+                <button class="btn primary">确认</button>
+              </div>
+            </div>
+            <div class="identity">
+              <div><div class="meta-label">产品编号</div><div class="meta-value">STRX-202</div></div>
+              <div><div class="meta-label">中文名称</div><div class="meta-value">灵魂车RTR 二楼板-F</div></div>
+              <div class="meta-wide"><div class="meta-label">英文名称</div><div class="meta-value">Spirit RTR front radio plate</div></div>
+              <div><div class="meta-label">生成数量</div><div class="meta-value num">100</div></div>
+              <div><div class="meta-label">计算状态</div><div class="meta-value">待确认编辑</div></div>
+            </div>
+            <div class="toolbar">
+              <div class="searchbox">搜索零件编号 / 零件名称</div>
+              <div class="filter-chip">全部仓库 · 12 行 · 数字列右对齐</div>
+              <div class="pill pending">库存不足 5 项</div>
+            </div>
+            <div class="table-shell">${tableMarkup(1)}</div>
+          </section>
+        `;
+      }
+
+      function conceptTwo() {
+        return `
+          <section class="concept-2">
+            <aside class="rail">
+              <div class="rail-title">BOM</div>
+              <div class="rail-tab">产品BOM</div>
+              <div class="rail-tab active">发料分类</div>
+            </aside>
+            <div class="workspace">
+              <div class="bar">
+                <div>
+                  <h1>零件包发料分类</h1>
+                  <div class="product-line">
+                    <span><strong>STRX-202</strong></span>
+                    <span>灵魂车RTR 二楼板-F</span>
+                    <span>Spirit RTR front radio plate</span>
+                    <span>生成数量 <strong>100</strong></span>
+                  </div>
+                </div>
+                <div class="actions">
+                  <span class="pill pending">待确认</span>
+                  <button class="btn">返回产品BOM</button>
+                  <button class="btn primary">确认</button>
+                </div>
+              </div>
+              <div class="flowline">
+                <div class="step">1. 读取产品 BOM</div>
+                <div class="step active">2. 待确认计算结果</div>
+                <div class="step">3. 写入本地单据</div>
+                <span class="pill readonly">FileMaker 只读</span>
+              </div>
+              <div class="grid-area">
+                <div class="grid-head">
+                  <strong>计算明细</strong>
+                  <div class="actions">
+                    <span class="filter-chip">点击零件编号搜索零件库</span>
+                    <span class="filter-chip">显示 12 / 12</span>
+                  </div>
+                </div>
+                ${tableMarkup(2)}
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function conceptThree() {
+        return `
+          <section class="concept-3">
+            <div class="document">
+              <div class="nav-row">
+                <button class="btn">
+                  <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m12 19-7-7 7-7"></path>
+                    <path d="M19 12H5"></path>
+                  </svg>
+                  返回产品BOM
+                </button>
+              </div>
+              <div class="section-panel document-panel">
+                <div class="doc-header">
+                  <div>
+                    <h1>BOM 计算单</h1>
+                  </div>
+                </div>
+                <div class="details">
+                  <div><div class="meta-label">ID</div><div class="meta-value">BOMCALC-20260702-000187</div></div>
+                  <div><div class="meta-label">日期</div><div class="meta-value">2026/07/02 15:18</div></div>
+                  <div class="status-meta"><div class="meta-label">状态</div><div class="meta-value">待确认</div></div>
+                </div>
+              </div>
+              <div class="section-panel source-section">
+                <div class="source-title">
+                  <h2>计算来源</h2>
+                </div>
+                <div class="source-equation">
+                  <div class="equation-product">
+                    <div class="equation-product-code">
+                      <span>产品编号</span>
+                      <strong>STRX-202</strong>
+                    </div>
+                    <div class="equation-product-name">
+                      <b>灵魂车RTR 二楼板-F</b>
+                      <em>Spirit RTR front radio plate</em>
+                    </div>
+                  </div>
+                  <div class="equation-symbol" aria-label="乘以">×</div>
+                  <div class="equation-qty">
+                    <span>数量</span>
+                    <strong>100</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="section-panel detail-section">
+                <div class="grid-head">
+                  <strong>发料分类明细</strong>
+                  <span class="pill readonly">FileMaker 只读</span>
+                </div>
+                <div class="grid-tools">
+                  <div class="mock-search">搜索零件编号、名称、仓库、位置</div>
+                </div>
+                <div class="adaptive-table ${rows.length >= 50 ? "long-table" : "short-table"}">
+                  ${tableMarkup(3)}
+                </div>
+                <div class="mock-pagination">
+                  <label class="page-size-label">
+                    每页:
+                    <select>
+                      <option selected>50</option>
+                      <option>100</option>
+                      <option>200</option>
+                    </select>
+                  </label>
+                  <span>1 到 12，共 12</span>
+                  <button>‹</button>
+                  <span>第 1 页，共 1 页</span>
+                  <button>›</button>
+                </div>
+                <div class="detail-submit-row">
+                  <button class="btn primary">确认</button>
+                </div>
+              </div>
+              <div class="page-footer-spacer" aria-hidden="true"></div>
+            </div>
+          </section>
+        `;
+      }
+
+      const concept = new URLSearchParams(location.search).get("concept") || "1";
+      const app = document.getElementById("app");
+      app.innerHTML = concept === "2" ? conceptTwo() : concept === "3" ? conceptThree() : conceptOne();
+    </script>
+  </body>
+</html>

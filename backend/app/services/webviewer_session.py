@@ -1,0 +1,106 @@
+import base64
+import hashlib
+import hmac
+import json
+import time
+import uuid
+from typing import Any
+
+from app.core.config import Settings
+from app.services.audit_log import OperatorContext
+
+
+class WebViewerSessionError(ValueError):
+    pass
+
+
+def create_mock_context(
+    *,
+    operator_account: str,
+    operator_name: str,
+    operator_privilege: str = "mock",
+    product_sku: str = "",
+    order_id: str = "",
+    bom_calc_id: str = "",
+) -> dict[str, Any]:
+    return {
+        "operator": {
+            "account": operator_account,
+            "name": operator_name,
+            "privilege": operator_privilege,
+            "persistentId": "mock",
+        },
+        "productSku": product_sku,
+        "orderId": order_id,
+        "bomCalcId": bom_calc_id,
+        "issuedAt": int(time.time()),
+    }
+
+
+def verify_external_context(ctx: str, sig: str, settings: Settings) -> dict[str, Any]:
+    expected = _sign(ctx, settings.webviewer_context_secret)
+    if not hmac.compare_digest(expected, sig):
+        raise WebViewerSessionError("Invalid WebViewer context signature")
+    try:
+        payload = json.loads(_b64decode(ctx).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise WebViewerSessionError("Invalid WebViewer context payload") from exc
+    return payload
+
+
+def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[str, dict[str, Any]]:
+    now = int(time.time())
+    session_payload = {
+        "sessionId": str(uuid.uuid4()),
+        "operator": context.get("operator") or {},
+        "productSku": context.get("productSku") or "",
+        "orderId": context.get("orderId") or "",
+        "bomCalcId": context.get("bomCalcId") or "",
+        "iat": now,
+        "exp": now + settings.webviewer_session_ttl_seconds,
+    }
+    encoded = _b64encode(json.dumps(session_payload, ensure_ascii=False).encode("utf-8"))
+    return f"{encoded}.{_sign(encoded, settings.webviewer_context_secret)}", session_payload
+
+
+def verify_session_token(token: str, settings: Settings) -> dict[str, Any]:
+    try:
+        encoded, sig = token.split(".", 1)
+    except ValueError as exc:
+        raise WebViewerSessionError("Invalid WebViewer session token") from exc
+
+    expected = _sign(encoded, settings.webviewer_context_secret)
+    if not hmac.compare_digest(expected, sig):
+        raise WebViewerSessionError("Invalid WebViewer session signature")
+    try:
+        payload = json.loads(_b64decode(encoded).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise WebViewerSessionError("Invalid WebViewer session payload") from exc
+    if int(payload.get("exp") or 0) < int(time.time()):
+        raise WebViewerSessionError("WebViewer session expired")
+    return payload
+
+
+def operator_from_session(payload: dict[str, Any]) -> OperatorContext:
+    operator = payload.get("operator") or {}
+    return OperatorContext(
+        session_id=str(payload.get("sessionId") or ""),
+        account=str(operator.get("account") or "unknown"),
+        name=str(operator.get("name") or operator.get("account") or "unknown"),
+        privilege=str(operator.get("privilege") or ""),
+        persistent_id=str(operator.get("persistentId") or ""),
+    )
+
+
+def _sign(value: str, secret: str) -> str:
+    digest = hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256)
+    return digest.hexdigest()
+
+
+def _b64encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _b64decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)

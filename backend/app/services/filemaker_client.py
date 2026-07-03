@@ -81,7 +81,7 @@ class FileMakerClient:
             logger.exception("Unable to release FileMaker Data API session")
 
     def _encode_param(self, value: str) -> str:
-        return quote(value, safe="").replace("%20", "+")
+        return quote(value, safe="")
 
     def _base_url(self) -> str:
         host = self.settings.filemaker_host.rstrip("/")
@@ -202,37 +202,41 @@ class FileMakerClient:
     async def find_records(
         self,
         layout: str,
-        query: dict[str, Any] | None = None,
+        query: dict[str, Any] | list[dict[str, Any]] | None = None,
         limit: int = 100,
         offset: int = 1,
         sort: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         encoded_layout = self._encode_param(layout)
-        query = query or {}
+        query_payload = self._normalize_find_query(query)
 
-        if sort:
-            effective_query = query if query else {"ID": "*"}
-            result = await self.request(
-                f"/layouts/{encoded_layout}/_find",
-                method="POST",
-                json_body={
-                    "query": [effective_query],
-                    "limit": limit,
-                    "offset": offset,
-                    "sort": sort,
-                },
-            )
-        elif query:
-            result = await self.request(
-                f"/layouts/{encoded_layout}/_find",
-                method="POST",
-                json_body={"query": [query], "limit": limit, "offset": offset},
-            )
-        else:
-            result = await self.request(
-                f"/layouts/{encoded_layout}/records",
-                params={"_limit": limit, "_offset": offset},
-            )
+        try:
+            if sort:
+                result = await self.request(
+                    f"/layouts/{encoded_layout}/_find",
+                    method="POST",
+                    json_body={
+                        "query": query_payload or [{"ID": "*"}],
+                        "limit": limit,
+                        "offset": offset,
+                        "sort": sort,
+                    },
+                )
+            elif query_payload:
+                result = await self.request(
+                    f"/layouts/{encoded_layout}/_find",
+                    method="POST",
+                    json_body={"query": query_payload, "limit": limit, "offset": offset},
+                )
+            else:
+                result = await self.request(
+                    f"/layouts/{encoded_layout}/records",
+                    params={"_limit": limit, "_offset": offset},
+                )
+        except FileMakerAPIError as exc:
+            if self._is_no_records_error(exc):
+                return {"data": [], "foundCount": 0, "returnedCount": 0}
+            raise
 
         data_info = result.get("response", {}).get("dataInfo", {})
         return {
@@ -242,6 +246,21 @@ class FileMakerClient:
             or 0,
             "returnedCount": data_info.get("returnedCount") or 0,
         }
+
+    def _normalize_find_query(
+        self,
+        query: dict[str, Any] | list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        if not query:
+            return []
+        if isinstance(query, list):
+            return [criteria for criteria in query if criteria]
+        return [query]
+
+    def _is_no_records_error(self, exc: FileMakerAPIError) -> bool:
+        payload = exc.payload if isinstance(exc.payload, dict) else {}
+        messages = payload.get("messages") or payload.get("response", {}).get("messages") or []
+        return any(str(message.get("code")) == "401" for message in messages if isinstance(message, dict))
 
     async def get_record(self, layout: str, record_id: str) -> Any:
         encoded_layout = self._encode_param(layout)

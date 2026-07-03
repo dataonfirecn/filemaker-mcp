@@ -64,6 +64,12 @@ class CallbackWorker:
             await self.store.mark_failure(event, str(exc))
 
     async def _apply_filemaker_operation(self, event: CallbackEvent) -> Any:
+        if self.settings.filemaker_read_only:
+            return {
+                "skipped": True,
+                "reason": "FileMaker read-only mode is enabled",
+            }
+
         operation = event.payload.get("filemaker")
         if isinstance(operation, dict):
             return await self._apply_explicit_operation(operation)

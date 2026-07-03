@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:8080,http://localhost:5173,http://localhost:3000"
 
     database_path: str = "backend/data/app.db"
+    audit_database_url: str = "postgresql://starrc:starrc@localhost:5432/starrc_audit"
 
     filemaker_host: str = ""
     filemaker_database: str = ""
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     )
     filemaker_timeout_seconds: float = 30.0
     filemaker_ssl_verify: bool = False
+    filemaker_read_only: bool = True
+
+    webviewer_context_secret: str = "dev-webviewer-secret-change-me"
+    webviewer_session_ttl_seconds: int = 8 * 60 * 60
+    webviewer_allow_mock_context: bool = True
 
     mes_callback_api_key: str = ""
     mes_hmac_secret: str = ""

@@ -5,7 +5,8 @@ from app.models.filemaker import (
     RecordWriteRequest,
     RunScriptRequest,
 )
-from app.services.dependencies import get_filemaker_client
+from app.core.config import Settings
+from app.services.dependencies import get_filemaker_client, get_settings
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 
 router = APIRouter(prefix="/filemaker", tags=["filemaker"])
@@ -16,6 +17,16 @@ def filemaker_error_response(exc: FileMakerAPIError) -> HTTPException:
         status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
         detail={"message": str(exc), "payload": exc.payload},
     )
+
+
+def ensure_write_allowed(settings: Settings) -> None:
+    if settings.filemaker_read_only:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail={
+                "message": "FileMaker is in read-only mode; create/update/delete/script calls are disabled."
+            },
+        )
 
 
 @router.get("/layouts")
@@ -87,7 +98,9 @@ async def create_record(
     layout: str,
     body: RecordWriteRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    ensure_write_allowed(settings)
     try:
         return await client.create_record(layout, body.field_data)
     except FileMakerAPIError as exc:
@@ -100,7 +113,9 @@ async def update_record(
     record_id: str,
     body: RecordWriteRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    ensure_write_allowed(settings)
     try:
         return await client.update_record(layout, record_id, body.field_data)
     except FileMakerAPIError as exc:
@@ -112,7 +127,9 @@ async def delete_record(
     layout: str,
     record_id: str,
     client: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    ensure_write_allowed(settings)
     try:
         return await client.delete_record(layout, record_id)
     except FileMakerAPIError as exc:
@@ -125,7 +142,9 @@ async def run_script(
     script_name: str,
     body: RunScriptRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    ensure_write_allowed(settings)
     try:
         return await client.run_script(layout, script_name, body.script_param)
     except FileMakerAPIError as exc:
