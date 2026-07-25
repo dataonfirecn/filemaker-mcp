@@ -1856,21 +1856,6 @@ html[data-theme="dark"] .cp-metric.money strong { color: var(--cp-brand-strong);
   overflow: hidden;
 }
 .cp-product-gallery-media .cp-asset-image img { object-fit: contain; }
-.cp-product-gallery-caption { padding: 10px 12px 12px; min-width: 0; }
-.cp-product-gallery-caption strong,
-.cp-product-gallery-caption span,
-.cp-product-gallery-caption small { display: block; }
-.cp-product-gallery-caption strong { font-size: 13px; }
-.cp-product-gallery-caption span { margin-top: 2px; color: var(--cp-text-2); font-size: 11.5px; }
-.cp-product-gallery-caption small {
-  margin-top: 7px;
-  overflow: hidden;
-  color: var(--cp-text-3);
-  font-family: var(--cp-mono);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .cp-fact {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);

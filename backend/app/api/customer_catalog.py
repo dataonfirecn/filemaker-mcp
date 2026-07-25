@@ -50,7 +50,8 @@ PART_STOCK_FIELD = "stock_on_hand_qty"
 PART_SAFETY_STOCK_FIELD = "safety_stock_qty"
 ORDER_LAYOUT = "@出貨單"
 ORDER_DETAIL_LAYOUT = "@mayako"
-ORDER_SCOPE_FIELD = "出貨公司群組ID"
+ORDER_SCOPE_FIELD = "select_client_for_web_id"
+ORDER_AMOUNT_FIELD = "貨款總和_price"
 MAX_CATALOG_PAGE_SIZE = 100
 PRODUCT_EXPORT_PAGE_SIZE = 500
 MAX_PRODUCT_EXPORT_ROWS = 10_000
@@ -104,7 +105,7 @@ ORDER_CHAT_TEXT_SEARCH_FIELDS = (
 )
 ORDER_CHAT_NUMBER_SEARCH_FIELDS = (
     "shipping_cost",
-    "client's_PO_amount",
+    ORDER_AMOUNT_FIELD,
 )
 ORDER_CHAT_DATE_FIELDS = frozenset({
     "日期",
@@ -132,7 +133,7 @@ PART_SORT_FIELDS = {
 }
 ORDER_SORT_FIELDS = {
     "orderNumber": "訂單 PO",
-    "orderAmount": "client's_PO_amount",
+    "orderAmount": ORDER_AMOUNT_FIELD,
     "shippingCompany": "shipping_company",
     "trackingNumber": "tracking_number",
     "shippedDate": "出貨日期",
@@ -380,11 +381,11 @@ async def summarize_customer_orders(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
 ) -> CustomerOrderSummaryResponse:
     _require_order_access(session)
-    shipment_company_id = _shipment_company_id(session)
+    web_client_id = _order_web_client_id(session)
     normalized_query = q.strip()
     query = _order_catalog_query(
         normalized_query,
-        shipment_company_id=shipment_company_id,
+        web_client_id=web_client_id,
         month=month,
         shipping_status=shipping_status,
     )
@@ -414,13 +415,13 @@ async def find_customer_orders(
 ) -> CustomerOrderListResponse:
     """Return customer-visible shipment records for catalog and chat callers."""
     _require_order_access(session)
-    shipment_company_id = _shipment_company_id(session)
+    web_client_id = _order_web_client_id(session)
 
     normalized_query = q.strip()
     selected_sort = sort_by if sort_by in ORDER_SORT_FIELDS else "orderNumber"
     query = _order_catalog_query(
         normalized_query,
-        shipment_company_id=shipment_company_id,
+        web_client_id=web_client_id,
         month=month,
         shipping_status=shipping_status,
     )
@@ -472,12 +473,7 @@ async def find_customer_orders_for_chat(
 ) -> CustomerOrderListResponse:
     """Search the richer order layout while preserving the strict public boundary."""
     _require_order_access(session)
-    shipment_company_id = session.shipment_company_id.strip()
-    if not shipment_company_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "Order access is not configured for this account."},
-        )
+    web_client_id = _order_web_client_id(session)
     if date_field is not None and date_field not in ORDER_CHAT_DATE_FIELDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -485,7 +481,7 @@ async def find_customer_orders_for_chat(
         )
 
     normalized_search = search.strip()[:80]
-    scope = f"=={shipment_company_id}"
+    scope = f"=={web_client_id}"
     base: dict[str, str] = {
         ORDER_SCOPE_FIELD: scope,
         "訂單 PO": "*",
@@ -699,25 +695,25 @@ def _scoped_query(
     ]
 
 
-def _shipment_company_id(session: CustomerSession) -> str:
-    shipment_company_id = session.shipment_company_id.strip()
-    if not shipment_company_id:
+def _order_web_client_id(session: CustomerSession) -> str:
+    web_client_id = session.product_privilege.strip()
+    if not web_client_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "Order access is not configured for this account."},
         )
-    return shipment_company_id
+    return web_client_id
 
 
 def _order_catalog_query(
     value: str,
     *,
-    shipment_company_id: str,
+    web_client_id: str,
     month: str,
     shipping_status: Literal["all", "shipped", "notShipped"],
 ) -> list[dict[str, str]]:
     base = {
-        ORDER_SCOPE_FIELD: f"=={shipment_company_id.strip()}",
+        ORDER_SCOPE_FIELD: f"=={web_client_id.strip()}",
         "訂單 PO": "*",
     }
     date_range = _order_month_range(month)
@@ -796,7 +792,7 @@ def _order_summary(
     not_shipped_count = 0
     for record in records:
         fields = _fields(record)
-        order_amount_total += _money_value(fields.get("client's_PO_amount"))
+        order_amount_total += _money_value(fields.get(ORDER_AMOUNT_FIELD))
         if _shipping_status(fields) == "Shipped":
             shipped_count += 1
         else:
@@ -1004,7 +1000,7 @@ async def _related_products(
 async def _order_details(
     filemaker: FileMakerClient,
     order_records: list[dict[str, Any]],
-    shipment_company_id: str,
+    web_client_id: str,
 ) -> dict[tuple[str, str], dict[str, Any]]:
     identities = list(dict.fromkeys(
         _order_identity(_fields(record))
@@ -1017,7 +1013,7 @@ async def _order_details(
     query: list[dict[str, str]] = []
     for internal_number, order_number in identities:
         criteria: dict[str, str] = {
-            ORDER_SCOPE_FIELD: f"=={shipment_company_id.strip()}",
+            ORDER_SCOPE_FIELD: f"=={web_client_id.strip()}",
         }
         if internal_number:
             criteria["內部訂單單據編號"] = f"=={internal_number}"
@@ -1062,7 +1058,7 @@ def _order(
         orderRef=str(record.get("recordId") or ""),
         clientName=_text(visible_fields.get("出貨單_客戶::客戶名稱")),
         orderNumber=_public_order_number(fields, detail_fields),
-        orderAmount=visible_fields.get("client's_PO_amount") if can_view_price else None,
+        orderAmount=visible_fields.get(ORDER_AMOUNT_FIELD) if can_view_price else None,
         shippingCompany=_text(visible_fields.get("shipping_company")),
         trackingNumber=_text(visible_fields.get("tracking_number")),
         shippingCost=visible_fields.get("shipping_cost") if can_view_price else None,

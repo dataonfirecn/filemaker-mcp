@@ -902,7 +902,7 @@ async def test_customer_order_chat_uses_scoped_catalog_query() -> None:
                         "內部訂單單據編號": "NB001",
                         "訂單 PO": "PO-001",
                             "出貨單_客戶::客戶名稱": "Mayako",
-                            "client's_PO_amount": 1250,
+                            "貨款總和_price": 1250,
                             "shipping_company": "UPS",
                         "tracking_number": "1Z999",
                         "order_remarks_for_client_only": "Delivered",
@@ -924,7 +924,7 @@ async def test_customer_order_chat_uses_scoped_catalog_query() -> None:
         product_privilege="0780",
         part_customer_id="CU638",
         expires_at=9999999999,
-        shipment_company_id="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        shipment_company_id="",
         access_role="manager",
     )
 
@@ -961,7 +961,7 @@ async def test_customer_order_chat_uses_scoped_catalog_query() -> None:
     assert "PI-001" not in serialized_response
     assert "NB001" not in serialized_response
     assert filemaker.calls[0][1] == [{
-        "出貨公司群組ID": "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        "select_client_for_web_id": "==0780",
         "訂單 PO": "*",
     }]
 

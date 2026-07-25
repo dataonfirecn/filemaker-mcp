@@ -626,11 +626,6 @@ function ProductImageGallery({
                     onUnauthorized={onUnauthorized}
                   />
                 </div>
-                <div className="cp-product-gallery-caption">
-                  <strong>{label}</strong>
-                  <span>{image.isPrimary ? "Primary image" : `Image ${image.sortOrder || index + 1}`}</span>
-                  {image.filename && <small title={image.filename}>{image.filename}</small>}
-                </div>
               </article>
             );
           })}

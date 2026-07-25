@@ -324,22 +324,22 @@ def test_part_catalog_uses_current_filemaker_fields_for_scope_sort_and_rows() ->
     )]
 
 
-def test_order_catalog_query_forces_shipping_company_scope_on_every_branch() -> None:
+def test_order_catalog_query_forces_web_client_scope_on_every_branch() -> None:
     query = _scoped_query(
         "UPS",
         search_fields=("shipping_company", "tracking_number"),
         scope_field=ORDER_SCOPE_FIELD,
-        scope_value="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        scope_value="0780",
     )
 
     assert query == [
         {
             "shipping_company": "*UPS*",
-            "出貨公司群組ID": "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+            "select_client_for_web_id": "==0780",
         },
         {
             "tracking_number": "*UPS*",
-            "出貨公司群組ID": "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+            "select_client_for_web_id": "==0780",
         },
     ]
 
@@ -363,7 +363,7 @@ def test_order_catalog_maps_only_requested_customer_visible_fields() -> None:
             "內部訂單單據編號": "NB001",
             "訂單 PO": "PO-7788",
             "出貨單_客戶::客戶名稱": "欧先生",
-            "client's_PO_amount": 8764.84,
+            "貨款總和_price": 8764.84,
             "shipping_cost": 8.6,
             "出貨日期": "07/22/2026",
             "出货状态": "Shipped",
@@ -446,7 +446,7 @@ def test_order_detail_lookup_uses_only_identities_from_scoped_primary_rows() -> 
         async def find_records(self, layout, query=None, limit=100):
             assert layout == "@mayako"
             assert query == [{
-                "出貨公司群組ID": "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+                "select_client_for_web_id": "==0780",
                 "內部訂單單據編號": "==NB001",
                 "出貨單 PI": "==PI-001",
             }]
@@ -466,13 +466,13 @@ def test_order_detail_lookup_uses_only_identities_from_scoped_primary_rows() -> 
     details = asyncio.run(_order_details(
         FakeFileMaker(),
         [{"fieldData": {"內部訂單單據編號": "NB001", "出貨單 PI": "PI-001"}}],
-        "0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        "0780",
     ))
 
     assert details[("NB001", "PI-001")]["shipping_cost"] == 8.6
 
 
-def test_order_endpoint_applies_session_shipping_company_scope() -> None:
+def test_order_endpoint_applies_session_web_client_scope_without_shipment_uuid() -> None:
     class FakeFileMaker:
         def __init__(self) -> None:
             self.calls = []
@@ -487,7 +487,7 @@ def test_order_endpoint_applies_session_shipping_company_scope() -> None:
                         "內部訂單單據編號": "NB001",
                         "出貨單_客戶::客戶名稱": "Mayako",
                         "shipping_company": "UPS",
-                        "client's_PO_amount": 1250,
+                        "貨款總和_price": 1250,
                         "shipping_cost": 8.6,
                         "出貨日期": "07/22/2026",
                     },
@@ -505,7 +505,7 @@ def test_order_endpoint_applies_session_shipping_company_scope() -> None:
         product_privilege="0780",
         part_customer_id="CU638",
         expires_at=9999999999,
-        shipment_company_id="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        shipment_company_id="",
         access_role="manager",
     )
 
@@ -522,8 +522,8 @@ def test_order_endpoint_applies_session_shipping_company_scope() -> None:
     primary_call = filemaker.calls[0]
     assert primary_call[0] == "@mayako"
     assert all(
-        branch["出貨公司群組ID"]
-        == "==0E254109-8698-4F5D-BE70-ABFD2B929CE9"
+        branch["select_client_for_web_id"]
+        == "==0780"
         for branch in primary_call[1]
     )
     assert primary_call[4] == [{"fieldName": "shipping_company", "sortOrder": "ascend"}]
@@ -545,7 +545,7 @@ def test_team_order_amounts_are_hidden_and_agent_order_access_is_blocked() -> No
                     "recordId": "91",
                     "fieldData": {
                         "訂單 PO": "PO-001",
-                        "client's_PO_amount": 1250,
+                        "貨款總和_price": 1250,
                         "shipping_cost": 8.6,
                     },
                 }],
@@ -597,14 +597,14 @@ def test_team_order_amounts_are_hidden_and_agent_order_access_is_blocked() -> No
 def test_order_month_and_shipping_status_filters_are_applied_to_every_search_branch() -> None:
     query = _order_catalog_query(
         "UPS",
-        shipment_company_id="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        web_client_id="0780",
         month="2026-07",
         shipping_status="notShipped",
     )
 
     assert len(query) > 1
     assert all(
-        branch[ORDER_SCOPE_FIELD] == "==0E254109-8698-4F5D-BE70-ABFD2B929CE9"
+        branch[ORDER_SCOPE_FIELD] == "==0780"
         for branch in query
     )
     assert all(branch["訂單 PO"] in {"*", "*UPS*"} for branch in query)
@@ -617,7 +617,7 @@ def test_order_month_and_shipping_status_filters_are_applied_to_every_search_bra
 def test_order_keyword_query_escapes_filemaker_find_operators_in_customer_po() -> None:
     query = _order_catalog_query(
         "PO#292687(CA1)",
-        shipment_company_id="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        web_client_id="0780",
         month="",
         shipping_status="all",
     )
@@ -626,7 +626,7 @@ def test_order_keyword_query_escapes_filemaker_find_operators_in_customer_po() -
     assert all(branch[ORDER_SCOPE_FIELD].startswith("==") for branch in query)
 
 
-def test_order_summary_uses_all_filtered_records_and_customer_po_amount() -> None:
+def test_order_summary_uses_all_filtered_records_and_web_price_field() -> None:
     class FakeFileMaker:
         def __init__(self) -> None:
             self.calls = []
@@ -634,9 +634,9 @@ def test_order_summary_uses_all_filtered_records_and_customer_po_amount() -> Non
         async def find_records(self, layout, query=None, limit=100, offset=1, sort=None):
             self.calls.append((layout, query, limit, offset, sort))
             rows = [
-                {"fieldData": {"client's_PO_amount": "1,200.50", "出貨日期": "07/03/2026"}},
-                {"fieldData": {"client's_PO_amount": "50", "出貨日期": ""}},
-                {"fieldData": {"client's_PO_amount": "", "出貨日期": "", "出货状态": "TBC"}},
+                {"fieldData": {"貨款總和_price": "1,200.50", "出貨日期": "07/03/2026"}},
+                {"fieldData": {"貨款總和_price": "50", "出貨日期": ""}},
+                {"fieldData": {"貨款總和_price": "", "出貨日期": "", "出货状态": "TBC"}},
             ]
             return {"data": rows, "foundCount": 3, "returnedCount": 3}
 
@@ -668,7 +668,7 @@ def test_order_summary_uses_all_filtered_records_and_customer_po_amount() -> Non
     assert filemaker.calls == [(
         "@mayako",
         [{
-            ORDER_SCOPE_FIELD: "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+            ORDER_SCOPE_FIELD: "==0780",
             "訂單 PO": "*",
             "日期": "7/1/2026...7/31/2026",
         }],
@@ -726,7 +726,7 @@ def test_order_chat_date_and_hidden_field_search_scopes_every_branch() -> None:
     call = filemaker.calls[0]
     assert call[0] == "@mayako"
     assert len(call[1]) == len(ORDER_CHAT_TEXT_SEARCH_FIELDS)
-    assert all(branch[ORDER_SCOPE_FIELD] == "==0E254109-8698-4F5D-BE70-ABFD2B929CE9" for branch in call[1])
+    assert all(branch[ORDER_SCOPE_FIELD] == "==0780" for branch in call[1])
     assert all(branch["訂單 PO"] in {"*", "*UPS*"} for branch in call[1])
     assert sum(branch["訂單 PO"] == "*UPS*" for branch in call[1]) == 1
     assert all(branch["出貨日期"] == "7/1/2026...7/22/2026" for branch in call[1])
@@ -769,7 +769,7 @@ def test_order_chat_unshipped_search_uses_empty_shipped_date_and_scope() -> None
 
     query = filemaker.calls[0][1]
     assert query == [{
-        ORDER_SCOPE_FIELD: "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        ORDER_SCOPE_FIELD: "==0780",
         "訂單 PO": "*",
         "出貨日期": "=",
     }]
@@ -809,7 +809,7 @@ def test_order_chat_payment_date_uses_date_range_after_filemaker_conversion() ->
 
     assert response.found_count == 0
     assert filemaker.calls[0][1] == [{
-        ORDER_SCOPE_FIELD: "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        ORDER_SCOPE_FIELD: "==0780",
         "訂單 PO": "*",
         "收款日期": "7/1/2026...7/22/2026",
     }]
@@ -849,7 +849,7 @@ def test_order_chat_shipped_filter_uses_nonempty_shipped_date() -> None:
     ))
 
     assert filemaker.calls[0][1] == [{
-        ORDER_SCOPE_FIELD: "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        ORDER_SCOPE_FIELD: "==0780",
         "訂單 PO": "*",
         "出貨日期": "*",
     }]
@@ -890,7 +890,7 @@ def test_order_chat_combines_keyword_order_month_and_not_shipped_filter() -> Non
     query = filemaker.calls[0][1]
     assert len(query) == len(ORDER_CHAT_TEXT_SEARCH_FIELDS)
     assert all(
-        branch[ORDER_SCOPE_FIELD] == "==0E254109-8698-4F5D-BE70-ABFD2B929CE9"
+        branch[ORDER_SCOPE_FIELD] == "==0780"
         for branch in query
     )
     assert all(branch["訂單 PO"] in {"*", "*UPS*"} for branch in query)
@@ -937,7 +937,7 @@ def test_order_chat_broad_listing_counts_and_pages_only_customer_po_records() ->
     ))
 
     assert filemaker.calls[0][1] == [{
-        ORDER_SCOPE_FIELD: "==0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        ORDER_SCOPE_FIELD: "==0780",
         "訂單 PO": "*",
     }]
     assert response.found_count == 5

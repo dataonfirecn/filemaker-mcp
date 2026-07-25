@@ -83,8 +83,8 @@ def test_registry_exposes_canonical_financial_fields_and_price_policy() -> None:
     registry = RagSemanticRegistry.from_mapping_path("backend/config/semantic_mapping.json")
 
     order_amount = registry.field_semantic(
-        "client's_PO_amount",
-        layout="@出貨單",
+        "貨款總和_price",
+        layout="@mayako",
     )
     internal_estimate = registry.field_semantic(
         "內部估價",

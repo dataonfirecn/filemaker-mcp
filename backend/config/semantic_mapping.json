@@ -184,8 +184,8 @@
       "permission": "canViewPrice"
     },
     {
-      "layouts": ["@出貨單"],
-      "sourceField": "client's_PO_amount",
+      "layouts": ["@mayako"],
+      "sourceField": "貨款總和_price",
       "canonicalField": "amount_order_customer_po",
       "businessConcept": "customerPurchaseOrderAmount",
       "sensitivity": "amount",

@@ -6,8 +6,7 @@
 - 客户页面：`/customer-chat`
 - 允许 API：`/api/customer-chat/login`、`/me`、`/query`、`/change-password`，管理员问答分析接口，鉴权后的出货单/产品/零件目录，以及产品/零件按需图片和产品多图 Gallery
 - 登录后的账号安全页：`/customer-chat/account/password`。用户输入一次当前密码和两次新密码即可修改；新密码至少 12 位。密码以 PBKDF2 哈希写入持久化 `/data/app.db`，修改后旧会话立即失效。
-- 出货单范围：FileMaker `出貨公司群組ID = 0E254109-8698-4F5D-BE70-ABFD2B929CE9`
-  （该群组包含 WT Global 与 Mayako Performance International）
+- 出货单范围：FileMaker `select_client_for_web_id = 0780`，且 `訂單 PO` 非空
 - 出货单对话：支持单号、物流、追踪号、备注、安全隐藏字段及多种日期范围；FileMaker 布局要求见 `docs/mayako-order-chat-filemaker-requirements.md`
 - 产品范围：FileMaker `privilege = 0780`
 - 零件范围：FileMaker `customer_id = CU638`
