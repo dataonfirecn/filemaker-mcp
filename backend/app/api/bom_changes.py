@@ -23,7 +23,7 @@ from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 router = APIRouter(prefix="/bom-changes", tags=["bom-changes"])
 
 PRODUCT_LAYOUT = "產品清單_業務"
-PRODUCT_BOM_LAYOUT = "@產品BOM"
+PRODUCT_BOM_LAYOUT = "@product_bom"
 KIT_ISSUE_LAYOUT = "零件包 發料分类"
 ISSUE_SUMMARY_LAYOUT = "發料單 匯總_PC"
 BOM_CALC_LAYOUT = "BOM計算單資料"

@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: starrc-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: starrc_audit
+      POSTGRES_USER: starrc
+      POSTGRES_PASSWORD: ${STARRC_POSTGRES_PASSWORD:?STARRC_POSTGRES_PASSWORD is required}
+    volumes:
+      - starrc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starrc -d starrc_audit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../../backend
+    container_name: starrc-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    environment:
+      APP_ENV: prod
+      DATABASE_PATH: /data/app.db
+      AUDIT_DATABASE_URL: postgresql://starrc:${STARRC_POSTGRES_PASSWORD}@postgres:5432/starrc_audit
+      FILEMAKER_READ_ONLY: "true"
+      FILEMAKER_PART_CREATE_ENABLED: ${FILEMAKER_PART_CREATE_ENABLED:-true}
+      FILEMAKER_PART_READ_LAYOUT: ${FILEMAKER_PART_READ_LAYOUT:-新增零件资料}
+      FILEMAKER_PART_WRITE_LAYOUT: ${FILEMAKER_PART_WRITE_LAYOUT:-@零件}
+      FILEMAKER_WEB_MERGE_ENABLED: ${FILEMAKER_WEB_MERGE_ENABLED:-false}
+      FILEMAKER_WEB_MERGE_ORDER_CREATE_LAYOUT: ${FILEMAKER_WEB_MERGE_ORDER_CREATE_LAYOUT:-訂單 資料_業務_EDIT}
+      FILEMAKER_WEB_MERGE_ORDER_DATE_FIELD: ${FILEMAKER_WEB_MERGE_ORDER_DATE_FIELD-日期}
+      FILEMAKER_ODATA_ENABLED: ${FILEMAKER_ODATA_ENABLED:-true}
+      FILEMAKER_ODATA_VERSION: ${FILEMAKER_ODATA_VERSION:-v4}
+      FILEMAKER_ODATA_AUTH_MODE: ${FILEMAKER_ODATA_AUTH_MODE:-basic}
+      FILEMAKER_ODATA_FMID_TOKEN: ${FILEMAKER_ODATA_FMID_TOKEN:-}
+      FILEMAKER_ODATA_MAX_TOP: ${FILEMAKER_ODATA_MAX_TOP:-10}
+      SEMANTIC_MAPPING_PATH: ${SEMANTIC_MAPPING_PATH:-config/semantic_mapping.json}
+      CORS_ORIGINS: https://starrc.dataonfire.cn
+      QR_BASE_URL: https://starrc.dataonfire.cn/q
+      WEBVIEWER_ALLOW_MOCK_CONTEXT: "false"
+      WEBVIEWER_REMOTE_ACCESS_ENABLED: "true"
+      WEBVIEWER_REMOTE_ACCOUNTS_JSON: ${WEBVIEWER_REMOTE_ACCOUNTS_JSON:?WEBVIEWER_REMOTE_ACCOUNTS_JSON is required}
+      MES_CALLBACK_API_KEY: ${MES_CALLBACK_API_KEY:?MES_CALLBACK_API_KEY is required}
+      MES_HMAC_SECRET: ${MES_HMAC_SECRET:?MES_HMAC_SECRET is required}
+      RAG_DATABASE_PATH: /data/rag_index.db
+      RAG_INDEX_REFRESH_ON_STARTUP: ${RAG_INDEX_REFRESH_ON_STARTUP:-false}
+      RAG_INDEX_REFRESH_SCHEDULE_TIME: ${RAG_INDEX_REFRESH_SCHEDULE_TIME:-00:00}
+      RAG_INDEX_REFRESH_SCHEDULE_TIMEZONE: Asia/Shanghai
+      NATURAL_QUERY_ANALYTICS_WORKER_ENABLED: "true"
+      NATURAL_QUERY_ANALYTICS_POLL_INTERVAL_SECONDS: ${NATURAL_QUERY_ANALYTICS_POLL_INTERVAL_SECONDS:-30}
+    volumes:
+      - starrc_backend_data:/data
+    ports:
+      - "127.0.0.1:18001:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).read()"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ../../frontend
+    container_name: starrc-frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18000:80"
+
+volumes:
+  starrc_postgres_data:
+  starrc_backend_data:

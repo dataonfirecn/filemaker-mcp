@@ -32,7 +32,7 @@ from app.services.filemaker_client import FileMakerClient
 router = APIRouter(tags=["bom-documents"])
 
 PRODUCT_LAYOUT = "產品清單_業務"
-PRODUCT_BOM_LAYOUT = "@產品BOM"
+PRODUCT_BOM_LAYOUT = "@product_bom"
 PART_LAYOUT = "零件清單"
 KIT_ISSUE_LAYOUT = "零件包 發料分类"
 KIT_ISSUE_PAGE_SIZE = 100

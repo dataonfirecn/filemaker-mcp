@@ -1,0 +1,10 @@
+ARG STABLE_BACKEND_IMAGE=starrc-filemaker-backend:stable-20260708
+FROM ${STABLE_BACKEND_IMAGE}
+
+COPY backend/app/api/orders.py /app/app/api/orders.py
+COPY backend/app/api/customer_catalog.py /app/app/api/customer_catalog.py
+COPY backend/app/api/customer_chat.py /app/app/api/customer_chat.py
+COPY backend/app/models/customer_chat.py /app/app/models/customer_chat.py
+COPY backend/app/services/customer_chat_auth.py /app/app/services/customer_chat_auth.py
+
+RUN python -c 'from pathlib import Path; p=Path("/app/app/main.py"); s=p.read_text(); s=s if "    orders,\n" in s else s.replace("    odata,\n", "    odata,\n    orders,\n", 1); s=s if "app.include_router(orders.router" in s else s.replace("app.include_router(odata.router, prefix=settings.api_prefix)\n", "app.include_router(odata.router, prefix=settings.api_prefix)\napp.include_router(orders.router, prefix=settings.api_prefix)\n", 1); p.write_text(s)'

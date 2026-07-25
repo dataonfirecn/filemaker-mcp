@@ -6,10 +6,19 @@ from app.models.filemaker import (
     RunScriptRequest,
 )
 from app.core.config import Settings
-from app.services.dependencies import get_filemaker_client, get_settings
+from app.services.dependencies import (
+    get_filemaker_client,
+    get_settings,
+    get_webviewer_access,
+    get_webviewer_session_context,
+)
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 
-router = APIRouter(prefix="/filemaker", tags=["filemaker"])
+router = APIRouter(
+    prefix="/filemaker",
+    tags=["filemaker"],
+    dependencies=[Depends(get_webviewer_session_context)],
+)
 
 
 def filemaker_error_response(exc: FileMakerAPIError) -> HTTPException:
@@ -25,6 +34,19 @@ def ensure_write_allowed(settings: Settings) -> None:
             status_code=status.HTTP_423_LOCKED,
             detail={
                 "message": "FileMaker is in read-only mode; create/update/delete/script calls are disabled."
+            },
+        )
+
+
+def ensure_raw_write_permission(access: dict[str, bool]) -> None:
+    if not access.get("canManageAccounts", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": (
+                    "原始 FileMaker 写入仅限同时具有 RAG 技术管理和账号管理权限的管理员。"
+                ),
+                "permission": "canManageAccounts",
             },
         )
 
@@ -99,7 +121,9 @@ async def create_record(
     body: RecordWriteRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
     settings: Settings = Depends(get_settings),
+    access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict[str, object]:
+    ensure_raw_write_permission(access)
     ensure_write_allowed(settings)
     try:
         return await client.create_record(layout, body.field_data)
@@ -114,7 +138,9 @@ async def update_record(
     body: RecordWriteRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
     settings: Settings = Depends(get_settings),
+    access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict[str, object]:
+    ensure_raw_write_permission(access)
     ensure_write_allowed(settings)
     try:
         return await client.update_record(layout, record_id, body.field_data)
@@ -128,7 +154,9 @@ async def delete_record(
     record_id: str,
     client: FileMakerClient = Depends(get_filemaker_client),
     settings: Settings = Depends(get_settings),
+    access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict[str, object]:
+    ensure_raw_write_permission(access)
     ensure_write_allowed(settings)
     try:
         return await client.delete_record(layout, record_id)
@@ -143,7 +171,9 @@ async def run_script(
     body: RunScriptRequest,
     client: FileMakerClient = Depends(get_filemaker_client),
     settings: Settings = Depends(get_settings),
+    access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict[str, object]:
+    ensure_raw_write_permission(access)
     ensure_write_allowed(settings)
     try:
         return await client.run_script(layout, script_name, body.script_param)

@@ -238,13 +238,23 @@ class FileMakerClient:
                 return {"data": [], "foundCount": 0, "returnedCount": 0}
             raise
 
+        data = result.get("response", {}).get("data", [])
         data_info = result.get("response", {}).get("dataInfo", {})
+        returned_count = _int_or_none(data_info.get("returnedCount"))
+        found_count = _int_or_none(data_info.get("foundCount"))
+        if found_count is None:
+            if query_payload or sort:
+                found_count = returned_count if returned_count is not None else len(data)
+            else:
+                found_count = (
+                    _int_or_none(data_info.get("totalRecordCount"))
+                    or returned_count
+                    or len(data)
+                )
         return {
-            "data": result.get("response", {}).get("data", []),
-            "foundCount": data_info.get("foundCount")
-            or data_info.get("totalRecordCount")
-            or 0,
-            "returnedCount": data_info.get("returnedCount") or 0,
+            "data": data,
+            "foundCount": found_count or 0,
+            "returnedCount": returned_count or 0,
         }
 
     def _normalize_find_query(
@@ -277,17 +287,86 @@ class FileMakerClient:
         response = result.get("response", {})
         return {"recordId": response.get("recordId"), "modId": response.get("modId")}
 
+    async def upload_container(
+        self,
+        layout: str,
+        record_id: str,
+        field_name: str,
+        content: bytes,
+        filename: str,
+        content_type: str,
+        *,
+        repetition: int = 1,
+        retry_on_unauthorized: bool = True,
+    ) -> dict[str, Any]:
+        if repetition < 1:
+            raise ValueError("repetition must be at least 1")
+
+        token = await self.get_token()
+        endpoint = (
+            f"/layouts/{self._encode_param(layout)}/records/"
+            f"{self._encode_param(record_id)}/containers/"
+            f"{self._encode_param(field_name)}/{repetition}"
+        )
+        try:
+            response = await self._client.post(
+                f"{self._base_url()}{endpoint}",
+                headers={"Authorization": f"Bearer {token}"},
+                files={"upload": (filename, content, content_type)},
+            )
+        except httpx.RequestError as exc:
+            raise FileMakerAPIError(
+                "Unable to upload FileMaker container data",
+                payload=str(exc),
+            ) from exc
+
+        if response.status_code == 401 and retry_on_unauthorized:
+            self._clear_token()
+            return await self.upload_container(
+                layout,
+                record_id,
+                field_name,
+                content,
+                filename,
+                content_type,
+                repetition=repetition,
+                retry_on_unauthorized=False,
+            )
+
+        if not response.is_success:
+            raise FileMakerAPIError(
+                "FileMaker container upload failed",
+                response.status_code,
+                self._safe_json(response),
+            )
+
+        self._token_last_used_at = time.time()
+        result = response.json() if response.content else {}
+        payload = result.get("response", {})
+        return {
+            "recordId": payload.get("recordId") or record_id,
+            "modId": payload.get("modId"),
+        }
+
     async def update_record(
         self,
         layout: str,
         record_id: str,
         data: dict[str, Any],
+        *,
+        entry_mode: str | None = None,
     ) -> dict[str, Any]:
+        if entry_mode not in {None, "user", "script"}:
+            raise ValueError("entry_mode must be 'user', 'script', or None")
+
         encoded_layout = self._encode_param(layout)
+        body: dict[str, Any] = {"fieldData": data}
+        if entry_mode:
+            body["options"] = {"entrymode": entry_mode}
         result = await self.request(
             f"/layouts/{encoded_layout}/records/{record_id}",
             method="PATCH",
-            json_body={"fieldData": data},
+            json_body=body,
         )
         response = result.get("response", {})
         return {"recordId": response.get("recordId"), "modId": response.get("modId")}
@@ -330,12 +409,25 @@ class FileMakerClient:
         return layouts
 
     async def get_layout_fields(self, layout: str) -> list[dict[str, Any]]:
+        metadata = await self.get_layout_metadata(layout)
+        return metadata.get("fieldMetaData", [])
+
+    async def get_layout_metadata(self, layout: str) -> dict[str, Any]:
         encoded_layout = self._encode_param(layout)
         result = await self.request(f"/layouts/{encoded_layout}")
-        return result.get("response", {}).get("fieldMetaData", [])
+        return result.get("response", {})
 
     def _safe_json(self, response: httpx.Response) -> Any:
         try:
             return response.json()
         except ValueError:
             return response.text
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

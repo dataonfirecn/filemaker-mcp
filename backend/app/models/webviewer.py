@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class MockOperator(BaseModel):
@@ -17,6 +17,11 @@ class WebViewerSessionRequest(BaseModel):
     product_sku: str = Field(default="", alias="productSku")
     order_id: str = Field(default="", alias="orderId")
     bom_calc_id: str = Field(default="", alias="bomCalcId")
+    customer_id: str = Field(default="", alias="customerId")
+    customer_name: str = Field(default="", alias="customerName")
+    currency: str = ""
+    username: str = ""
+    password: SecretStr | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -26,5 +31,6 @@ class WebViewerSessionResponse(BaseModel):
     session_id: str = Field(alias="sessionId")
     context: dict[str, Any]
     read_only: bool = Field(alias="readOnly")
+    bom_write_enabled: bool = Field(default=False, alias="bomWriteEnabled")
 
     model_config = {"populate_by_name": True}

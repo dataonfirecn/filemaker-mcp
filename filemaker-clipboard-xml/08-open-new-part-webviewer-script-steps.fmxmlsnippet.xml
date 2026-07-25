@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="89" name="# (comment)">
+    <Text>Open the independent new-part WebViewer layout. The WebViewer validates and creates the part through the allow-listed Data API workflow.</Text>
+  </Step>
+  <Step enable="True" id="68" name="If">
+    <Restore state="False"/>
+    <Calculation><![CDATA[Get ( WindowStyle ) = 3]]></Calculation>
+  </Step>
+  <Step enable="True" id="122" name="New Window">
+    <LayoutDestination value="LayoutNameByCalc"/>
+    <Height>
+      <Calculation><![CDATA[760]]></Calculation>
+    </Height>
+    <Width>
+      <Calculation><![CDATA[1024]]></Calculation>
+    </Width>
+    <NewWndStyles DimParentWindow="No" Toolbars="No" MenuBar="No" Style="Dialog" Close="Yes" Minimize="No" Maximize="No" Resize="No" Styles="3221291012"/>
+    <Layout>
+      <Calculation><![CDATA["Create New Part_Web"]]></Calculation>
+    </Layout>
+  </Step>
+  <Step enable="True" id="103" name="Exit Script"/>
+  <Step enable="True" id="70" name="End If"/>
+  <Step enable="True" id="122" name="New Window">
+    <LayoutDestination value="LayoutNameByCalc"/>
+    <NewWndStyles DimParentWindow="Yes" Toolbars="No" MenuBar="No" Style="Card" Close="Yes" Minimize="No" Maximize="No" Resize="No" Styles="3222339600"/>
+    <Layout>
+      <Calculation><![CDATA["Create New Part_Web"]]></Calculation>
+    </Layout>
+  </Step>
+</fmxmlsnippet>

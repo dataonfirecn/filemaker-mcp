@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <Script includeInMenu="False" SiriShortcutVisible="False" runFullAccess="True" id="1" name="DOF_IDGen_WebViewer使用">
+    <Step enable="True" id="89" name="# (comment)">
+      <Text>Receives the standalone number-generator result, restores the INDEX_IDGenerator globals, and runs DOF_使用ID. New-part fields are handled only by NewPart_WebViewer.</Text>
+    </Step>
+    <Step enable="True" id="86" name="Set Error Capture">
+      <Set state="True"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "material" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="54" name="MatMaterial"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "customer" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="48" name="MatCustomer"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "serial" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="49" name="MatSerialNumber"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "manufacture" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="52" name="MatManufacture"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "color" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="86" name="MatColor"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "other" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="87" name="MatOther"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "output" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="53" name="MatOutput"/>
+    </Step>
+    <Step enable="True" id="76" name="Set Field">
+      <Calculation><![CDATA[JSONGetElement ( Get ( ScriptParameter ) ; "relatedPartNumber" )]]></Calculation>
+      <Field table="INDEX_IDGenerator" id="115" name="MAT_RELATEDID"/>
+    </Step>
+    <Step enable="True" id="1" name="Perform Script">
+      <CurrentScript value="Pause"/>
+      <Script id="1634" name="DOF_使用ID"/>
+    </Step>
+  </Script>
+</fmxmlsnippet>

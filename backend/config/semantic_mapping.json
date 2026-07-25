@@ -1,0 +1,782 @@
+{
+  "version": "2026-07-24",
+  "fieldSemantics": [
+    {
+      "layouts": ["@products"],
+      "sourceField": "Retail_Price_USD",
+      "canonicalField": "price_retail_usd",
+      "businessConcept": "retailPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "USD"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "Stock_USD",
+      "canonicalField": "value_stock_usd",
+      "businessConcept": "stockValue",
+      "sensitivity": "value",
+      "permission": "canViewPrice",
+      "currency": "USD"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "PrePaid_stock_USD",
+      "canonicalField": "value_prepaid_stock_usd",
+      "businessConcept": "prepaidStockValue",
+      "sensitivity": "value",
+      "permission": "canViewPrice",
+      "currency": "USD"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "成本加成",
+      "canonicalField": "rate_cost_markup",
+      "businessConcept": "costMarkupRate",
+      "sensitivity": "rate",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "組裝成本",
+      "canonicalField": "cost_assembly",
+      "businessConcept": "assemblyCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "其他成本估價",
+      "canonicalField": "cost_other_estimate",
+      "businessConcept": "otherCostEstimate",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "報價積數",
+      "canonicalField": "rate_quote_factor",
+      "businessConcept": "quoteFactor",
+      "sensitivity": "rate",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "報價紀錄",
+      "canonicalField": "price_quote_history",
+      "businessConcept": "quoteHistory",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@products"],
+      "sourceField": "關聯編號_Price",
+      "canonicalField": "id_price_relation",
+      "businessConcept": "identifier",
+      "sensitivity": "identifier",
+      "permission": ""
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "unit_cost_cny",
+      "canonicalField": "cost_unit_cny",
+      "businessConcept": "unitCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice",
+      "currency": "CNY"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "unit_price_twd",
+      "canonicalField": "price_unit_twd",
+      "businessConcept": "unitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "TWD"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "交易出庫總金額",
+      "canonicalField": "amount_outbound_total",
+      "businessConcept": "outboundAmount",
+      "sensitivity": "amount",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "台幣轉RMB價格",
+      "canonicalField": "price_converted_cny",
+      "businessConcept": "convertedPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "CNY"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "台幣匯率",
+      "canonicalField": "rate_exchange_twd_cny",
+      "businessConcept": "exchangeRate",
+      "sensitivity": "rate",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "存貨值",
+      "canonicalField": "value_stock",
+      "businessConcept": "stockValue",
+      "sensitivity": "value",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "廠商報價預估計算",
+      "canonicalField": "price_vendor_estimate",
+      "businessConcept": "vendorPriceEstimate",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "說明書單價",
+      "canonicalField": "price_manual_unit",
+      "businessConcept": "manualUnitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "說明書單價_cost",
+      "canonicalField": "cost_manual_unit",
+      "businessConcept": "manualUnitCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "說明書單價_low",
+      "canonicalField": "price_manual_unit_low",
+      "businessConcept": "manualLowUnitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "說明書接單單價",
+      "canonicalField": "price_manual_order_unit",
+      "businessConcept": "manualOrderUnitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "說明書接單總價",
+      "canonicalField": "amount_manual_order_total",
+      "businessConcept": "manualOrderTotal",
+      "sensitivity": "amount",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件"],
+      "sourceField": "線材＿1m成本",
+      "canonicalField": "cost_wire_per_meter",
+      "businessConcept": "wireCostPerMeter",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@出貨單"],
+      "sourceField": "client's_PO_amount",
+      "canonicalField": "amount_order_customer_po",
+      "businessConcept": "customerPurchaseOrderAmount",
+      "sensitivity": "amount",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@出貨單", "報價 資料_業務", "訂單資料_iphone"],
+      "sourceField": "shipping_cost",
+      "canonicalField": "fee_shipping",
+      "businessConcept": "shippingFee",
+      "sensitivity": "fee",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["訂單 清單_業務"],
+      "sourceField": "貨款總和",
+      "canonicalField": "amount_order_total",
+      "businessConcept": "orderAmount",
+      "sensitivity": "amount",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["訂單 清單"],
+      "sourceField": "總和",
+      "canonicalField": "amount_order_total",
+      "businessConcept": "orderAmount",
+      "sensitivity": "amount",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@出貨單資料"],
+      "sourceField": "RMB單價",
+      "canonicalField": "price_unit_cny",
+      "businessConcept": "unitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "CNY"
+    },
+    {
+      "layouts": ["@出貨單資料"],
+      "sourceField": "台幣單價",
+      "canonicalField": "price_unit_twd",
+      "businessConcept": "unitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "TWD"
+    },
+    {
+      "layouts": ["@出貨單資料", "出貨單資料_List_業務"],
+      "sourceField": "單價",
+      "canonicalField": "price_unit",
+      "businessConcept": "unitPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@出貨單資料"],
+      "sourceField": "客戶零售價格",
+      "canonicalField": "price_customer_retail",
+      "businessConcept": "customerRetailPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@出貨單資料"],
+      "sourceField": "報價備註",
+      "canonicalField": "price_quote_note",
+      "businessConcept": "quoteNote",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "單位成本",
+      "canonicalField": "cost_unit",
+      "businessConcept": "unitCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "內部估價",
+      "canonicalField": "cost_internal_estimate",
+      "businessConcept": "internalEstimate",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "存貨值",
+      "canonicalField": "value_stock",
+      "businessConcept": "stockValue",
+      "sensitivity": "value",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "第二廠商報價",
+      "canonicalField": "price_vendor_2",
+      "businessConcept": "vendorQuote",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "第三廠商報價",
+      "canonicalField": "price_vendor_3",
+      "businessConcept": "vendorQuote",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "詢價價格",
+      "canonicalField": "price_inquiry",
+      "businessConcept": "inquiryPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "台幣成本單價",
+      "canonicalField": "cost_unit_twd",
+      "businessConcept": "unitCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice",
+      "currency": "TWD"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "模具成本",
+      "canonicalField": "cost_tooling",
+      "businessConcept": "toolingCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@零件成本"],
+      "sourceField": "實際成本",
+      "canonicalField": "cost_actual",
+      "businessConcept": "actualCost",
+      "sensitivity": "cost",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@ProductPriceCustomer"],
+      "sourceField": "ProductPriceID",
+      "canonicalField": "id_product_price",
+      "businessConcept": "identifier",
+      "sensitivity": "identifier",
+      "permission": ""
+    },
+    {
+      "layouts": ["@ProductTradePrice", "@ProductTradePriceCustomer"],
+      "sourceField": "price",
+      "canonicalField": "price_trade",
+      "businessConcept": "tradePrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@產品售價"],
+      "sourceField": "Price",
+      "canonicalField": "price_sale",
+      "businessConcept": "salePrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@產品售價"],
+      "sourceField": "台灣售價",
+      "canonicalField": "price_sale_twd",
+      "businessConcept": "salePrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "TWD"
+    },
+    {
+      "layouts": ["@產品售價"],
+      "sourceField": "RMB售價",
+      "canonicalField": "price_sale_cny",
+      "businessConcept": "salePrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice",
+      "currency": "CNY"
+    },
+    {
+      "layouts": ["@產品售價"],
+      "sourceField": "零售價",
+      "canonicalField": "price_retail",
+      "businessConcept": "retailPrice",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    },
+    {
+      "layouts": ["@產品售價"],
+      "sourceField": "售價備註",
+      "canonicalField": "price_sale_note",
+      "businessConcept": "salePriceNote",
+      "sensitivity": "price",
+      "permission": "canViewPrice"
+    }
+  ],
+  "entities": [
+    {
+      "name": "product",
+      "label": "产品",
+      "tables": ["產品"],
+      "ragLayouts": ["@products"],
+      "primaryKeys": ["product_sku", "系統產品編號"],
+      "titleFields": ["product_sku", "產品名稱_中文", "product_name"],
+      "cacheFields": [
+        "product_sku",
+        "系統產品編號",
+        "product_name",
+        "產品名稱_中文"
+      ],
+      "searchFields": [
+        "product_sku",
+        "系統產品編號",
+        "product_name",
+        "產品名稱_中文",
+        "類別",
+        "車款",
+        "車子比例",
+        "Client"
+      ],
+      "filterFields": [
+        "id_client",
+        "privilege",
+        "status",
+        "審核",
+        "Newitem",
+        "產品位置",
+        "標籤規格"
+      ],
+      "displayFields": [
+        "stock",
+        "MOQ",
+        "BOM計數",
+        "Retail_Price_USD",
+        "Stock_USD",
+        "PrePaid_stock_USD",
+        "條形碼",
+        "產品平均CBM",
+        "外箱長",
+        "外箱寬",
+        "外箱高",
+        "彩盒長",
+        "彩盒寬",
+        "彩盒高",
+        "created_at",
+        "created_by",
+        "updated_at",
+        "updated_by"
+      ],
+      "excludeFields": [
+        "qrcode",
+        "sync_response",
+        "檔案 1 | 容器"
+      ],
+      "dateFields": {
+        "createdAt": "created_at",
+        "updatedAt": "updated_at"
+      },
+      "ragMaxRecords": 30000
+    },
+    {
+      "name": "product_bom",
+      "label": "产品 BOM",
+      "tables": ["產品 BOM"],
+      "ragLayouts": ["@product_bom"],
+      "primaryKeys": ["ID"],
+      "foreignKeys": [
+        {
+          "field": "ID_產品編號",
+          "referencesEntity": "product",
+          "referencesFields": ["product_sku", "系統產品編號"],
+          "relationship": "product-bom-lines"
+        },
+        {
+          "field": "零件編號",
+          "referencesEntity": "part",
+          "referencesFields": ["part_number"],
+          "relationship": "bom-line-part"
+        }
+      ],
+      "titleFields": ["ID_產品編號", "零件編號", "零件名稱"],
+      "searchFields": ["ID_產品編號", "零件編號", "零件名稱", "替代編號", "備註"],
+      "filterFields": ["組|配", "狀態", "部門", "供應商", "位置", "倉庫"],
+      "displayFields": [
+        "需求數量",
+        "需求成本計算數量",
+        "成本",
+        "單價",
+        "current_stock",
+        "安全庫存",
+        "日期",
+        "修改人",
+        "修改日期"
+      ],
+      "dateFields": {
+        "updatedAt": "修改日期"
+      },
+      "ragMaxRecords": 150000
+    },
+    {
+      "name": "part",
+      "label": "零件",
+      "tables": ["零件", "Parts"],
+      "ragLayouts": ["@零件"],
+      "primaryKeys": ["part_number"],
+      "alternateKeys": ["零件ID"],
+      "titleFields": ["part_number", "part_name", "English Name"],
+      "cacheFields": [
+        "part_number",
+        "零件ID",
+        "part_name",
+        "English Name",
+        "part_name_對外",
+        "客戶編號",
+        "替代編號",
+        "Notes"
+      ],
+      "searchFields": [
+        "part_number",
+        "零件ID",
+        "part_name",
+        "English Name",
+        "part_name_對外",
+        "客戶編號",
+        "替代編號",
+        "Notes"
+      ],
+      "filterFields": [
+        "ID_客戶",
+        "專屬客戶",
+        "status",
+        "狀態",
+        "零件性質",
+        "零件品種",
+        "部門",
+        "倉庫",
+        "位置",
+        "位置2"
+      ],
+      "displayFields": [
+        "current_stock",
+        "Safty Stock QTY",
+        "Turnover Time",
+        "單價",
+        "成本",
+        "重量",
+        "規格",
+        "材質",
+        "供應商",
+        "Date Created",
+        "created_at",
+        "created_by",
+        "updated_at",
+        "updated_by",
+        "修改人",
+        "修改日期"
+      ],
+      "excludeFields": ["影像 | 容器", "圖面 | 容器", "qrcode"],
+      "dateFields": {
+        "createdAt": "Date Created",
+        "updatedAt": "修改日期"
+      },
+      "ragMaxRecords": 50000
+    },
+    {
+      "name": "part_product_link",
+      "label": "零件关联产品",
+      "tables": ["零件关联产品"],
+      "ragLayouts": ["@零件關聯產品"],
+      "primaryKeys": ["ID"],
+      "foreignKeys": [
+        {
+          "field": "ID_零件",
+          "referencesEntity": "part",
+          "referencesFields": ["part_number"],
+          "relationship": "part-products"
+        },
+        {
+          "field": "ID_产品",
+          "referencesEntity": "product",
+          "referencesFields": ["product_sku", "系統產品編號"],
+          "relationship": "part-products"
+        }
+      ],
+      "titleFields": ["ID_零件", "ID_产品"],
+      "displayFields": ["建立人", "建立日期", "修改人", "修改日期"],
+      "ragMaxRecords": 150000
+    },
+    {
+      "name": "part_part_link",
+      "label": "零件关联零件",
+      "tables": ["零件关联零件"],
+      "ragLayouts": ["@零件關聯零件"],
+      "primaryKeys": ["ID"],
+      "foreignKeys": [
+        {
+          "field": "ID_零件",
+          "referencesEntity": "part",
+          "referencesFields": ["part_number"],
+          "relationship": "part-parts"
+        },
+        {
+          "field": "ID_關聯零件",
+          "referencesEntity": "part",
+          "referencesFields": ["part_number"],
+          "relationship": "part-parts"
+        }
+      ],
+      "titleFields": ["ID_零件", "ID_關聯零件"],
+      "displayFields": ["建立人", "建立日期", "修改人", "修改日期"],
+      "ragMaxRecords": 150000
+    }
+  ],
+  "ragRelationships": [
+    {
+      "name": "product-bom-lines",
+      "label": "产品包含 BOM 明细",
+      "description": "产品号连接到产品 BOM 的产品外键。",
+      "fromEntity": "product",
+      "toEntity": "product_bom",
+      "cardinality": "one-to-many",
+      "joins": [
+        {
+          "fromField": "product_sku",
+          "toField": "ID_產品編號"
+        },
+        {
+          "fromField": "系統產品編號",
+          "toField": "ID_產品編號",
+          "alternative": "true"
+        }
+      ]
+    },
+    {
+      "name": "bom-line-part",
+      "label": "BOM 明细对应零件",
+      "description": "BOM 零件编号连接到零件主档的 part_number。",
+      "fromEntity": "product_bom",
+      "toEntity": "part",
+      "cardinality": "many-to-one",
+      "joins": [
+        {
+          "fromField": "零件編號",
+          "toField": "part_number"
+        }
+      ]
+    },
+    {
+      "name": "part-products",
+      "label": "零件关联产品",
+      "description": "零件和产品通过零件关联产品表建立多对多关系。",
+      "fromEntity": "part",
+      "throughEntity": "part_product_link",
+      "toEntity": "product",
+      "cardinality": "many-to-many",
+      "joins": [
+        {
+          "fromField": "part_number",
+          "throughField": "ID_零件"
+        },
+        {
+          "throughField": "ID_产品",
+          "toField": "product_sku"
+        }
+      ]
+    },
+    {
+      "name": "part-parts",
+      "label": "零件关联零件",
+      "description": "零件通过零件关联零件表建立自关联。",
+      "fromEntity": "part",
+      "throughEntity": "part_part_link",
+      "toEntity": "part",
+      "cardinality": "many-to-many",
+      "joins": [
+        {
+          "fromField": "part_number",
+          "throughField": "ID_零件"
+        },
+        {
+          "throughField": "ID_關聯零件",
+          "toField": "part_number"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "product-bom-parts",
+      "label": "产品 BOM 零件",
+      "description": "按产品编号查询产品 BOM 中的零件，并补充零件详情。",
+      "from": {
+        "entity": "product",
+        "table": "產品",
+        "field": "product_sku"
+      },
+      "through": {
+        "table": "產品 BOM",
+        "fromField": "ID_產品編號",
+        "toField": "零件編號"
+      },
+      "to": {
+        "entity": "part",
+        "table": "零件",
+        "lookupFields": ["part_number"]
+      },
+      "sourceSelectFields": ["product_sku", "系統產品編號", "產品名稱_中文"],
+      "targetSelectFields": ["part_number", "part_name", "current_stock"],
+      "confidence": 0.99,
+      "source": "odata_verified"
+    },
+    {
+      "name": "part-products",
+      "label": "零件关联产品",
+      "description": "按零件号查询零件关联的产品编号，并尝试补充产品详情。",
+      "from": {
+        "entity": "part",
+        "table": "零件",
+        "field": "part_number"
+      },
+      "through": {
+        "table": "零件关联产品",
+        "fromField": "ID_零件",
+        "toField": "ID_产品"
+      },
+      "to": {
+        "entity": "product",
+        "table": "產品",
+        "lookupFields": ["product_sku", "系統產品編號"]
+      },
+      "sourceSelectFields": ["part_number", "current_stock"],
+      "targetSelectFields": ["product_sku", "系統產品編號", "產品名稱_中文"],
+      "confidence": 0.95,
+      "source": "manual_verified"
+    },
+    {
+      "name": "part-parts",
+      "label": "零件关联零件",
+      "description": "按零件号查询零件关联的其他零件编号。",
+      "from": {
+        "entity": "part",
+        "table": "零件",
+        "field": "part_number"
+      },
+      "through": {
+        "table": "零件关联零件",
+        "fromField": "ID_零件",
+        "toField": "ID_關聯零件"
+      },
+      "to": {
+        "entity": "part",
+        "table": "零件",
+        "lookupFields": ["part_number"]
+      },
+      "sourceSelectFields": ["part_number", "current_stock"],
+      "targetSelectFields": ["part_number", "current_stock"],
+      "confidence": 0.9,
+      "source": "manual_verified"
+    }
+  ],
+  "queryStrategies": [
+    {
+      "intent": "product_bom_parts",
+      "patterns": ["这个产品有哪些 BOM 零件", "产品 {product_sku} 的 BOM", "{product_sku} 用了哪些零件"],
+      "relationship": "product-bom-parts",
+      "requiredSlots": ["product_sku"],
+      "limit": 50,
+      "fallback": "return_link_ids"
+    },
+    {
+      "intent": "part_related_products",
+      "patterns": ["这个零件关联哪些产品", "零件 {part_number} 用在哪些产品", "{part_number} 对应哪些产品"],
+      "relationship": "part-products",
+      "requiredSlots": ["part_number"],
+      "limit": 10,
+      "fallback": "return_link_ids"
+    },
+    {
+      "intent": "part_related_parts",
+      "patterns": ["这个零件关联哪些零件", "零件 {part_number} 有哪些关联零件"],
+      "relationship": "part-parts",
+      "requiredSlots": ["part_number"],
+      "limit": 10,
+      "fallback": "return_link_ids"
+    }
+  ]
+}

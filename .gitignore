@@ -5,11 +5,16 @@ node_modules/
 # Build output
 dist/
 frontend/dist/
+frontend/dist-customer/
 
 # Runtime data
 backend/data/
 *.sqlite
 *.db
+backups/
+outputs/
+.audit/
+.zcode/
 
 # Python
 __pycache__/

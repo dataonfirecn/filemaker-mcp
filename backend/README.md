@@ -21,8 +21,14 @@ FastAPI 进程会在 `app.state.filemaker_client` 中持有一个 FileMaker Data
 可用这个接口检查当前进程的 token 状态；它不会触发登录，也不会返回 token 明文：
 
 ```bash
-curl http://localhost:8000/api/filemaker/session
+curl http://localhost:8000/api/filemaker/session \
+  -H "Authorization: Bearer ${STARRC_WEBVIEWER_TOKEN}"
 ```
+
+`/api/filemaker/*` 是原始技术管理接口，不向普通 WebViewer 或客户账号开放。所有读取请求
+必须使用具备 `canManageRag` 的 StarRC WebViewer 会话；创建、修改、删除和执行脚本还必须
+同时具备 `canManageAccounts`。生产环境应继续保持 `FILEMAKER_READ_ONLY=true`，业务写入
+使用有独立权限和校验的专用接口。
 
 ## 关键接口
 

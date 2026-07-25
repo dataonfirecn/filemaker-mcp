@@ -131,3 +131,50 @@ async def test_close_releases_token(client: FileMakerClient) -> None:
     assert fake_http.delete_count == 1
     assert fake_http.closed is True
     assert client.token_status()["hasToken"] is False
+
+
+@pytest.mark.asyncio
+async def test_find_records_query_empty_result_does_not_use_total_record_count(
+    client: FileMakerClient,
+) -> None:
+    async def fake_request(*_args, **_kwargs):
+        return {
+            "response": {
+                "data": [],
+                "dataInfo": {
+                    "returnedCount": 0,
+                    "totalRecordCount": 44675,
+                },
+            }
+        }
+
+    client.request = fake_request
+
+    result = await client.find_records(
+        "Parts",
+        query={"Date Created": "07/07/2026"},
+    )
+
+    assert result == {"data": [], "foundCount": 0, "returnedCount": 0}
+
+
+@pytest.mark.asyncio
+async def test_find_records_list_uses_total_record_count_when_unfiltered(
+    client: FileMakerClient,
+) -> None:
+    async def fake_request(*_args, **_kwargs):
+        return {
+            "response": {
+                "data": [],
+                "dataInfo": {
+                    "returnedCount": 0,
+                    "totalRecordCount": 44675,
+                },
+            }
+        }
+
+    client.request = fake_request
+
+    result = await client.find_records("Parts")
+
+    assert result == {"data": [], "foundCount": 44675, "returnedCount": 0}

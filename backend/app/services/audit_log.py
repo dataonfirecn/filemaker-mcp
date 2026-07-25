@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ class OperatorContext:
     name: str
     privilege: str = ""
     persistent_id: str = ""
+    permissions: dict[str, bool] | None = None
 
 
 class AuditLogStore:
@@ -22,6 +24,8 @@ class AuditLogStore:
         self._pool: asyncpg.Pool | None = None
         self._memory_rows: list[dict[str, Any]] = []
         self._memory_next_id = 1
+        self._memory_web_merge_requests: dict[str, dict[str, Any]] = {}
+        self._web_merge_lock = asyncio.Lock()
 
     async def init(self) -> None:
         if self.database_url.startswith("memory://"):
@@ -62,6 +66,19 @@ class AuditLogStore:
                     ON audit_log (bom_calc_id);
                 CREATE INDEX IF NOT EXISTS idx_audit_log_session_id
                     ON audit_log (session_id);
+
+                CREATE TABLE IF NOT EXISTS web_merge_request (
+                    request_id TEXT PRIMARY KEY,
+                    customer_id TEXT NOT NULL,
+                    source_order_ids JSONB NOT NULL,
+                    status TEXT NOT NULL,
+                    response_payload JSONB,
+                    error_message TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS idx_web_merge_request_updated_at
+                    ON web_merge_request (updated_at DESC);
                 """
             )
 
@@ -170,6 +187,165 @@ class AuditLogStore:
             "createdAt": row["created_at"].isoformat(),
         }
 
+    async def claim_web_merge_request(
+        self,
+        *,
+        request_id: str,
+        customer_id: str,
+        source_order_ids: list[str],
+    ) -> dict[str, Any]:
+        """Atomically reserve an idempotency key without using FileMaker sync fields."""
+        normalized_order_ids = sorted(set(source_order_ids))
+        if self.database_url.startswith("memory://"):
+            async with self._web_merge_lock:
+                existing = self._memory_web_merge_requests.get(request_id)
+                if not existing:
+                    self._memory_web_merge_requests[request_id] = {
+                        "customerId": customer_id,
+                        "sourceOrderIds": normalized_order_ids,
+                        "status": "pending",
+                        "responsePayload": None,
+                        "errorMessage": None,
+                    }
+                    return {"status": "claimed"}
+                return self._resolve_web_merge_claim(
+                    existing=existing,
+                    customer_id=customer_id,
+                    source_order_ids=normalized_order_ids,
+                    retry_failed=True,
+                )
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+
+        source_order_ids_json = self._json_or_none(normalized_order_ids)
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                inserted = await conn.fetchrow(
+                    """
+                    INSERT INTO web_merge_request (
+                        request_id, customer_id, source_order_ids, status
+                    )
+                    VALUES ($1, $2, $3::jsonb, 'pending')
+                    ON CONFLICT (request_id) DO NOTHING
+                    RETURNING request_id
+                    """,
+                    request_id,
+                    customer_id,
+                    source_order_ids_json,
+                )
+                if inserted:
+                    return {"status": "claimed"}
+
+                row = await conn.fetchrow(
+                    """
+                    SELECT customer_id, source_order_ids, status, response_payload, error_message
+                    FROM web_merge_request
+                    WHERE request_id = $1
+                    FOR UPDATE
+                    """,
+                    request_id,
+                )
+                existing = {
+                    "customerId": row["customer_id"],
+                    "sourceOrderIds": list(self._decoded_json(row["source_order_ids"]) or []),
+                    "status": row["status"],
+                    "responsePayload": self._decoded_json(row["response_payload"]),
+                    "errorMessage": row["error_message"],
+                }
+                resolution = self._resolve_web_merge_claim(
+                    existing=existing,
+                    customer_id=customer_id,
+                    source_order_ids=normalized_order_ids,
+                    retry_failed=False,
+                )
+                if resolution["status"] == "retry":
+                    await conn.execute(
+                        """
+                        UPDATE web_merge_request
+                        SET status = 'pending', response_payload = NULL,
+                            error_message = NULL, updated_at = now()
+                        WHERE request_id = $1
+                        """,
+                        request_id,
+                    )
+                    return {"status": "claimed"}
+                return resolution
+
+    async def complete_web_merge_request(
+        self,
+        *,
+        request_id: str,
+        response_payload: dict[str, Any],
+    ) -> None:
+        if self.database_url.startswith("memory://"):
+            async with self._web_merge_lock:
+                existing = self._memory_web_merge_requests.get(request_id)
+                if not existing:
+                    raise RuntimeError(f"Web merge request was not claimed: {request_id}")
+                existing.update(
+                    status="success",
+                    responsePayload=response_payload,
+                    errorMessage=None,
+                )
+                return
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE web_merge_request
+                SET status = 'success', response_payload = $2::jsonb,
+                    error_message = NULL, updated_at = now()
+                WHERE request_id = $1 AND status = 'pending'
+                """,
+                request_id,
+                self._json_or_none(response_payload),
+            )
+        if result != "UPDATE 1":
+            raise RuntimeError(f"Web merge request was not pending: {request_id}")
+
+    async def fail_web_merge_request(self, *, request_id: str, error_message: str) -> None:
+        if self.database_url.startswith("memory://"):
+            async with self._web_merge_lock:
+                existing = self._memory_web_merge_requests.get(request_id)
+                if existing and existing["status"] == "pending":
+                    existing.update(status="failed", errorMessage=error_message)
+                return
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE web_merge_request
+                SET status = 'failed', error_message = $2, updated_at = now()
+                WHERE request_id = $1 AND status = 'pending'
+                """,
+                request_id,
+                error_message,
+            )
+
+    def _resolve_web_merge_claim(
+        self,
+        *,
+        existing: dict[str, Any],
+        customer_id: str,
+        source_order_ids: list[str],
+        retry_failed: bool,
+    ) -> dict[str, Any]:
+        if (
+            existing["customerId"] != customer_id
+            or existing["sourceOrderIds"] != source_order_ids
+        ):
+            return {"status": "conflict"}
+        if existing["status"] == "success":
+            return {"status": "duplicate", "result": existing["responsePayload"]}
+        if existing["status"] == "pending":
+            return {"status": "in_progress"}
+        if retry_failed:
+            existing.update(status="pending", responsePayload=None, errorMessage=None)
+            return {"status": "claimed"}
+        return {"status": "retry"}
+
     async def list_logs(
         self,
         *,
@@ -267,6 +443,11 @@ class AuditLogStore:
         if value is None:
             return None
         return json.dumps(value, ensure_ascii=False, default=str)
+
+    def _decoded_json(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
     def _record_memory(
         self,

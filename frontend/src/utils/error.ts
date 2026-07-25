@@ -20,12 +20,17 @@ function parseErrorText(text: string): string {
   const trimmed = text.trim();
 
   // FastAPI default error shape: {"detail":"..."}
-  if (trimmed.startsWith("{\"detail\"") || trimmed.startsWith("{\"detail\"")) {
+  if (trimmed.startsWith("{\"detail\"")) {
     try {
-      const parsed = JSON.parse(trimmed) as { detail?: string | { msg?: string; type?: string }[] };
+      const parsed = JSON.parse(trimmed) as {
+        detail?: string | { message?: string; msg?: string; type?: string } | { msg?: string; type?: string }[];
+      };
       if (parsed.detail) {
         if (Array.isArray(parsed.detail)) {
           return localize(parsed.detail.map((item) => item.msg).filter(Boolean).join("；")) || "请求参数校验失败。";
+        }
+        if (typeof parsed.detail === "object" && "message" in parsed.detail) {
+          return localize(String(parsed.detail.message));
         }
         return localize(String(parsed.detail));
       }

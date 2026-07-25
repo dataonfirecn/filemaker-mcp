@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "auditedAt": "2026-07-24",
+  "source": "FileMaker Pro > Manage Security > Advanced Settings",
+  "policy": "Price is denied unless the FileMaker privilege-set audit showed a clear business need and price or finance data access.",
+  "templates": {
+    "fullAdmin": {
+      "canViewPrice": true,
+      "canManageAccounts": true,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": true,
+      "canMergeOrders": true
+    },
+    "standardRead": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "business": {
+      "canViewPrice": true,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "businessManager": {
+      "canViewPrice": true,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": true
+    },
+    "finance": {
+      "canViewPrice": true,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": false,
+      "canViewBom": false,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "priceEntry": {
+      "canViewPrice": true,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": false,
+      "canViewInventory": false,
+      "canViewBom": false,
+      "canUseNaturalQuery": false,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "design": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": false,
+      "canViewInventory": false,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "purchasing": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": false,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "operations": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": true,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "qualityPacking": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": true,
+      "canViewInventory": true,
+      "canViewBom": false,
+      "canUseNaturalQuery": true,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "specialist": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": false,
+      "canViewInventory": false,
+      "canViewBom": true,
+      "canUseNaturalQuery": false,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "accountingRestricted": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": false,
+      "canViewOrders": true,
+      "canViewInventory": false,
+      "canViewBom": false,
+      "canUseNaturalQuery": false,
+      "canManageRag": false,
+      "canMergeOrders": false
+    },
+    "display": {
+      "canViewPrice": false,
+      "canManageAccounts": false,
+      "canViewProducts": true,
+      "canViewOrders": false,
+      "canViewInventory": false,
+      "canViewBom": false,
+      "canUseNaturalQuery": false,
+      "canManageRag": false,
+      "canMergeOrders": false
+    }
+  },
+  "privilegeSets": [
+    {
+      "name": "[仅限于数据输入]",
+      "template": "standardRead",
+      "priceEvidence": "Built-in set is unused; price stays denied by least privilege."
+    },
+    {
+      "name": "[完全访问权限]",
+      "template": "fullAdmin",
+      "priceEvidence": "Built-in full access."
+    },
+    {
+      "name": "[只读访问权限]",
+      "template": "standardRead",
+      "priceEvidence": "Only Guest uses this set and Guest is disabled; price stays denied."
+    },
+    {
+      "name": "Master",
+      "template": "fullAdmin",
+      "priceEvidence": "All-table create/edit/delete plus non-full-access account management."
+    },
+    {
+      "name": "Mayako",
+      "template": "display"
+    },
+    {
+      "name": "業務部",
+      "template": "business",
+      "priceEvidence": "ProductPriceCustomer and ProductTradePrice are accessible."
+    },
+    {
+      "name": "業務經理",
+      "template": "businessManager",
+      "priceEvidence": "Customer and trade price tables are accessible."
+    },
+    {
+      "name": "設計部",
+      "template": "design"
+    },
+    {
+      "name": "設計部_只讀",
+      "template": "design"
+    },
+    {
+      "name": "特別助理",
+      "template": "businessManager",
+      "priceEvidence": "Price customer and trade price tables are readable."
+    },
+    {
+      "name": "貨款對帳",
+      "template": "finance",
+      "priceEvidence": "Finance/reconciliation role requires order amounts; dedicated price tables remain restricted."
+    },
+    {
+      "name": "系統記帳",
+      "template": "accountingRestricted"
+    },
+    {
+      "name": "採購助理_一般權限",
+      "template": "purchasing"
+    },
+    {
+      "name": "採購助理_信任權限",
+      "template": "purchasing"
+    },
+    {
+      "name": "採購助理樣品_信任權限",
+      "template": "purchasing"
+    },
+    {
+      "name": "洗床部",
+      "template": "operations"
+    },
+    {
+      "name": "洗床部組長",
+      "template": "operations"
+    },
+    {
+      "name": "車床部",
+      "template": "operations"
+    },
+    {
+      "name": "車床部 助理",
+      "template": "operations"
+    },
+    {
+      "name": "高鑫車床部 報表人",
+      "template": "operations"
+    },
+    {
+      "name": "高速打印",
+      "template": "display"
+    },
+    {
+      "name": "品檢主管",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "品檢包裝主管",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "品檢包裝主管Excel",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "品檢員",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "包裝員",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "包裝員2部",
+      "template": "qualityPacking"
+    },
+    {
+      "name": "倉庫_組長",
+      "template": "operations"
+    },
+    {
+      "name": "倉庫_組員",
+      "template": "operations"
+    },
+    {
+      "name": "貿易產品入資料",
+      "template": "priceEntry",
+      "priceEvidence": "ProductPriceCustomer and ProductTradePrice are accessible."
+    },
+    {
+      "name": "貿易經理",
+      "template": "business",
+      "priceEvidence": "Trade price table has restricted record and field access."
+    },
+    {
+      "name": "生產部",
+      "template": "operations"
+    },
+    {
+      "name": "美工部",
+      "template": "display"
+    },
+    {
+      "name": "TW財務總監 访问权限",
+      "template": "finance",
+      "priceEvidence": "Finance role can read product customer and trade price tables."
+    },
+    {
+      "name": "Zhe",
+      "template": "display"
+    },
+    {
+      "name": "Laser",
+      "template": "specialist"
+    },
+    {
+      "name": "Inbab 專用",
+      "template": "specialist"
+    },
+    {
+      "name": "MAXHUB",
+      "template": "display"
+    },
+    {
+      "name": "注塑部",
+      "template": "operations"
+    }
+  ]
+}

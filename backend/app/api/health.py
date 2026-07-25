@@ -13,4 +13,6 @@ async def healthz(settings: Settings = Depends(get_settings_from_app)) -> dict[s
         "service": settings.app_name,
         "environment": settings.app_env,
         "filemakerConfigured": settings.filemaker_configured,
+        "filemakerODataEnabled": settings.filemaker_odata_enabled,
+        "filemakerODataConfigured": settings.filemaker_odata_configured,
     }

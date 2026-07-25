@@ -22,17 +22,24 @@ def create_mock_context(
     product_sku: str = "",
     order_id: str = "",
     bom_calc_id: str = "",
+    customer_id: str = "",
+    customer_name: str = "",
+    currency: str = "",
+    persistent_id: str = "mock",
 ) -> dict[str, Any]:
     return {
         "operator": {
             "account": operator_account,
             "name": operator_name,
             "privilege": operator_privilege,
-            "persistentId": "mock",
+            "persistentId": persistent_id,
         },
         "productSku": product_sku,
         "orderId": order_id,
         "bomCalcId": bom_calc_id,
+        "customerId": customer_id,
+        "customerName": customer_name,
+        "currency": currency,
         "issuedAt": int(time.time()),
     }
 
@@ -56,6 +63,10 @@ def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[st
         "productSku": context.get("productSku") or "",
         "orderId": context.get("orderId") or "",
         "bomCalcId": context.get("bomCalcId") or "",
+        "customerId": context.get("customerId") or "",
+        "customerName": context.get("customerName") or "",
+        "currency": context.get("currency") or "",
+        "access": context.get("access") or {},
         "iat": now,
         "exp": now + settings.webviewer_session_ttl_seconds,
     }
@@ -89,6 +100,10 @@ def operator_from_session(payload: dict[str, Any]) -> OperatorContext:
         name=str(operator.get("name") or operator.get("account") or "unknown"),
         privilege=str(operator.get("privilege") or ""),
         persistent_id=str(operator.get("persistentId") or ""),
+        permissions={
+            str(key): bool(value)
+            for key, value in (payload.get("access") or {}).items()
+        },
     )
 
 

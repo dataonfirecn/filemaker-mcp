@@ -1,11 +1,24 @@
-import pytest
-from fastapi import HTTPException
+import json
 
-from app.api.bom_documents import _calculation_line
-from app.api.filemaker import ensure_write_allowed
+import pytest
+from fastapi import HTTPException, Request
+
+from app.api.bom_documents import _calculation_line, _load_product_bom
+from app.api.filemaker import (
+    ensure_raw_write_permission,
+    ensure_write_allowed,
+    router as filemaker_router,
+)
+from app.api.webviewer import create_webviewer_session
 from app.core.config import Settings
-from app.services.audit_log import OperatorContext
+from app.models.webviewer import WebViewerSessionRequest
+from app.services.audit_log import AuditLogStore, OperatorContext
 from app.services.bom_document_store import BomDocumentStore
+from app.services.customer_chat_auth import hash_customer_password
+from app.services.dependencies import (
+    _permission_for_request,
+    get_webviewer_session_context,
+)
 from app.services.webviewer_session import (
     create_mock_context,
     issue_session_token,
@@ -50,12 +63,18 @@ def test_webviewer_session_round_trip() -> None:
         operator_account="amy",
         operator_name="Amy",
         product_sku="821RTR-27",
+        customer_id="CU004",
+        customer_name="SARL IMODEL",
+        currency="USD",
     )
     token, payload = issue_session_token(context, settings)
     verified = verify_session_token(token, settings)
     operator = operator_from_session(verified)
 
     assert payload["productSku"] == "821RTR-27"
+    assert payload["customerId"] == "CU004"
+    assert verified["customerName"] == "SARL IMODEL"
+    assert verified["currency"] == "USD"
     assert verified["operator"]["account"] == "amy"
     assert operator.account == "amy"
     assert operator.name == "Amy"
@@ -68,6 +87,83 @@ def test_filemaker_write_guard_blocks_when_read_only() -> None:
         ensure_write_allowed(settings)
 
     assert exc.value.status_code == 423
+
+
+def test_raw_filemaker_router_requires_webviewer_session_and_rag_permission() -> None:
+    assert any(
+        dependency.dependency is get_webviewer_session_context
+        for dependency in filemaker_router.dependencies
+    )
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/filemaker/@products/find",
+            "raw_path": b"/api/filemaker/@products/find",
+            "query_string": b"",
+            "headers": [],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+        }
+    )
+
+    assert _permission_for_request(request) == "canManageRag"
+
+
+def test_raw_filemaker_write_requires_account_admin_in_addition_to_rag_access() -> None:
+    with pytest.raises(HTTPException) as exc:
+        ensure_raw_write_permission(
+            {
+                "canManageRag": True,
+                "canManageAccounts": False,
+            }
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["permission"] == "canManageAccounts"
+    ensure_raw_write_permission(
+        {
+            "canManageRag": True,
+            "canManageAccounts": True,
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_remote_webviewer_login_issues_audited_internal_session() -> None:
+    password = "Remote-Unit-Test-Password"
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=False,
+        webviewer_remote_access_enabled=True,
+        webviewer_remote_accounts_json=json.dumps(
+            [
+                {
+                    "username": "amy",
+                    "displayName": "Amy",
+                    "passwordHash": hash_customer_password(password, iterations=100_000),
+                }
+            ]
+        ),
+    )
+    audit = AuditLogStore("memory://")
+
+    response = await create_webviewer_session(
+        WebViewerSessionRequest(
+            username="amy",
+            password=password,
+            customerId="CU004",
+            customerName="SARL IMODEL",
+        ),
+        settings,
+        audit,
+    )
+
+    assert response.context["operator"]["account"] == "amy"
+    assert response.context["operator"]["privilege"] == "internal_remote"
+    assert response.context["customerId"] == "CU004"
+    assert len(audit._memory_rows) == 1
 
 
 def test_bom_preview_line_calculates_without_store_write() -> None:
@@ -85,6 +181,52 @@ def test_bom_preview_line_calculates_without_store_write() -> None:
     assert line.part_no == "AL08045-00"
     assert line.bom_qty == 1.5
     assert line.calculated_qty == 150
+
+
+@pytest.mark.asyncio
+async def test_order_bom_view_uses_current_filemaker_bom_layout() -> None:
+    class FakeFileMaker:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, str]]] = []
+
+        async def find_records(self, layout, query=None, limit=100, offset=1):
+            self.calls.append((layout, query))
+            if layout == "產品清單_業務":
+                return {
+                    "data": [{
+                        "recordId": "10",
+                        "fieldData": {
+                            "product_sku": "G0107-EVA",
+                            "product_name": "EVA",
+                        },
+                    }],
+                    "foundCount": 1,
+                    "returnedCount": 1,
+                }
+            assert layout == "@product_bom"
+            return {
+                "data": [{
+                    "recordId": "20",
+                    "fieldData": {
+                        "ID_產品編號": "G0107-EVA",
+                        "零件編號": "EVA-01",
+                        "需求數量": 1,
+                    },
+                }],
+                "foundCount": 1,
+                "returnedCount": 1,
+            }
+
+    filemaker = FakeFileMaker()
+    product, bom = await _load_product_bom(filemaker, "G0107-EVA")
+
+    assert product is not None
+    assert product.product_sku == "G0107-EVA"
+    assert bom["foundCount"] == 1
+    assert filemaker.calls == [
+        ("產品清單_業務", {"product_sku": "==G0107-EVA"}),
+        ("@product_bom", {"ID_產品編號": "==G0107-EVA"}),
+    ]
 
 
 @pytest.mark.asyncio
