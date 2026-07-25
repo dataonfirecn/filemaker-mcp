@@ -13,11 +13,13 @@ from app.services.customer_chat_auth import (
 from app.services.customer_account_admin_store import CustomerAccountAdminStore
 from app.services.customer_chat_history import CustomerChatHistoryStore
 from app.services.customer_credential_store import CustomerCredentialStore
+from app.services.cos_storage import COSStorageService
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.rag_index import RagIndexStore, RagIndexWorker
+from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_session import (
     WebViewerSessionError,
     operator_from_session,
@@ -84,6 +86,14 @@ def get_customer_account_admin_store(request: Request) -> CustomerAccountAdminSt
 
 def get_webviewer_account_access_store(request: Request) -> WebViewerAccountAccessStore:
     return request.app.state.webviewer_account_access_store
+
+
+def get_cos_storage_service(request: Request) -> COSStorageService:
+    return request.app.state.cos_storage_service
+
+
+def get_receipt_attachment_store(request: Request) -> ReceiptAttachmentStore:
+    return request.app.state.receipt_attachment_store
 
 
 def get_rag_index_worker(request: Request) -> RagIndexWorker | None:
@@ -186,6 +196,8 @@ def _permission_for_request(request: Request) -> str | None:
             return "canViewBom"
         if "/merge/" in path and method == "POST":
             return "canMergeOrders"
+        return "canViewOrders"
+    if path.startswith("/api/mobile/v1/receipts"):
         return "canViewOrders"
     if path.startswith("/api/natural-query/analytics"):
         return "canManageRag"

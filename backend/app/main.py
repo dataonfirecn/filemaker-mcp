@@ -17,6 +17,7 @@ from app.api import (
     inventory,
     material_ids,
     mes_callbacks,
+    mobile_receipts,
     natural_query_analytics,
     natural_language_query,
     odata,
@@ -35,11 +36,13 @@ from app.services.customer_account_admin_store import CustomerAccountAdminStore
 from app.services.customer_chat_auth import CustomerLoginRateLimiter, load_customer_accounts
 from app.services.customer_chat_history import CustomerChatHistoryStore
 from app.services.customer_credential_store import CustomerCredentialStore
+from app.services.cos_storage import COSStorageService
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.rag_index import RagIndexStore, RagIndexWorker
+from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_account_access import (
     WebViewerAccountAccessStore,
     load_privilege_set_policies,
@@ -66,6 +69,9 @@ async def lifespan(app: FastAPI):
     await bom_document_store.init()
     callback_store = CallbackStore(settings.database_path)
     await callback_store.init()
+    receipt_attachment_store = ReceiptAttachmentStore(settings.database_path)
+    await receipt_attachment_store.init()
+    cos_storage_service = COSStorageService(settings)
     customer_credential_store = CustomerCredentialStore(settings.database_path)
     await customer_credential_store.init()
     customer_chat_history_store = CustomerChatHistoryStore(settings.audit_database_url)
@@ -118,6 +124,8 @@ async def lifespan(app: FastAPI):
     app.state.customer_chat_history_store = customer_chat_history_store
     app.state.customer_account_admin_store = customer_account_admin_store
     app.state.webviewer_account_access_store = webviewer_account_access_store
+    app.state.receipt_attachment_store = receipt_attachment_store
+    app.state.cos_storage_service = cos_storage_service
     app.state.natural_query_conversation_store = natural_query_conversation_store
     app.state.natural_query_analytics_worker = natural_query_analytics_worker
     app.state.rag_index_store = rag_index_store
@@ -228,6 +236,7 @@ app.include_router(orders.router, prefix=settings.api_prefix)
 app.include_router(rag_index.router, prefix=settings.api_prefix)
 app.include_router(mes_callbacks.router, prefix=settings.api_prefix)
 app.include_router(qrcode.router, prefix=settings.api_prefix)
+app.include_router(mobile_receipts.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

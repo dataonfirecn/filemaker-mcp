@@ -176,6 +176,20 @@ class Settings(BaseSettings):
     callback_max_attempts: int = 8
     callback_poll_interval_seconds: float = 5.0
 
+    cos_enabled: bool = False
+    cos_secret_id: str = ""
+    cos_secret_key: str = ""
+    cos_bucket: str = "starrc-1252872963"
+    cos_region: str = "ap-guangzhou"
+    cos_upload_base_url: str = (
+        "https://starrc-1252872963.cos.ap-guangzhou.myqcloud.com"
+    )
+    cos_public_base_url: str = "https://oss.dataonfire.cn"
+    cos_presign_ttl_seconds: int = 10 * 60
+    cos_max_upload_bytes: int = 10 * 1024 * 1024
+    cos_max_attachments_per_receipt: int = 8
+    cos_allowed_content_types: str = "image/jpeg,image/png,image/heic,image/heif"
+
     qr_base_url: str = "http://localhost:8080/q"
 
     @property
@@ -214,6 +228,24 @@ class Settings(BaseSettings):
         if auth_mode == "fmid":
             return bool(self.filemaker_odata_fmid_token)
         return bool(self.filemaker_username and self.filemaker_password)
+
+    @property
+    def cos_configured(self) -> bool:
+        return bool(
+            self.cos_enabled
+            and self.cos_secret_id.strip()
+            and self.cos_secret_key
+            and self.cos_bucket.strip()
+            and self.cos_region.strip()
+        )
+
+    @property
+    def cos_allowed_content_type_set(self) -> set[str]:
+        return {
+            item.strip().lower()
+            for item in self.cos_allowed_content_types.split(",")
+            if item.strip()
+        }
 
     # 历史上已知的不安全占位符/默认密钥，生产环境绝不允许沿用。
     _INSECURE_SECRET_PLACEHOLDERS = frozenset(
@@ -265,6 +297,19 @@ class Settings(BaseSettings):
                 "NATURAL_QUERY_LLM_ENABLED=true 但 LLM_API_KEY 未配置；"
                 "生产环境启用 LLM 必须同时提供 API key。"
             )
+        if self.cos_enabled and not self.cos_configured:
+            problems.append(
+                "COS_ENABLED=true，但 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET "
+                "或 COS_REGION 未完整配置。"
+            )
+        if not 60 <= self.cos_presign_ttl_seconds <= 60 * 60:
+            problems.append(
+                "COS_PRESIGN_TTL_SECONDS 必须在 60 到 3600 秒之间。"
+            )
+        if self.cos_max_upload_bytes <= 0:
+            problems.append("COS_MAX_UPLOAD_BYTES 必须大于 0。")
+        if self.cos_max_attachments_per_receipt <= 0:
+            problems.append("COS_MAX_ATTACHMENTS_PER_RECEIPT 必须大于 0。")
 
         if self.customer_chat_enabled:
             # Local import avoids a module cycle: the auth service also consumes Settings.
