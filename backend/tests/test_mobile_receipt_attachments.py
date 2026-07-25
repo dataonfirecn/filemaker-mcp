@@ -52,6 +52,8 @@ def test_cos_object_key_is_scoped_and_does_not_use_original_filename() -> None:
 def test_cos_configuration_requires_private_credentials() -> None:
     settings = Settings(
         cos_enabled=True,
+        cos_secret_id="",
+        cos_secret_key="",
         cos_bucket="starrc-1252872963",
         cos_region="ap-guangzhou",
     )
