@@ -17,6 +17,7 @@ class BomCalculationWriteError(RuntimeError):
 
 _bom_write_lock = asyncio.Lock()
 _NUMBER_TOLERANCE = Decimal("0.000001")
+ORDER_ID_FIELD = "id"
 
 
 def _records(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -229,7 +230,7 @@ async def create_bom_calculation_via_data_api(
         order_result = await _find_exact(
             client,
             layout=settings.filemaker_bom_order_read_layout,
-            field="出貨單 ID",
+            field=ORDER_ID_FIELD,
             value=normalized_order_id,
         )
         order_records = _records(order_result)
@@ -240,7 +241,7 @@ async def create_bom_calculation_via_data_api(
         order_write_result = await _find_exact(
             client,
             layout=settings.filemaker_bom_order_write_layout,
-            field="出貨單 ID",
+            field=ORDER_ID_FIELD,
             value=normalized_order_id,
         )
         order_write_records = _records(order_write_result)

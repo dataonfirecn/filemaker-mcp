@@ -51,6 +51,7 @@ PART_SAFETY_STOCK_FIELD = "safety_stock_qty"
 ORDER_LAYOUT = "@出貨單"
 ORDER_DETAIL_LAYOUT = "@mayako"
 ORDER_SCOPE_FIELD = "select_client_for_web_id"
+ORDER_ID_FIELD = "id"
 ORDER_AMOUNT_FIELD = "貨款總和_price"
 MAX_CATALOG_PAGE_SIZE = 100
 PRODUCT_EXPORT_PAGE_SIZE = 500
@@ -63,7 +64,7 @@ MAX_ORDER_SUMMARY_ROWS = 20_000
 PRODUCT_SEARCH_FIELDS = ("product_sku", "系統產品編號", "product_name", "車款", "類別")
 PART_SEARCH_FIELDS = ("part_number", PART_NAME_FIELD)
 ORDER_SEARCH_FIELDS = (
-    "出貨單 ID",
+    ORDER_ID_FIELD,
     "出貨單 PI",
     "包裝狀態",
     "客戶備註",
@@ -75,7 +76,7 @@ ORDER_SEARCH_FIELDS = (
     "shipping_notes",
 )
 ORDER_CHAT_TEXT_SEARCH_FIELDS = (
-    "出貨單 ID",
+    ORDER_ID_FIELD,
     "出貨單 PI",
     "內部訂單單據編號",
     "訂單 PO",

@@ -69,7 +69,7 @@ async def test_get_internal_orders_joins_business_order_fields() -> None:
                         {
                             "recordId": "17452",
                             "fieldData": {
-                                "出貨單 ID": "PI0017287",
+                                "id": "PI0017287",
                                 "出貨單 PI": "QO-IM20250828 DRIFT RTR",
                                 "訂單 PO": "PC000872",
                                 "內部訂單單據編號": "NB25828-9674",
@@ -171,7 +171,7 @@ async def test_get_internal_orders_all_scope_does_not_force_category() -> None:
                         {
                             "recordId": "17500",
                             "fieldData": {
-                                "出貨單 ID": "PI0018000",
+                                "id": "PI0018000",
                                 "內部訂單單據編號": "NB260001",
                             },
                         }

@@ -25,11 +25,11 @@ class SuccessfulFileMaker:
 
     async def find_records(self, layout, query=None, limit=100, offset=1, sort=None):
         query_fields = {next(iter(item)) for item in (query or [])}
-        if layout == "@出貨單" and query_fields == {"出貨單 ID"}:
+        if layout == "@出貨單" and query_fields == {"id"}:
             return {
                 "data": [
-                    {"recordId": "source-1", "fieldData": {"出貨單 ID": "PI-1", "內部訂單單據編號": "NB001", "ID_客戶": "CU004"}},
-                    {"recordId": "source-2", "fieldData": {"出貨單 ID": "PI-2", "內部訂單單據編號": "NB002", "ID_客戶": "CU004"}},
+                    {"recordId": "source-1", "fieldData": {"id": "PI-1", "內部訂單單據編號": "NB001", "customer_id": "CU004"}},
+                    {"recordId": "source-2", "fieldData": {"id": "PI-2", "內部訂單單據編號": "NB002", "customer_id": "CU004"}},
                 ],
                 "foundCount": 2,
             }
@@ -65,7 +65,7 @@ class SuccessfulFileMaker:
     async def get_record(self, layout, record_id):
         return [{
             "recordId": record_id,
-            "fieldData": {"出貨單 ID": "PI-NEW", "內部訂單單據編號": "NB261540"},
+            "fieldData": {"id": "PI-NEW", "內部訂單單據編號": "NB261540"},
         }]
 
     async def delete_record(self, layout, record_id):
@@ -98,7 +98,7 @@ async def test_web_merge_aggregates_items_and_creates_header_and_details() -> No
         ("出貨單資料_List_業務", {"ID_出貨單": "PI-NEW", "產品編號": "P-100", "數量": "5.5"}),
         ("出貨單資料_List_業務", {"ID_出貨單": "PI-NEW", "產品編號": "P-200", "數量": "1"}),
     ]
-    assert filemaker.updated[0] == ("@出貨單", "new-header", {"ID_客戶": "CU004"})
+    assert filemaker.updated[0] == ("@出貨單", "new-header", {"customer_id": "CU004"})
     assert filemaker.updated[1][0:2] == ("@出貨單", "new-header")
     merge_log = filemaker.updated[1][2]["log"]
     assert "[Web Data API 内部订单合并]" in merge_log
@@ -170,8 +170,8 @@ async def test_web_merge_rejects_cross_customer_orders_before_writing() -> None:
 
     async def mismatched_find(layout, query=None, limit=100, offset=1, sort=None):
         result = await original_find(layout, query, limit, offset, sort)
-        if layout == "@出貨單" and {next(iter(item)) for item in (query or [])} == {"出貨單 ID"}:
-            result["data"][1]["fieldData"]["ID_客戶"] = "99"
+        if layout == "@出貨單" and {next(iter(item)) for item in (query or [])} == {"id"}:
+            result["data"][1]["fieldData"]["customer_id"] = "99"
         return result
 
     filemaker.find_records = mismatched_find

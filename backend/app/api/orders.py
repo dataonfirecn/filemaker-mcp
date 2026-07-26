@@ -34,6 +34,7 @@ from app.services.product_api import PRODUCT_LAYOUT, PRODUCT_STOCK_FIELD, enrich
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 ORDER_LAYOUT = "@出貨單"
+ORDER_ID_FIELD = "id"
 ORDER_ITEM_LAYOUT = "@出貨單資料"
 ORDER_ITEM_QTY_LAYOUT = "出貨單資料_List_業務"
 PART_LAYOUT = "零件 資料_業務"
@@ -182,7 +183,7 @@ async def get_internal_orders(
         internal_order_no = _text(fields.get("內部訂單單據編號"))
         shipment = shipments.get(internal_order_no, {})
         summary = summaries.get(internal_order_no, {})
-        order_id = _text(shipment.get("出貨單 ID"))
+        order_id = _text(shipment.get(ORDER_ID_FIELD))
         if not order_id:
             continue
         rows.append(
@@ -695,7 +696,7 @@ async def get_order_detail(
     try:
         order_result = await client.find_records(
             ORDER_LAYOUT,
-            query={"出貨單 ID": normalized_order_id},
+            query={ORDER_ID_FIELD: normalized_order_id},
             limit=1,
         )
         rich_items_result = await client.find_records(
@@ -711,7 +712,7 @@ async def get_order_detail(
         bom_link_result = (
             await client.find_records(
                 settings.filemaker_bom_order_write_layout,
-                query={"出貨單 ID": f"=={normalized_order_id}"},
+                query={ORDER_ID_FIELD: f"=={normalized_order_id}"},
                 limit=1,
             )
             if settings.filemaker_bom_write_enabled
@@ -767,7 +768,7 @@ async def get_order_detail(
 
     return {
         "order": {
-            "orderId": _text(order_fields.get("出貨單 ID")) or normalized_order_id,
+            "orderId": _text(order_fields.get(ORDER_ID_FIELD)) or normalized_order_id,
             "internalOrderNo": _text(order_fields.get("內部訂單單據編號")),
             "piNo": _text(order_fields.get("出貨單 PI")),
             "customerPo": _text(order_fields.get("訂單 PO")),

@@ -611,6 +611,8 @@ def test_order_month_and_shipping_status_filters_are_applied_to_every_search_bra
     assert sum(branch["訂單 PO"] == "*UPS*" for branch in query) == 1
     assert all(branch["日期"] == "7/1/2026...7/31/2026" for branch in query)
     assert all(branch["出貨日期"] == "=" for branch in query)
+    assert any(branch.get("id") == "*UPS*" for branch in query)
+    assert all("出貨單 ID" not in branch for branch in query)
     assert _order_month_range("2024-02") == "2/1/2024...2/29/2024"
 
 
@@ -730,6 +732,8 @@ def test_order_chat_date_and_hidden_field_search_scopes_every_branch() -> None:
     assert all(branch["訂單 PO"] in {"*", "*UPS*"} for branch in call[1])
     assert sum(branch["訂單 PO"] == "*UPS*" for branch in call[1]) == 1
     assert all(branch["出貨日期"] == "7/1/2026...7/22/2026" for branch in call[1])
+    assert any(branch.get("id") == "*UPS*" for branch in call[1])
+    assert all("出貨單 ID" not in branch for branch in call[1])
     assert any(branch.get("訂單 PO備註") == "*UPS*" for branch in call[1])
     assert call[4] == [{"fieldName": "訂單 PO", "sortOrder": "descend"}]
     assert response.rows[0].tracking_number == "1Z999"

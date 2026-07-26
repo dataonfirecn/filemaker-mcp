@@ -59,7 +59,7 @@ class SuccessfulFileMaker:
                     {
                         "recordId": "order-read-1",
                         "fieldData": {
-                            "出貨單 ID": "PI-001",
+                            "id": "PI-001",
                             "公司": "",
                             "訂單概要中文": "NB001 零件包",
                             "日期": "07/25/2026",
@@ -75,7 +75,7 @@ class SuccessfulFileMaker:
                     {
                         "recordId": "order-write-1",
                         "fieldData": {
-                            "出貨單 ID": "PI-001",
+                            "id": "PI-001",
                             "ID_BOM計算": self.linked_bom_id,
                         },
                     }

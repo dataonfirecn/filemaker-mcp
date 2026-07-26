@@ -138,7 +138,7 @@ def _order_snapshot(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "recordId": _text(record.get("recordId")),
         "modId": _text(record.get("modId")),
-        "出貨單 ID": _text(fields.get("出貨單 ID")),
+        "id": _text(fields.get("id")),
         "訂單 PO": _text(fields.get("訂單 PO")),
         SOURCE_COMPANY_FIELD: _text(fields.get(SOURCE_COMPANY_FIELD)),
         ORDER_GROUP_FIELD: _text(fields.get(ORDER_GROUP_FIELD)),
@@ -317,7 +317,7 @@ async def main() -> None:
         unresolved = [
             {
                 "recordId": order["recordId"],
-                "出貨單 ID": order["出貨單 ID"],
+                "id": order["id"],
             }
             for order in orders
             if not order[SOURCE_COMPANY_FIELD]

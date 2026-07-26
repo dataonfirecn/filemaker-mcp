@@ -63,9 +63,9 @@ ASSET_SPECS = tuple(
 )
 
 REQUIRED_SOURCE_FIELDS = {
-    "出貨單 ID",
+    "id",
     "內部訂單單據編號",
-    "ID_客戶",
+    "customer_id",
     *(spec.source_field for spec in ASSET_SPECS),
 }
 
@@ -347,9 +347,9 @@ async def _copy_asset(
         max_file_bytes=max_file_bytes,
     )
     target_data = {
-        "shipment_id_fk": _text(source_fields.get("出貨單 ID")),
+        "shipment_id_fk": _text(source_fields.get("id")),
         "internal_order_no_snapshot": _text(source_fields.get("內部訂單單據編號")),
-        "customer_id_snapshot": _text(source_fields.get("ID_客戶")),
+        "customer_id_snapshot": _text(source_fields.get("customer_id")),
         "asset_type": spec.asset_type,
         "visibility": spec.visibility,
         "legacy_source_field": spec.source_field,

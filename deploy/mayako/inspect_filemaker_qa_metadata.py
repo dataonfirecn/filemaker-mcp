@@ -33,7 +33,14 @@ def candidate_values(result: dict[str, Any]) -> list[dict[str, object]]:
             key: value
             for key, value in fields.items()
             if any(term in key.casefold() for term in PRICE_TERMS)
-            or key in {"product_sku", "系統產品編號", "產品編號", "part_number", "ID_客戶"}
+            or key in {
+                "product_sku",
+                "系統產品編號",
+                "產品編號",
+                "part_number",
+                "ID_客戶",
+                "customer_id",
+            }
         }
         rows.append({"recordId": record.get("recordId"), "fields": values})
     return rows
