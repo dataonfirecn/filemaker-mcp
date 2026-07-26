@@ -437,7 +437,7 @@ async def create_bom_calculation_via_data_api(
             "客戶": customer,
             "車款": _text(order_fields.get("訂單概要中文")),
             "訂單日期": _text(order_fields.get("日期")),
-            "訂單編號": _text(order_fields.get("內部訂單單據編號")),
+            "訂單編號": _text(order_fields.get("internal_id")),
         }
         aggregate_quantities: dict[str, Decimal] = defaultdict(Decimal)
         aggregate_mold_fields: dict[str, dict[str, Any]] = {}

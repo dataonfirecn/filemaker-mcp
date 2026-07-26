@@ -35,6 +35,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 ORDER_LAYOUT = "@出貨單"
 ORDER_ID_FIELD = "id"
+ORDER_INTERNAL_ID_FIELD = "internal_id"
 ORDER_ITEM_LAYOUT = "@出貨單資料"
 ORDER_ITEM_QTY_LAYOUT = "出貨單資料_List_業務"
 PART_LAYOUT = "零件 資料_業務"
@@ -113,7 +114,7 @@ async def _find_orders_by_internal_number(
         batch = internal_numbers[start : start + ORDER_JOIN_BATCH_SIZE]
         result = await client.find_records(
             layout,
-            query=[{"內部訂單單據編號": f"=={number}"} for number in batch],
+            query=[{ORDER_INTERNAL_ID_FIELD: f"=={number}"} for number in batch],
             limit=ORDER_LIST_PAGE_SIZE,
         )
         records.extend(_records(result))
@@ -148,13 +149,13 @@ async def get_internal_orders(
             client,
             INTERNAL_ORDER_LIST_LAYOUT,
             query=rich_query,
-            sort=[{"fieldName": "內部訂單單據編號", "sortOrder": "descend"}],
+            sort=[{"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": "descend"}],
         )
         internal_numbers = list(
             dict.fromkeys(
-                _text(_fields(record).get("內部訂單單據編號"))
+                _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
                 for record in rich_records
-                if _text(_fields(record).get("內部訂單單據編號"))
+                if _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
             )
         )
         shipment_records = await _find_orders_by_internal_number(client, ORDER_LAYOUT, internal_numbers)
@@ -170,17 +171,17 @@ async def get_internal_orders(
         ) from exc
 
     shipments = {
-        _text(_fields(record).get("內部訂單單據編號")): _fields(record)
+        _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD)): _fields(record)
         for record in shipment_records
     }
     summaries = {
-        _text(_fields(record).get("內部訂單單據編號")): _fields(record)
+        _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD)): _fields(record)
         for record in summary_records
     }
     rows: list[dict[str, Any]] = []
     for record in rich_records:
         fields = _fields(record)
-        internal_order_no = _text(fields.get("內部訂單單據編號"))
+        internal_order_no = _text(fields.get(ORDER_INTERNAL_ID_FIELD))
         shipment = shipments.get(internal_order_no, {})
         summary = summaries.get(internal_order_no, {})
         order_id = _text(shipment.get(ORDER_ID_FIELD))
@@ -769,7 +770,7 @@ async def get_order_detail(
     return {
         "order": {
             "orderId": _text(order_fields.get(ORDER_ID_FIELD)) or normalized_order_id,
-            "internalOrderNo": _text(order_fields.get("內部訂單單據編號")),
+            "internalOrderNo": _text(order_fields.get(ORDER_INTERNAL_ID_FIELD)),
             "piNo": _text(order_fields.get("出貨單 PI")),
             "customerPo": _text(order_fields.get("訂單 PO")),
             "customer": customer,

@@ -50,7 +50,7 @@ async def test_get_internal_orders_joins_business_order_fields() -> None:
                         {
                             "recordId": "17452",
                             "fieldData": {
-                                "內部訂單單據編號": "NB25828-9674",
+                                "internal_id": "NB25828-9674",
                                 "訂單分類": "内部订单",
                                 "訂單確認": "内部订单",
                                 "訂單概要中文": "DRIFT RTR",
@@ -72,7 +72,7 @@ async def test_get_internal_orders_joins_business_order_fields() -> None:
                                 "id": "PI0017287",
                                 "出貨單 PI": "QO-IM20250828 DRIFT RTR",
                                 "訂單 PO": "PC000872",
-                                "內部訂單單據編號": "NB25828-9674",
+                                "internal_id": "NB25828-9674",
                                 "修改日期": "07/18/2026",
                             },
                         }
@@ -83,7 +83,7 @@ async def test_get_internal_orders_joins_business_order_fields() -> None:
                     {
                         "recordId": "17452",
                         "fieldData": {
-                            "內部訂單單據編號": "NB25828-9674",
+                            "internal_id": "NB25828-9674",
                             "日期": "08/28/2025",
                             "總和": "58275",
                             "付款狀態": "未收款",
@@ -158,7 +158,7 @@ async def test_get_internal_orders_all_scope_does_not_force_category() -> None:
                         {
                             "recordId": "17500",
                             "fieldData": {
-                                "內部訂單單據編號": "NB260001",
+                                "internal_id": "NB260001",
                                 "訂單分類": "报价单",
                                 "出貨單_客戶::客戶名稱": "SARL IMODEL",
                             },
@@ -172,7 +172,7 @@ async def test_get_internal_orders_all_scope_does_not_force_category() -> None:
                             "recordId": "17500",
                             "fieldData": {
                                 "id": "PI0018000",
-                                "內部訂單單據編號": "NB260001",
+                                "internal_id": "NB260001",
                             },
                         }
                     ]

@@ -28,8 +28,8 @@ class SuccessfulFileMaker:
         if layout == "@出貨單" and query_fields == {"id"}:
             return {
                 "data": [
-                    {"recordId": "source-1", "fieldData": {"id": "PI-1", "內部訂單單據編號": "NB001", "customer_id": "CU004"}},
-                    {"recordId": "source-2", "fieldData": {"id": "PI-2", "內部訂單單據編號": "NB002", "customer_id": "CU004"}},
+                    {"recordId": "source-1", "fieldData": {"id": "PI-1", "internal_id": "NB001", "customer_id": "CU004"}},
+                    {"recordId": "source-2", "fieldData": {"id": "PI-2", "internal_id": "NB002", "customer_id": "CU004"}},
                 ],
                 "foundCount": 2,
             }
@@ -65,7 +65,7 @@ class SuccessfulFileMaker:
     async def get_record(self, layout, record_id):
         return [{
             "recordId": record_id,
-            "fieldData": {"id": "PI-NEW", "內部訂單單據編號": "NB261540"},
+            "fieldData": {"id": "PI-NEW", "internal_id": "NB261540"},
         }]
 
     async def delete_record(self, layout, record_id):

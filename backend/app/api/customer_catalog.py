@@ -52,6 +52,7 @@ ORDER_LAYOUT = "@出貨單"
 ORDER_DETAIL_LAYOUT = "@mayako"
 ORDER_SCOPE_FIELD = "select_client_for_web_id"
 ORDER_ID_FIELD = "id"
+ORDER_INTERNAL_ID_FIELD = "internal_id"
 ORDER_AMOUNT_FIELD = "貨款總和_price"
 MAX_CATALOG_PAGE_SIZE = 100
 PRODUCT_EXPORT_PAGE_SIZE = 500
@@ -69,7 +70,7 @@ ORDER_SEARCH_FIELDS = (
     "包裝狀態",
     "客戶備註",
     "訂單 PO",
-    "內部訂單單據編號",
+    ORDER_INTERNAL_ID_FIELD,
     "shipping_company",
     "tracking_number",
     "order_remarks_for_client_only",
@@ -78,7 +79,7 @@ ORDER_SEARCH_FIELDS = (
 ORDER_CHAT_TEXT_SEARCH_FIELDS = (
     ORDER_ID_FIELD,
     "出貨單 PI",
-    "內部訂單單據編號",
+    ORDER_INTERNAL_ID_FIELD,
     "訂單 PO",
     "訂單 PO備註",
     "出货状态",
@@ -1017,7 +1018,7 @@ async def _order_details(
             ORDER_SCOPE_FIELD: f"=={web_client_id.strip()}",
         }
         if internal_number:
-            criteria["內部訂單單據編號"] = f"=={internal_number}"
+            criteria[ORDER_INTERNAL_ID_FIELD] = f"=={internal_number}"
         if order_number:
             criteria["出貨單 PI"] = f"=={order_number}"
         if criteria:
@@ -1042,7 +1043,7 @@ async def _order_details(
 
 def _order_identity(fields: dict[str, Any]) -> tuple[str, str]:
     return (
-        _text(fields.get("內部訂單單據編號")),
+        _text(fields.get(ORDER_INTERNAL_ID_FIELD)),
         _text(fields.get("出貨單 PI")),
     )
 

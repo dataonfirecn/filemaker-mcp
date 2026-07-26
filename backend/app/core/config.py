@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     filemaker_web_merge_order_create_layout: str = "訂單 資料_業務_EDIT"
     filemaker_web_merge_item_layout: str = "出貨單資料_List_業務"
     filemaker_web_merge_order_id_field: str = "id"
-    filemaker_web_merge_internal_order_no_field: str = "內部訂單單據編號"
+    filemaker_web_merge_internal_order_no_field: str = "internal_id"
     filemaker_web_merge_customer_id_field: str = "customer_id"
     filemaker_web_merge_log_field: str = "log"
     filemaker_web_merge_order_date_field: str = "日期"

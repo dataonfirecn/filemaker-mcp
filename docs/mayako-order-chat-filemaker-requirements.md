@@ -24,7 +24,7 @@
 布局包含的客户可见字段包括：
 
 - 范围：基础表查询字段 `select_client_for_web_id`、布局字段 `出貨公司群組ID`、`customer_id`
-- 单号：`id`、`出貨單 PI`、`內部訂單單據編號`、`訂單 PO`
+- 单号：`id`、`出貨單 PI`、`internal_id`、`訂單 PO`
 - 状态：`出货状态`、`包裝狀態`、`付款狀態`、`訂單分類`、`訂單型態`、`概要`、`order_status`
 - 物流：`shipping_company`、`快遞出貨公司名稱`、`快遞出貨國家`、`tracking_number`
 - 金额：`shipping_cost`、`貨款總和_price`

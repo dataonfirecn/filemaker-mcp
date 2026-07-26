@@ -350,7 +350,7 @@ def test_order_catalog_maps_only_requested_customer_visible_fields() -> None:
             "recordId": "91",
             "fieldData": {
                 "出貨單 PI": "Sample order",
-                "內部訂單單據編號": "NB001",
+                "internal_id": "NB001",
                 "訂單 PO": "PO-7788",
                 "shipping_company": "优速",
                 "tracking_number": "910038198088",
@@ -360,7 +360,7 @@ def test_order_catalog_maps_only_requested_customer_visible_fields() -> None:
         },
         {
             "出貨單 PI": "Sample order",
-            "內部訂單單據編號": "NB001",
+            "internal_id": "NB001",
             "訂單 PO": "PO-7788",
             "出貨單_客戶::客戶名稱": "欧先生",
             "貨款總和_price": 8764.84,
@@ -391,13 +391,13 @@ def test_order_catalog_never_falls_back_to_internal_pi_or_internal_order_number(
             "recordId": "91",
             "fieldData": {
                 "出貨單 PI": "PI-MY-USA-001",
-                "內部訂單單據編號": "NB001",
+                "internal_id": "NB001",
                 "訂單 PO": "",
             },
         },
         {
             "出貨單 PI": "PI-MY-USA-001",
-            "內部訂單單據編號": "NB001",
+            "internal_id": "NB001",
             "訂單 PO": "",
             "出貨單_客戶::客戶名稱": "Mayako",
         },
@@ -447,14 +447,14 @@ def test_order_detail_lookup_uses_only_identities_from_scoped_primary_rows() -> 
             assert layout == "@mayako"
             assert query == [{
                 "select_client_for_web_id": "==0780",
-                "內部訂單單據編號": "==NB001",
+                "internal_id": "==NB001",
                 "出貨單 PI": "==PI-001",
             }]
             assert limit == 2
             return {
                 "data": [{
                     "fieldData": {
-                        "內部訂單單據編號": "NB001",
+                        "internal_id": "NB001",
                         "出貨單 PI": "PI-001",
                         "shipping_cost": 8.6,
                     },
@@ -465,7 +465,7 @@ def test_order_detail_lookup_uses_only_identities_from_scoped_primary_rows() -> 
 
     details = asyncio.run(_order_details(
         FakeFileMaker(),
-        [{"fieldData": {"內部訂單單據編號": "NB001", "出貨單 PI": "PI-001"}}],
+        [{"fieldData": {"internal_id": "NB001", "出貨單 PI": "PI-001"}}],
         "0780",
     ))
 
@@ -484,7 +484,7 @@ def test_order_endpoint_applies_session_web_client_scope_without_shipment_uuid()
                     "recordId": "91",
                     "fieldData": {
                         "出貨單 PI": "PI-001",
-                        "內部訂單單據編號": "NB001",
+                        "internal_id": "NB001",
                         "出貨單_客戶::客戶名稱": "Mayako",
                         "shipping_company": "UPS",
                         "貨款總和_price": 1250,

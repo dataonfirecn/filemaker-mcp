@@ -899,7 +899,7 @@ async def test_customer_order_chat_uses_scoped_catalog_query() -> None:
                     "recordId": "91",
                     "fieldData": {
                         "出貨單 PI": "PI-001",
-                        "內部訂單單據編號": "NB001",
+                        "internal_id": "NB001",
                         "訂單 PO": "PO-001",
                             "出貨單_客戶::客戶名稱": "Mayako",
                             "貨款總和_price": 1250,
