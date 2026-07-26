@@ -162,6 +162,15 @@ function numericValue(value: number | string | null | undefined): number | null 
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeMonthInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 6);
+  return digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+}
+
+function isValidMonthInput(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
 function StockBadge({ value, verbose = false }: { value: number | string | null | undefined; verbose?: boolean }) {
   const numeric = numericValue(value);
   if (numeric === null) return <>—</>;
@@ -2716,6 +2725,10 @@ function OrdersPage({
       setSearchHint("Enter at least 2 characters to search.");
       return;
     }
+    if (draftMonth && !isValidMonthInput(draftMonth)) {
+      setSearchHint("Enter the order month as YYYY-MM.");
+      return;
+    }
     setSearchHint("");
     setPage(1);
     setQuery(value);
@@ -2796,10 +2809,18 @@ function OrdersPage({
           <label className="cp-order-filter-field cp-order-month">
             <span>Order month</span>
             <input
-              type="month"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
               value={draftMonth}
-              onChange={(event) => setDraftMonth(event.target.value)}
-              aria-label="Order month"
+              onChange={(event) => {
+                setDraftMonth(normalizeMonthInput(event.target.value));
+                setSearchHint("");
+              }}
+              placeholder="YYYY-MM"
+              maxLength={7}
+              pattern="\d{4}-(0[1-9]|1[0-2])"
+              aria-label="Order month in YYYY-MM format"
             />
           </label>
           <div className="cp-order-filter-field">
