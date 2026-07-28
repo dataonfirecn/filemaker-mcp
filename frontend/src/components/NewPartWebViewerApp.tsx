@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -847,6 +846,98 @@ export default function NewPartWebViewerApp() {
   }
 
   if (created) {
+    const displayOption = (items: Option[], value: string) => {
+      if (!value) return "";
+      const option = findOption(items, value);
+      return option ? optionText(option) : value;
+    };
+    const customerDisplay = form.customerName
+      ? `${form.customerName}${form.customerCode ? ` · ${form.customerCode}` : ""}`
+      : form.customerCode;
+    const vendorDisplay = form.vendorName
+      ? `${form.vendorName}${form.vendorNumber ? ` · ${form.vendorNumber}` : ""}`
+      : form.vendorNumber;
+    const storageLocation = [form.locationPrimary, form.locationSecondary]
+      .filter(Boolean)
+      .join(" / ");
+    const completionSections = [
+      {
+        title: "基本资料",
+        items: [
+          { label: "内部名称", value: form.internalName },
+          { label: "外部名称", value: form.externalName },
+          { label: "专属客户", value: customerDisplay },
+          { label: "客户零件号", value: form.customerPartNumber },
+          { label: "厂商", value: vendorDisplay },
+          {
+            label: "库存提醒",
+            value: form.inventoryNotice ? "需要库存提醒" : "不提醒"
+          }
+        ]
+      },
+      {
+        title: "分类与材质",
+        items: [
+          {
+            label: "仓库分工",
+            value: displayOption(options.warehouseDivisions, form.warehouseDivision)
+          },
+          {
+            label: "材料分类",
+            value: displayOption(options.materialCategories, form.materialCategory)
+          },
+          {
+            label: "加工分类",
+            value: displayOption(options.machiningCategories, form.machiningCategory)
+          },
+          {
+            label: "部门分工",
+            value: displayOption(options.departmentDivisions, form.departmentDivision)
+          },
+          {
+            label: "零件品种",
+            value: displayOption(options.partCategories, form.partCategory)
+          },
+          {
+            label: "材料性质",
+            value: displayOption(options.materialProperties, form.materialProperties)
+          },
+          {
+            label: "使用部门",
+            value: displayOption(options.useDepartments, form.useDepartment)
+          },
+          {
+            label: "量产状况",
+            value: displayOption(options.lifecycleStatuses, form.lifecycleStatus)
+          }
+        ]
+      },
+      {
+        title: "规格与仓位",
+        items: [
+          { label: "材质说明", value: form.materialSpec },
+          {
+            label: "材料尺寸",
+            value: displayOption(options.materialSizes, form.materialSize)
+          },
+          {
+            label: "重量",
+            value: form.weightGrams ? `${form.weightGrams} g` : ""
+          },
+          {
+            label: "仓库",
+            value: displayOption(options.warehouseCodes, form.warehouseCode)
+          },
+          { label: "存放位置", value: storageLocation }
+        ]
+      }
+    ]
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => item.value)
+      }))
+      .filter((section) => section.items.length > 0);
+
     return (
       <main className="npw-root npw-complete-root">
         <header className="npw-header">
@@ -860,14 +951,42 @@ export default function NewPartWebViewerApp() {
 
         <div className="npw-complete-page">
           <section className="npw-complete-card" aria-live="polite">
-            <span className="npw-complete-mark">
-              <CheckCircle2 size={38} strokeWidth={2.25} />
-            </span>
-            <span className="npw-complete-kicker">创建成功</span>
-            <h1>{created.partNumber}</h1>
-            <p className="npw-complete-copy">
-              新零件已经写入 FileMaker。请选择返回原画面，或直接转到刚创建的零件。
-            </p>
+            <div className="npw-complete-hero">
+              <span className="npw-complete-mark">
+                <CheckCircle2 size={32} strokeWidth={2.25} />
+              </span>
+              <div className="npw-complete-heading">
+                <span className="npw-complete-kicker">新零件已建立</span>
+                <h1>{created.partNumber}</h1>
+                <p>{form.internalName || form.externalName || "零件资料已保存"}</p>
+              </div>
+              <div className={`npw-complete-photo ${photo ? "has-photo" : ""}`}>
+                {photo ? (
+                  <img src={photo.previewUrl} alt={`${created.partNumber} 零件照片`} />
+                ) : (
+                  <>
+                    <PackageCheck size={24} />
+                    <span>无零件照片</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="npw-complete-summary">
+              {completionSections.map((section) => (
+                <section className="npw-complete-section" key={section.title}>
+                  <h2>{section.title}</h2>
+                  <dl>
+                    {section.items.map((item) => (
+                      <div key={item.label}>
+                        <dt>{item.label}</dt>
+                        <dd>{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </div>
 
             <dl className="npw-complete-details">
               <div>
@@ -904,12 +1023,12 @@ export default function NewPartWebViewerApp() {
 
             <div className="npw-complete-actions">
               <button
-                className="npw-btn npw-complete-return"
+                className="npw-btn npw-complete-another"
                 type="button"
-                onClick={() => completeInFileMaker("return")}
+                onClick={reset}
               >
-                <ArrowLeft size={17} />
-                返回 FileMaker 原画面
+                <Plus size={17} />
+                继续新建
               </button>
               <button
                 className="npw-btn npw-complete-open"
@@ -917,14 +1036,17 @@ export default function NewPartWebViewerApp() {
                 onClick={() => completeInFileMaker("openPart")}
               >
                 <ExternalLink size={17} />
-                转到新建的零件
+                查看记录
+              </button>
+              <button
+                className="npw-btn npw-complete-close"
+                type="button"
+                onClick={() => completeInFileMaker("return")}
+              >
+                <X size={17} />
+                关闭窗口
               </button>
             </div>
-
-            <button className="npw-complete-another" type="button" onClick={reset}>
-              <Plus size={15} />
-              继续建立另一个零件
-            </button>
           </section>
         </div>
       </main>
