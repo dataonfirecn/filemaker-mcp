@@ -809,6 +809,178 @@
   font-size: 9px;
 }
 
+.npw-complete-root {
+  overflow-x: hidden;
+}
+
+.npw-complete-page {
+  display: grid;
+  min-height: calc(100vh - 66px);
+  place-items: center;
+  padding: 34px 20px;
+}
+
+.npw-complete-card {
+  position: relative;
+  display: grid;
+  width: min(680px, 100%);
+  justify-items: center;
+  overflow: hidden;
+  border: 1px solid #cbdbe5;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 0, rgba(37, 167, 138, 0.1), transparent 38%),
+    #fff;
+  box-shadow: 0 22px 60px rgba(22, 54, 79, 0.13);
+  padding: 42px 46px 32px;
+  text-align: center;
+}
+
+.npw-complete-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--npw-blue), #22a58e, var(--npw-teal));
+  content: "";
+}
+
+.npw-complete-mark {
+  display: grid;
+  width: 82px;
+  height: 82px;
+  place-items: center;
+  border: 8px solid #e4f6f0;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(145deg, #2cb390, #108274);
+  box-shadow: 0 14px 30px rgba(19, 139, 126, 0.24);
+}
+
+.npw-complete-kicker {
+  margin-top: 22px;
+  color: #18816e;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.npw-complete-card h1 {
+  margin: 7px 0 0;
+  color: var(--npw-navy);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.015em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.npw-complete-copy {
+  max-width: 500px;
+  margin: 12px 0 0;
+  color: #6e8192;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+.npw-complete-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  margin: 26px 0 0;
+  border: 1px solid #dce7ee;
+  border-radius: 13px;
+  background: #f7fafc;
+}
+
+.npw-complete-details > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 14px 12px;
+}
+
+.npw-complete-details > div + div {
+  border-left: 1px solid #dce7ee;
+}
+
+.npw-complete-details dt {
+  color: #8292a1;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.npw-complete-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #2f4a61;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npw-complete-notices,
+.npw-complete-error {
+  width: 100%;
+  margin-top: 14px;
+  text-align: left;
+}
+
+.npw-complete-notices {
+  display: grid;
+  gap: 8px;
+}
+
+.npw-complete-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  width: 100%;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.npw-complete-actions .npw-btn {
+  min-height: 48px;
+  font-size: 11px;
+}
+
+.npw-complete-return {
+  border-color: #cddae4;
+  color: #536c80;
+  background: #fff;
+}
+
+.npw-complete-open {
+  color: #fff;
+  background: linear-gradient(135deg, var(--npw-blue), var(--npw-teal));
+  box-shadow: 0 9px 20px rgba(27, 112, 151, 0.22);
+}
+
+.npw-complete-another {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border: 0;
+  color: #56758b;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.npw-complete-another:hover {
+  color: var(--npw-blue);
+}
+
 .npw-actions {
   position: fixed;
   right: 0;
@@ -1167,6 +1339,36 @@
   .npw-page {
     width: min(100% - 16px, 1420px);
     padding-top: 10px;
+  }
+
+  .npw-complete-page {
+    min-height: calc(100vh - 60px);
+    align-items: start;
+    padding: 18px 10px;
+  }
+
+  .npw-complete-card {
+    border-radius: 16px;
+    padding: 30px 16px 24px;
+  }
+
+  .npw-complete-mark {
+    width: 68px;
+    height: 68px;
+  }
+
+  .npw-complete-details,
+  .npw-complete-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .npw-complete-details > div {
+    padding: 11px 12px;
+  }
+
+  .npw-complete-details > div + div {
+    border-top: 1px solid #dce7ee;
+    border-left: 0;
   }
 
   .npw-card {

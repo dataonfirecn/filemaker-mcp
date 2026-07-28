@@ -1,14 +1,17 @@
 import {
   AlertCircle,
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
   CircleHelp,
   Database,
+  ExternalLink,
   ImagePlus,
   Loader2,
   PackageCheck,
   PackagePlus,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -147,6 +150,8 @@ type CreateResponse = {
   photoAssetId?: string;
   warnings: string[];
 };
+
+type FileMakerCompletionAction = "return" | "openPart";
 
 class ApiError extends Error {
   fieldErrors: Record<string, string>;
@@ -412,6 +417,7 @@ export default function NewPartWebViewerApp() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateResponse | null>(null);
+  const [fileMakerActionError, setFileMakerActionError] = useState<string | null>(null);
   const [customerQuery, setCustomerQuery] = useState("");
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorResults, setVendorResults] = useState<VendorOption[]>([]);
@@ -763,15 +769,30 @@ export default function NewPartWebViewerApp() {
       );
       setCreated(response);
       setWarnings(response.warnings);
-      window.FileMaker?.PerformScript(
-        completeScriptName,
-        JSON.stringify(response)
-      );
     } catch (nextError) {
       if (nextError instanceof ApiError) setFieldErrors(nextError.fieldErrors);
       setError(parseError(nextError));
     } finally {
       setCreating(false);
+    }
+  }
+
+  function completeInFileMaker(action: FileMakerCompletionAction) {
+    if (!created) return;
+    if (!window.FileMaker) {
+      setFileMakerActionError(
+        "当前页面不在 FileMaker WebViewer 中，无法切换 FileMaker 画面。"
+      );
+      return;
+    }
+    setFileMakerActionError(null);
+    try {
+      window.FileMaker.PerformScript(
+        completeScriptName,
+        JSON.stringify({ ...created, action })
+      );
+    } catch (nextError) {
+      setFileMakerActionError(`无法调用 FileMaker：${parseError(nextError)}`);
     }
   }
 
@@ -792,6 +813,7 @@ export default function NewPartWebViewerApp() {
     setWarnings([]);
     setError(null);
     setCreated(null);
+    setFileMakerActionError(null);
     setCustomerQuery("");
     setVendorQuery("");
     setVendorResults([]);
@@ -820,6 +842,91 @@ export default function NewPartWebViewerApp() {
         <button type="button" onClick={() => window.location.reload()}>
           <RefreshCw size={16} /> 重新载入
         </button>
+      </main>
+    );
+  }
+
+  if (created) {
+    return (
+      <main className="npw-root npw-complete-root">
+        <header className="npw-header">
+          <span className="npw-brand"><PackageCheck size={21} /></span>
+          <span className="npw-title">
+            <strong>零件创建完成</strong>
+            <small>资料已经保存到 FileMaker</small>
+          </span>
+          <span className="npw-connected"><i /> 已连接 FileMaker</span>
+        </header>
+
+        <div className="npw-complete-page">
+          <section className="npw-complete-card" aria-live="polite">
+            <span className="npw-complete-mark">
+              <CheckCircle2 size={38} strokeWidth={2.25} />
+            </span>
+            <span className="npw-complete-kicker">创建成功</span>
+            <h1>{created.partNumber}</h1>
+            <p className="npw-complete-copy">
+              新零件已经写入 FileMaker。请选择返回原画面，或直接转到刚创建的零件。
+            </p>
+
+            <dl className="npw-complete-details">
+              <div>
+                <dt>FileMaker Record ID</dt>
+                <dd>{created.recordId}</dd>
+              </div>
+              <div>
+                <dt>零件 ID</dt>
+                <dd>{created.partId || "—"}</dd>
+              </div>
+              <div>
+                <dt>零件照片</dt>
+                <dd>{created.photoUploaded ? "已上传" : "未上传"}</dd>
+              </div>
+            </dl>
+
+            {warnings.length > 0 && (
+              <div className="npw-complete-notices">
+                {warnings.map((warning) => (
+                  <div className="npw-alert warning" key={warning}>
+                    <AlertCircle size={17} />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {fileMakerActionError && (
+              <div className="npw-alert error npw-complete-error" role="alert">
+                <AlertCircle size={17} />
+                <span>{fileMakerActionError}</span>
+              </div>
+            )}
+
+            <div className="npw-complete-actions">
+              <button
+                className="npw-btn npw-complete-return"
+                type="button"
+                onClick={() => completeInFileMaker("return")}
+              >
+                <ArrowLeft size={17} />
+                返回 FileMaker 原画面
+              </button>
+              <button
+                className="npw-btn npw-complete-open"
+                type="button"
+                onClick={() => completeInFileMaker("openPart")}
+              >
+                <ExternalLink size={17} />
+                转到新建的零件
+              </button>
+            </div>
+
+            <button className="npw-complete-another" type="button" onClick={reset}>
+              <Plus size={15} />
+              继续建立另一个零件
+            </button>
+          </section>
+        </div>
       </main>
     );
   }
@@ -1142,19 +1249,10 @@ export default function NewPartWebViewerApp() {
           {fieldErrors.photo && <small className="npw-field-error npw-photo-error">{fieldErrors.photo}</small>}
         </section>
 
-        {(error || warnings.length > 0 || created) && (
+        {(error || warnings.length > 0) && (
           <section className="npw-feedback" aria-live="polite">
             {error && <div className="npw-alert error"><AlertCircle size={17} /><span>{error}</span></div>}
             {warnings.map((warning) => <div className="npw-alert warning" key={warning}><AlertCircle size={17} /><span>{warning}</span></div>)}
-            {created && (
-              <div className="npw-success">
-                <CheckCircle2 size={21} />
-                <span>
-                  <strong>零件已建立</strong>
-                  <small>{created.partNumber} · FileMaker Record ID {created.recordId}{created.partId ? ` · 零件 ID ${created.partId}` : ""}</small>
-                </span>
-              </div>
-            )}
           </section>
         )}
 
@@ -1174,9 +1272,9 @@ export default function NewPartWebViewerApp() {
             {validating ? <Loader2 className="npw-spin" size={16} /> : <Check size={16} />}
             {validating ? "正在验证…" : "检查资料"}
           </button>
-          <button className="npw-btn npw-btn-create" type="button" onClick={() => void createNewPart()} disabled={creating || photoPreparing || Boolean(created)}>
+          <button className="npw-btn npw-btn-create" type="button" onClick={() => void createNewPart()} disabled={creating || photoPreparing}>
             {creating ? <Loader2 className="npw-spin" size={17} /> : <PackagePlus size={17} />}
-            {creating ? "正在建立零件…" : created ? "已建立" : "建立零件"}
+            {creating ? "正在建立零件…" : "建立零件"}
           </button>
         </div>
       </footer>

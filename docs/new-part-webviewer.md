@@ -53,6 +53,14 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 “清空重来”必须在确认弹窗中再次确认后才执行。清空、检查和建立按钮固定
 在 WebViewer 底部操作栏，不随表单内容浮动。
 
+建立成功后不再立即关闭 WebViewer，而是进入独立完成页。完成页显示零件编号、
+FileMaker Record ID、零件 ID 和照片状态，并提供三个动作：
+
+- `返回 FileMaker 原画面`：保存回调结果并关闭 WebViewer，不改变父窗口布局。
+- `转到新建的零件`：保存回调结果、关闭 WebViewer，然后按当前 FileMaker
+  权限集切换到对应零件资料布局并精确查找新编号。
+- `继续建立另一个零件`：留在 WebViewer，清空上一笔内容后返回新建表单。
+
 ## FileMaker 数据来源
 
 `GET /api/part-creation/options` 每次打开时从 FileMaker
@@ -100,21 +108,34 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 - 照片支持 JPG、PNG、WebP。浏览器先压缩，后端限制原始解码数据不超过
   `8 MB`，建立记录后上传到 FileMaker 容器字段。
 - 如果照片上传失败，后端会删除刚建立的记录，避免留下没有照片的半成品。
-- 建立成功后页面显示 FileMaker Record ID，并调用
-  `新建零件_WebViewer回调`。回调保存本次创建结果后关闭 WebViewer。
+- 建立成功后页面先进入独立完成页，不自动调用 FileMaker 脚本。只有用户选择
+  返回或转到新零件时，才调用 `新建零件_WebViewer回调`。
 
 ## 创建成功回调
 
 网页把后端返回的完整 JSON 作为脚本参数传给
-`新建零件_WebViewer回调`。回调保存以下全局变量，便于 FileMaker
-父窗口或后续脚本读取：
+`新建零件_WebViewer回调`，并额外带上 `action`：
+
+- `return`：关闭 WebViewer，保留父窗口原画面。
+- `openPart`：关闭 WebViewer，切换到当前权限集可用的零件资料布局，以
+  `零件::part_number` 精确查找新建编号。
+
+回调保存以下全局变量，便于 FileMaker 父窗口或后续脚本读取：
 
 - `$$StarRC_NewPartResult`
 - `$$StarRC_NewPartRecordId`
 - `$$StarRC_NewPartPartNumber`
 - `$$StarRC_NewPartPartId`
 - `$$StarRC_NewPartPhotoUploaded`
+- `$$StarRC_NewPartAction`
 - `$$StarRC_NewPartCallbackAt`
+- `$$StarRC_NewPartTargetLayout`
+- `$$StarRC_NewPartOpenError`
+
+`openPart` 按权限集使用以下布局：业务、采购、设计、品检、仓库和雷雕账号分别
+进入对应部门布局；未命中特定部门权限集时进入 `零件 資料_管理`。为了让回调
+完成布局切换与查找，请在 FileMaker 脚本工作区把
+`新建零件_WebViewer回调` 设置为“以完全访问权限运行”。
 
 可粘贴回调步骤：
 `filemaker-clipboard-xml/09-new-part-webviewer-callback-script-steps.fmxmlsnippet.xml`。

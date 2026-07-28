@@ -33,7 +33,9 @@ MES_FILEMAKER_SCRIPT_NAME=MES_UpdateWorkOrder_Test
 - `03-api-test-layout-objects.fmxmlsnippet.xml`：从目标 FileMaker 布局复制出来的真实样式布局对象，已排列为 1024 宽两栏布局，贴到 `API_Test` 布局模式。
 - `04-test-callback-payload.json`：后端 callback 测试请求体。
 - `08-open-new-part-webviewer-script-steps.fmxmlsnippet.xml`：打开 `Create New Part_Web` 的 Card/Dialog 窗口脚本步骤。
-- `09-new-part-webviewer-callback-script-steps.fmxmlsnippet.xml`：接收新建零件结果、保存全局变量并关闭当前 WebViewer 窗口的回调脚本步骤。
+- `09-new-part-webviewer-callback-script-steps.fmxmlsnippet.xml`：接收完成页动作并
+  保存新建结果；可仅关闭 WebViewer，也可按账号权限切换到对应零件资料布局并
+  精确查找新编号。该回调脚本应设置为“以完全访问权限运行”。
 - `10-part-assets-table-with-fields.fmxmlsnippet.xml`：建立 `PartAssets` 表及
   34 个字段。二进制文件以 COS 为权威来源，表内 `asset_file` 只作为兼容容器。
 - `FILEMAKER_TABLE_XML_NOTES.md`：本次成功创建表和字段的格式记录、失败原因和检查命令。
