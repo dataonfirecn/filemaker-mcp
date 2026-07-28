@@ -3,8 +3,9 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.models.bom_calculation_write import (
@@ -18,18 +19,24 @@ from app.services.bom_calculation_writer import (
 )
 from app.services.dependencies import (
     get_audit_log_store,
+    get_cos_storage_service,
     get_filemaker_client,
     get_operator_context,
     get_settings,
     get_webviewer_session_context,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
+from app.services.cos_storage import COSStorageError, COSStorageService
 from app.services.internal_order_merge import (
     InternalOrderMergeError,
     merge_internal_orders_via_data_api,
     preview_internal_orders_via_data_api,
 )
 from app.services.product_api import PRODUCT_LAYOUT, PRODUCT_STOCK_FIELD, enrich_product_record
+from app.services.part_assets import (
+    asset_fields as part_asset_fields,
+    find_primary_part_asset,
+)
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -598,6 +605,8 @@ async def get_order_part_image(
     part_no: str,
     _operator: OperatorContext = Depends(get_operator_context),
     client: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
+    storage: COSStorageService = Depends(get_cos_storage_service),
 ) -> Response:
     try:
         result = await client.find_records(
@@ -607,6 +616,31 @@ async def get_order_part_image(
         )
         records = _records(result)
         fields = _fields(records[0]) if records else {}
+        part_id = _text(fields.get("part_id"))
+        if part_id:
+            try:
+                asset = await find_primary_part_asset(
+                    client,
+                    settings,
+                    part_id=part_id,
+                )
+            except FileMakerAPIError:
+                asset = None
+            object_key = _text(part_asset_fields(asset).get("object_key"))
+            try:
+                asset_url, _expires_at = (
+                    await run_in_threadpool(storage.create_presigned_download, object_key)
+                    if object_key
+                    else ("", None)
+                )
+            except COSStorageError:
+                asset_url = ""
+            if asset_url:
+                return RedirectResponse(
+                    asset_url,
+                    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                    headers={"Cache-Control": "private, max-age=300"},
+                )
         image_url = _text(fields.get("影像 | 容器")) or _text(fields.get("圖面 | 容器"))
         if not image_url:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "零件没有图片"})

@@ -22,7 +22,9 @@ from app.api import (
     natural_language_query,
     odata,
     orders,
+    part_assets,
     part_creation,
+    part_directory,
     qrcode,
     rag_index,
     webviewer,
@@ -41,6 +43,7 @@ from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
+from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_account_access import (
@@ -71,6 +74,8 @@ async def lifespan(app: FastAPI):
     await callback_store.init()
     receipt_attachment_store = ReceiptAttachmentStore(settings.database_path)
     await receipt_attachment_store.init()
+    part_asset_upload_store = PartAssetUploadStore(settings.database_path)
+    await part_asset_upload_store.init()
     cos_storage_service = COSStorageService(settings)
     customer_credential_store = CustomerCredentialStore(settings.database_path)
     await customer_credential_store.init()
@@ -125,6 +130,7 @@ async def lifespan(app: FastAPI):
     app.state.customer_account_admin_store = customer_account_admin_store
     app.state.webviewer_account_access_store = webviewer_account_access_store
     app.state.receipt_attachment_store = receipt_attachment_store
+    app.state.part_asset_upload_store = part_asset_upload_store
     app.state.cos_storage_service = cos_storage_service
     app.state.natural_query_conversation_store = natural_query_conversation_store
     app.state.natural_query_analytics_worker = natural_query_analytics_worker
@@ -224,6 +230,8 @@ app.include_router(webviewer.router, prefix=settings.api_prefix)
 app.include_router(inventory.router, prefix=settings.api_prefix)
 app.include_router(material_ids.router, prefix=settings.api_prefix)
 app.include_router(part_creation.router, prefix=settings.api_prefix)
+app.include_router(part_assets.router, prefix=settings.api_prefix)
+app.include_router(part_directory.router, prefix=settings.api_prefix)
 app.include_router(bom_changes.router, prefix=settings.api_prefix)
 app.include_router(bom_documents.router, prefix=settings.api_prefix)
 app.include_router(business_products.router, prefix=settings.api_prefix)

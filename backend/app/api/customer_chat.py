@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.api.customer_catalog import find_customer_orders_for_chat
 from app.api.natural_language_query import run_natural_language_query
@@ -35,6 +37,8 @@ from app.models.customer_chat_admin import (
     CustomerAccountAdminItem,
     CustomerAccountAdminResponse,
     CustomerAccountAdminUpdateRequest,
+    CustomerCredentialsEmailLogItem,
+    CustomerCredentialsEmailLogResponse,
     CustomerChatHistoryItem,
     CustomerChatHistoryResponse,
     CustomerChatQuestionSummaryItem,
@@ -73,6 +77,7 @@ from app.services.dependencies import (
     get_customer_chat_history_store,
     get_customer_login_rate_limiter,
     get_customer_session,
+    get_cos_storage_service,
     get_filemaker_client,
     get_filemaker_odata_client,
     get_natural_query_conversation_store,
@@ -81,6 +86,7 @@ from app.services.dependencies import (
     get_settings,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
+from app.services.cos_storage import COSStorageError, COSStorageService
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
@@ -90,6 +96,10 @@ from app.services.product_api import (
     find_product_price,
     price_value,
 )
+from app.services.part_assets import (
+    asset_fields as part_asset_fields,
+    find_primary_part_asset,
+)
 from app.services.rag_index import RagIndexStore
 
 
@@ -97,6 +107,7 @@ router = APIRouter(prefix="/customer-chat", tags=["customer-chat"])
 logger = logging.getLogger(__name__)
 PART_LAYOUT = "Parts"
 MAX_CUSTOMER_ATTACHMENT_BYTES = 12 * 1024 * 1024
+CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS = 60
 CUSTOMER_ATTACHMENT_MEDIA_TYPES = {
     "application/pdf",
     "image/bmp",
@@ -316,15 +327,26 @@ async def login_customer(
         ) from exc
 
     client_host = request.client.host if request.client else "unknown"
-    username_key = body.username.strip().casefold()
-    account_state = await account_admin_store.get_state(body.username)
+    login_identifier = body.username.strip()
+    identifier_key = login_identifier.casefold()
+    account_state, ambiguous_email = await account_admin_store.resolve_login_state(
+        login_identifier
+    )
+    canonical_username = (
+        str(account_state["username"]) if account_state else login_identifier
+    )
+    username_key = canonical_username.casefold()
     environment_account = configured_accounts.get(username_key)
     if environment_account and not account_state:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"message": "The customer portal is temporarily unavailable. Please try again later."},
         )
-    password_hash_override = await credential_store.get_password_hash(body.username)
+    password_hash_override = (
+        await credential_store.get_password_hash(canonical_username)
+        if account_state
+        else None
+    )
     password_hash = password_hash_override or (
         environment_account.password_hash if environment_account else ""
     )
@@ -333,7 +355,7 @@ async def login_customer(
         if account_state and password_hash
         else None
     )
-    limiter_key = f"{client_host}:{username_key}"
+    limiter_key = f"{client_host}:{username_key if account_state else identifier_key}"
     retry_after = await rate_limiter.retry_after(
         limiter_key,
         max_attempts=settings.customer_chat_login_max_attempts,
@@ -355,13 +377,15 @@ async def login_customer(
 
     account = await asyncio.to_thread(
         authenticate_customer,
-        body.username,
+        "" if ambiguous_email else canonical_username,
         body.password,
         settings,
         password_hash_override=password_hash_override,
         account_override=configured_account,
     )
-    login_failure_reason = "invalid_credentials"
+    login_failure_reason = (
+        "ambiguous_email" if ambiguous_email else "invalid_credentials"
+    )
     if account_state:
         if account and not account_state["enabled"]:
             account = None
@@ -390,9 +414,19 @@ async def login_customer(
             request_payload={"clientHost": client_host},
             error_message=login_failure_reason,
         )
+        if ambiguous_email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        "This email is linked to multiple accounts. "
+                        "Please contact your administrator."
+                    )
+                },
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"message": "The customer ID or password is incorrect."},
+            detail={"message": "The username, email, or password is incorrect."},
         )
 
     await rate_limiter.clear(limiter_key)
@@ -917,6 +951,22 @@ async def get_customer_accounts_admin(
     )
 
 
+@router.get(
+    "/admin/accounts/email-logs",
+    response_model=CustomerCredentialsEmailLogResponse,
+)
+async def get_customer_credentials_email_logs_admin(
+    limit: int = Query(default=100, ge=1, le=200),
+    session: CustomerSession = Depends(get_customer_session),
+    account_admin_store: CustomerAccountAdminStore = Depends(get_customer_account_admin_store),
+) -> CustomerCredentialsEmailLogResponse:
+    _require_customer_admin(session)
+    rows = await account_admin_store.list_credentials_email_events(limit=limit)
+    return CustomerCredentialsEmailLogResponse(
+        logs=[CustomerCredentialsEmailLogItem(**row) for row in rows],
+    )
+
+
 @router.post(
     "/admin/accounts",
     response_model=CustomerAccountAdminItem,
@@ -939,7 +989,6 @@ async def create_customer_account_admin(
     password_hash = await asyncio.to_thread(hash_customer_password, body.password)
     access_role = normalize_customer_access_role(
         body.access_role,
-        can_view_price=body.can_view_price is True,
         is_admin=body.is_admin is True,
     )
     created = await account_admin_store.create_account(
@@ -947,6 +996,7 @@ async def create_customer_account_admin(
         display_name=body.display_name,
         email=body.email,
         enabled=body.enabled,
+        can_view_price=body.can_view_price is True,
         access_role=access_role,
         updated_by=session.username,
     )
@@ -966,6 +1016,10 @@ async def create_customer_account_admin(
     credentials_email_sent: bool | None = None
     credentials_email_error = ""
     if body.send_credentials:
+        await account_admin_store.claim_credentials_email(
+            body.username,
+            cooldown_seconds=CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS,
+        )
         try:
             await asyncio.to_thread(
                 send_customer_credentials_email,
@@ -976,9 +1030,27 @@ async def create_customer_account_admin(
                 temporary_password=body.password,
             )
             credentials_email_sent = True
+            await account_admin_store.complete_credentials_email(
+                body.username,
+                cooldown_seconds=CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS,
+            )
+            await account_admin_store.record_credentials_email_event(
+                body.username,
+                recipient_email=body.email,
+                status="success",
+                message="Login credentials email sent.",
+            )
         except CustomerEmailError as exc:
             credentials_email_sent = False
             credentials_email_error = str(exc)
+            await account_admin_store.release_credentials_email(body.username)
+            await account_admin_store.record_credentials_email_event(
+                body.username,
+                recipient_email=body.email,
+                status="failed",
+                message=credentials_email_error,
+            )
+        created = await account_admin_store.get_state(body.username) or created
     await audit_log.record(
         operator=session.operator,
         action_type="CUSTOMER_ACCOUNT_CREATE",
@@ -1143,12 +1215,7 @@ async def update_customer_account_admin(
             detail={"message": "You cannot disable the administrator account you are currently using."},
         )
     access_role = normalize_customer_access_role(
-        body.access_role if body.access_role is not None else "",
-        can_view_price=(
-            body.can_view_price
-            if body.can_view_price is not None
-            else bool(before["canViewPrice"])
-        ),
+        body.access_role if body.access_role is not None else before.get("accessRole"),
         is_admin=body.is_admin if body.is_admin is not None else bool(before["isAdmin"]),
     )
     if username_key == session.username.casefold() and access_role != "admin":
@@ -1156,22 +1223,50 @@ async def update_customer_account_admin(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"message": "You cannot remove administrator permission from the account you are currently using."},
         )
-    updated = await account_admin_store.update_account(
-        username,
-        enabled=next_enabled,
-        display_name=body.display_name,
-        email=body.email,
-        access_role=access_role,
-        updated_by=session.username,
-    )
-    if not updated:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Customer account not found."},
+    email_claimed = False
+    if body.send_credentials:
+        remaining = await account_admin_store.claim_credentials_email(
+            username,
+            cooldown_seconds=CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS,
         )
-    if body.new_password:
-        password_hash = await asyncio.to_thread(hash_customer_password, body.new_password)
-        await credential_store.set_password_hash(username, password_hash)
+        if remaining:
+            await account_admin_store.record_credentials_email_event(
+                username,
+                recipient_email=email_value,
+                status="blocked",
+                message=f"Send blocked by {remaining}-second cooldown.",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "message": f"Please wait {remaining} seconds before sending another login email.",
+                    "code": "email_cooldown",
+                    "cooldownSeconds": remaining,
+                },
+            )
+        email_claimed = True
+    try:
+        updated = await account_admin_store.update_account(
+            username,
+            enabled=next_enabled,
+            display_name=body.display_name,
+            email=body.email,
+            can_view_price=body.can_view_price,
+            access_role=access_role,
+            updated_by=session.username,
+        )
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Customer account not found."},
+            )
+        if body.new_password:
+            password_hash = await asyncio.to_thread(hash_customer_password, body.new_password)
+            await credential_store.set_password_hash(username, password_hash)
+    except Exception:
+        if email_claimed:
+            await account_admin_store.release_credentials_email(username)
+        raise
     credentials_email_sent: bool | None = None
     credentials_email_error = ""
     if body.send_credentials and body.new_password:
@@ -1185,9 +1280,27 @@ async def update_customer_account_admin(
                 temporary_password=body.new_password,
             )
             credentials_email_sent = True
+            await account_admin_store.complete_credentials_email(
+                username,
+                cooldown_seconds=CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS,
+            )
+            await account_admin_store.record_credentials_email_event(
+                username,
+                recipient_email=str(updated["email"]),
+                status="success",
+                message="Login credentials email sent.",
+            )
         except CustomerEmailError as exc:
             credentials_email_sent = False
             credentials_email_error = str(exc)
+            await account_admin_store.release_credentials_email(username)
+            await account_admin_store.record_credentials_email_event(
+                username,
+                recipient_email=str(updated["email"]),
+                status="failed",
+                message=credentials_email_error,
+            )
+        updated = await account_admin_store.get_state(username) or updated
     await audit_log.record(
         operator=session.operator,
         action_type="CUSTOMER_ACCOUNT_UPDATE",
@@ -1456,6 +1569,8 @@ async def get_customer_part_image(
     record_id: str,
     session: CustomerSession = Depends(get_customer_session),
     filemaker: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
+    storage: COSStorageService = Depends(get_cos_storage_service),
 ) -> Response:
     _require_customer_detail_access(session)
     if not record_id.isdigit():
@@ -1490,6 +1605,36 @@ async def get_customer_part_image(
         ) from exc
     if not any(str(item.get("recordId") or "") == record_id for item in scoped_records["data"]):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Image not found."})
+
+    part_id = str(fields.get("part_id") or "").strip()
+    if part_id:
+        try:
+            asset = await find_primary_part_asset(
+                filemaker,
+                settings,
+                part_id=part_id,
+                customer_visible_only=True,
+            )
+        except FileMakerAPIError:
+            asset = None
+        object_key = str(part_asset_fields(asset).get("object_key") or "").strip()
+        try:
+            asset_url, _expires_at = (
+                await run_in_threadpool(storage.create_presigned_download, object_key)
+                if object_key
+                else ("", None)
+            )
+        except COSStorageError:
+            asset_url = ""
+        if asset_url:
+            return RedirectResponse(
+                asset_url,
+                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                headers={
+                    "Cache-Control": "private, max-age=300",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
 
     image_url = str(fields.get("影像 | 容器") or fields.get("圖面 | 容器") or "").strip()
     if not image_url:
@@ -1584,7 +1729,6 @@ def _customer_account_admin_item(
 ) -> CustomerAccountAdminItem:
     role = normalize_customer_access_role(
         state.get("accessRole"),
-        can_view_price=bool(state["canViewPrice"]),
         is_admin=bool(state["isAdmin"]),
     )
     permissions = customer_access_permissions(role)
@@ -1598,7 +1742,7 @@ def _customer_account_admin_item(
         shipmentCompanyId=str(state["shipmentCompanyId"]),
         enabled=bool(state["enabled"]),
         accessRole=role,
-        canViewPrice=permissions["canViewPrice"],
+        canViewPrice=bool(state["canViewPrice"]),
         canViewOrders=permissions["canViewOrders"],
         canViewDetails=permissions["canViewDetails"],
         isAdmin=permissions["isAdmin"],
@@ -1610,6 +1754,7 @@ def _customer_account_admin_item(
         failedLoginCount=int(state["failedLoginCount"]),
         updatedAt=state["updatedAt"],
         updatedBy=str(state["updatedBy"]),
+        credentialsEmailAvailableAt=state.get("credentialsEmailAvailableAt"),
         credentialsEmailSent=credentials_email_sent,
         credentialsEmailError=credentials_email_error,
     )
@@ -1618,7 +1763,6 @@ def _customer_account_admin_item(
 def _customer_account_audit_data(state: dict[str, object]) -> dict[str, object]:
     role = normalize_customer_access_role(
         state.get("accessRole"),
-        can_view_price=bool(state["canViewPrice"]),
         is_admin=bool(state["isAdmin"]),
     )
     permissions = customer_access_permissions(role)
@@ -1632,7 +1776,7 @@ def _customer_account_audit_data(state: dict[str, object]) -> dict[str, object]:
         "shipmentCompanyId": str(state["shipmentCompanyId"]),
         "enabled": bool(state["enabled"]),
         "accessRole": role,
-        "canViewPrice": permissions["canViewPrice"],
+        "canViewPrice": bool(state["canViewPrice"]),
         "canViewOrders": permissions["canViewOrders"],
         "canViewDetails": permissions["canViewDetails"],
         "isAdmin": permissions["isAdmin"],

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -22,6 +23,7 @@ from app.api.customer_chat import (
     _validate_customer_prompt,
     _validate_customer_sensitive_prompt,
     change_customer_password,
+    login_customer,
     query_customer_products,
 )
 from app.api.natural_language_query import (
@@ -31,6 +33,7 @@ from app.api.natural_language_query import (
 )
 from app.core.config import Settings
 from app.models.customer_chat import (
+    CustomerLoginRequest,
     CustomerOrderResult,
     CustomerPasswordChangeRequest,
     CustomerProductResult,
@@ -65,6 +68,7 @@ def _settings(password_hash: str) -> Settings:
                 {
                     "username": "acme",
                     "displayName": "ACME",
+                    "email": "Customer.Login@Example.com",
                     "clientName": "Mayako",
                     "productPrivilege": "0780",
                     "partCustomerId": "CU638",
@@ -83,7 +87,96 @@ def test_customer_password_hash_and_authentication() -> None:
     assert verify_customer_password("correct horse battery staple", password_hash) is True
     assert verify_customer_password("wrong", password_hash) is False
     assert authenticate_customer("ACME", "correct horse battery staple", settings) is not None
+    email_account = authenticate_customer(
+        "customer.login@example.COM",
+        "correct horse battery staple",
+        settings,
+    )
+    assert email_account is not None
+    assert email_account.username == "acme"
     assert authenticate_customer("acme", "wrong", settings) is None
+
+
+@pytest.mark.asyncio
+async def test_customer_login_route_resolves_email_to_canonical_username(tmp_path) -> None:
+    password = "correct horse battery staple"
+    settings = _settings(hash_customer_password(password, iterations=100_000))
+    account = authenticate_customer("acme", password, settings)
+    assert account is not None
+    account_store = CustomerAccountAdminStore("memory://")
+    await account_store.init({"acme": account})
+    credential_store = CustomerCredentialStore(str(tmp_path / "credentials.db"))
+    await credential_store.init()
+
+    class AuditLog:
+        def __init__(self) -> None:
+            self.rows = []
+
+        async def record(self, **kwargs):
+            self.rows.append(kwargs)
+
+    audit_log = AuditLog()
+    response = await login_customer(
+        body=CustomerLoginRequest(
+            username="CUSTOMER.LOGIN@example.com",
+            password=password,
+        ),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        settings=settings,
+        audit_log=audit_log,
+        rate_limiter=CustomerLoginRateLimiter(),
+        credential_store=credential_store,
+        account_admin_store=account_store,
+    )
+
+    assert response.customer.username == "acme"
+    state = await account_store.get_state("acme")
+    assert state is not None
+    assert state["successfulLoginCount"] == 1
+    assert audit_log.rows[-1]["operator"].account == "acme"
+
+
+@pytest.mark.asyncio
+async def test_customer_login_route_rejects_ambiguous_runtime_email(tmp_path) -> None:
+    password = "correct horse battery staple"
+    settings = _settings(hash_customer_password(password, iterations=100_000))
+    account = authenticate_customer("acme", password, settings)
+    assert account is not None
+    duplicate = replace(
+        account,
+        username="acme-two",
+        display_name="ACME Two",
+    )
+    account_store = CustomerAccountAdminStore("memory://")
+    await account_store.init({"acme": account, "acme-two": duplicate})
+    credential_store = CustomerCredentialStore(str(tmp_path / "credentials.db"))
+    await credential_store.init()
+
+    class AuditLog:
+        def __init__(self) -> None:
+            self.rows = []
+
+        async def record(self, **kwargs):
+            self.rows.append(kwargs)
+
+    audit_log = AuditLog()
+    with pytest.raises(HTTPException) as exc_info:
+        await login_customer(
+            body=CustomerLoginRequest(
+                username="customer.login@example.com",
+                password=password,
+            ),
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+            settings=settings,
+            audit_log=audit_log,
+            rate_limiter=CustomerLoginRateLimiter(),
+            credential_store=credential_store,
+            account_admin_store=account_store,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "multiple accounts" in exc_info.value.detail["message"]
+    assert audit_log.rows[-1]["error_message"] == "ambiguous_email"
 
 
 def test_customer_token_round_trip_and_tamper_rejection() -> None:
@@ -925,6 +1018,7 @@ async def test_customer_order_chat_uses_scoped_catalog_query() -> None:
         part_customer_id="CU638",
         expires_at=9999999999,
         shipment_company_id="",
+        can_view_price=True,
         access_role="manager",
     )
 

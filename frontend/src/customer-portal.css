@@ -2147,6 +2147,19 @@ html[data-theme="dark"] .cp-metric.money strong { color: var(--cp-brand-strong);
   white-space: nowrap;
 }
 html[data-theme="dark"] .cp-role-badge { color: var(--cp-brand-strong); }
+.cp-account-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  color: var(--cp-text-3);
+  background: var(--cp-surface-2);
+  font-size: 9.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .cp-permission-badge {
   display: inline-flex;
   align-items: center;
@@ -2164,6 +2177,15 @@ html[data-theme="dark"] .cp-role-badge { color: var(--cp-brand-strong); }
 .cp-permission-badge.role-manager { border-color: color-mix(in srgb, var(--cp-ok) 34%, var(--cp-border)); color: var(--cp-ok); background: var(--cp-ok-soft); }
 .cp-permission-badge.role-team { color: var(--cp-text); }
 .cp-permission-badge.role-agent { color: var(--cp-warn); background: var(--cp-warn-soft); }
+.cp-price-access-state {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  white-space: nowrap;
+}
+.cp-price-access-state.allowed { color: var(--cp-ok); }
+.cp-price-access-state.hidden { color: var(--cp-text-3); }
 .cp-account-toggle {
   display: inline-flex;
   align-items: center;
@@ -2199,6 +2221,16 @@ html[data-theme="dark"] .cp-role-badge { color: var(--cp-brand-strong); }
 .cp-account-email.missing {
   color: var(--cp-text-3);
   font-style: italic;
+}
+.cp-email-cooldown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--cp-warn);
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 .cp-account-edit-button {
   min-height: 32px;
@@ -2284,11 +2316,170 @@ html[data-theme="dark"] .cp-role-badge { color: var(--cp-brand-strong); }
 }
 .cp-account-editor > form {
   min-height: 0;
+  display: block;
+  overflow: hidden;
+}
+.cp-account-editor-lock {
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
 }
+.cp-account-editor-lock[disabled] { pointer-events: none; }
 .cp-account-editor .cp-account-form { overflow: auto; }
+.cp-account-save-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 18, 14, .7);
+  backdrop-filter: blur(8px);
+  cursor: wait;
+}
+.cp-account-save-dialog {
+  width: min(480px, 100%);
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--cp-brand) 30%, var(--cp-border));
+  border-radius: var(--cp-r-xl);
+  outline: none;
+  background: var(--cp-surface);
+  box-shadow: var(--cp-shadow-lg);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+}
+.cp-account-save-spinner {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--cp-brand);
+  background: var(--cp-brand-soft);
+}
+.cp-account-save-dialog .cp-eyebrow {
+  color: var(--cp-brand);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.cp-account-save-dialog h2 {
+  margin: 5px 0 6px;
+  font-family: var(--cp-mono);
+  font-size: 20px;
+}
+.cp-account-save-dialog p {
+  margin: 0;
+  color: var(--cp-text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.cp-account-save-progress {
+  grid-column: 1 / -1;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cp-surface-3);
+}
+.cp-account-save-progress > span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cp-brand), var(--cp-info));
+  animation: cp-account-save-progress 1.35s ease-in-out infinite;
+}
+.cp-account-save-steps {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cp-account-save-steps > span {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cp-text-2);
+  background: var(--cp-surface-2);
+  font-size: 10.5px;
+  font-weight: 750;
+}
+.cp-account-save-steps > span.active {
+  color: var(--cp-brand);
+  border-color: color-mix(in srgb, var(--cp-brand) 24%, var(--cp-border));
+  background: var(--cp-brand-soft);
+}
+.cp-account-save-dialog > small {
+  grid-column: 1 / -1;
+  color: var(--cp-text-3);
+  font-size: 11px;
+}
+@keyframes cp-account-save-progress {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(95%); }
+  100% { transform: translateX(245%); }
+}
+@media (max-width: 520px) {
+  .cp-account-save-backdrop { padding: 16px; }
+  .cp-account-save-dialog {
+    padding: 22px;
+    grid-template-columns: 1fr;
+  }
+  .cp-account-save-spinner { width: 48px; height: 48px; }
+}
 .cp-account-delete-dialog { width: min(520px, 100%); }
+.cp-email-log-dialog { width: min(820px, 100%); }
+.cp-email-log-body {
+  min-height: 180px;
+  max-height: 54vh;
+  overflow: auto;
+}
+.cp-email-log-list { display: grid; gap: 9px; }
+.cp-email-log-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-r-md);
+  background: var(--cp-surface-2);
+}
+.cp-email-log-item > div { min-width: 0; }
+.cp-email-log-item strong,
+.cp-email-log-item small { display: block; }
+.cp-email-log-item small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--cp-text-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-email-log-item p {
+  margin: 7px 0 0;
+  color: var(--cp-text-2);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.cp-email-log-item time {
+  color: var(--cp-text-3);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.cp-email-log-item .cp-admin-status.success { color: var(--cp-ok); }
+.cp-email-log-item .cp-admin-status.failed,
+.cp-email-log-item .cp-admin-status.blocked { color: var(--cp-danger); }
 .cp-account-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2400,6 +2591,10 @@ html[data-theme="dark"] .cp-role-badge { color: var(--cp-brand-strong); }
 .cp-account-enabled span { display: grid; gap: 3px; }
 .cp-account-enabled strong { color: var(--cp-text); font-size: 12.5px; }
 .cp-account-enabled small { color: var(--cp-text-3); font-size: 10.5px; }
+.cp-price-access-option {
+  border-color: color-mix(in srgb, var(--cp-brand) 24%, var(--cp-border));
+  background: color-mix(in srgb, var(--cp-brand-soft) 42%, var(--cp-surface));
+}
 .cp-permission-set {
   min-width: 0;
   margin: 0;

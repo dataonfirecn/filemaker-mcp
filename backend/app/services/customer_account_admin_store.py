@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import math
 from typing import Any
 
 import asyncpg
@@ -23,6 +24,7 @@ class CustomerAccountAdminStore:
         self._pool: asyncpg.Pool | None = None
         self._memory: dict[str, dict[str, Any]] = {}
         self._memory_events: list[dict[str, Any]] = []
+        self._memory_email_events: list[dict[str, Any]] = []
 
     async def init(self, accounts: dict[str, Any]) -> None:
         if self.database_url.startswith("memory://"):
@@ -54,6 +56,7 @@ class CustomerAccountAdminStore:
                     last_failed_login_at TIMESTAMPTZ,
                     successful_login_count BIGINT NOT NULL DEFAULT 0,
                     failed_login_count BIGINT NOT NULL DEFAULT 0,
+                    credentials_email_available_at TIMESTAMPTZ,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                     updated_by TEXT NOT NULL DEFAULT 'system'
                 );
@@ -67,7 +70,8 @@ class CustomerAccountAdminStore:
                     ADD COLUMN IF NOT EXISTS shipment_company_id TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE,
                     ADD COLUMN IF NOT EXISTS access_role TEXT NOT NULL DEFAULT '',
-                    ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE;
+                    ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS credentials_email_available_at TIMESTAMPTZ;
                 CREATE TABLE IF NOT EXISTS customer_account_login_event (
                     id BIGSERIAL PRIMARY KEY,
                     username_key TEXT NOT NULL REFERENCES customer_account_control(username_key),
@@ -80,6 +84,19 @@ class CustomerAccountAdminStore:
                     ON customer_account_login_event (username_key, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_customer_account_login_event_created
                     ON customer_account_login_event (created_at DESC);
+                CREATE TABLE IF NOT EXISTS customer_account_email_event (
+                    id BIGSERIAL PRIMARY KEY,
+                    username_key TEXT NOT NULL REFERENCES customer_account_control(username_key),
+                    username TEXT NOT NULL DEFAULT '',
+                    recipient_email TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL,
+                    message TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS idx_customer_account_email_event_created
+                    ON customer_account_email_event (created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_customer_account_email_event_account
+                    ON customer_account_email_event (username_key, created_at DESC);
                 """
             )
             for key, account in accounts.items():
@@ -147,14 +164,12 @@ class CustomerAccountAdminStore:
                 UPDATE customer_account_control
                 SET access_role = CASE
                         WHEN is_admin THEN 'admin'
-                        WHEN can_view_price THEN 'manager'
                         ELSE 'team'
                     END
                 WHERE access_role NOT IN ('admin', 'manager', 'team', 'agent');
 
                 UPDATE customer_account_control
-                SET can_view_price = access_role IN ('admin', 'manager'),
-                    is_admin = access_role = 'admin';
+                SET is_admin = access_role = 'admin';
                 """
             )
             await conn.execute(
@@ -231,6 +246,53 @@ class CustomerAccountAdminStore:
             )
         return _account_state_dict(row) if row else None
 
+    async def resolve_login_state(
+        self,
+        identifier: str,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Resolve a username first, then a case-insensitive email.
+
+        The boolean result indicates that the email belongs to multiple active
+        account records, in which case no account is returned.
+        """
+        key = identifier.strip().casefold()
+        if not key:
+            return None, False
+
+        username_state = await self.get_state(identifier)
+        if username_state:
+            return username_state, False
+
+        if self.database_url.startswith("memory://"):
+            matches = [
+                dict(state)
+                for state in self._memory.values()
+                if not state["deleted"]
+                and str(state.get("email") or "").strip().casefold() == key
+                and key
+            ]
+        else:
+            if not self._pool:
+                raise RuntimeError("Customer account admin store is not initialized")
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT *
+                    FROM customer_account_control
+                    WHERE deleted = FALSE
+                      AND email <> ''
+                      AND lower(email) = $1
+                    ORDER BY username_key
+                    LIMIT 2
+                    """,
+                    key,
+                )
+            matches = [_account_state_dict(row) for row in rows]
+
+        if len(matches) == 1:
+            return matches[0], False
+        return None, len(matches) > 1
+
     async def list_states(self) -> dict[str, dict[str, Any]]:
         if self.database_url.startswith("memory://"):
             return {
@@ -267,7 +329,6 @@ class CustomerAccountAdminStore:
         now = datetime.now(timezone.utc)
         role = normalize_customer_access_role(
             access_role,
-            can_view_price=can_view_price,
             is_admin=is_admin,
         )
         permissions = customer_access_permissions(role)
@@ -285,10 +346,11 @@ class CustomerAccountAdminStore:
                     partCustomerId=MAYAKO_PART_CUSTOMER_ID,
                     shipmentCompanyId=MAYAKO_SHIPMENT_COMPANY_ID,
                     enabled=bool(enabled),
-                    canViewPrice=permissions["canViewPrice"],
+                    canViewPrice=bool(can_view_price),
                     isAdmin=permissions["isAdmin"],
                     accessRole=role,
                     deleted=False,
+                    credentialsEmailAvailableAt=None,
                     updatedAt=now,
                     updatedBy=updated_by,
                 )
@@ -303,7 +365,7 @@ class CustomerAccountAdminStore:
                 "partCustomerId": MAYAKO_PART_CUSTOMER_ID,
                 "shipmentCompanyId": MAYAKO_SHIPMENT_COMPANY_ID,
                 "enabled": bool(enabled),
-                "canViewPrice": permissions["canViewPrice"],
+                "canViewPrice": bool(can_view_price),
                 "isAdmin": permissions["isAdmin"],
                 "accessRole": role,
                 "deleted": False,
@@ -313,6 +375,7 @@ class CustomerAccountAdminStore:
                 "lastFailedLoginAt": None,
                 "successfulLoginCount": 0,
                 "failedLoginCount": 0,
+                "credentialsEmailAvailableAt": None,
                 "updatedAt": now,
                 "updatedBy": updated_by,
             }
@@ -344,6 +407,7 @@ class CustomerAccountAdminStore:
                     is_admin = EXCLUDED.is_admin,
                     access_role = EXCLUDED.access_role,
                     deleted = FALSE,
+                    credentials_email_available_at = NULL,
                     updated_at = now(),
                     updated_by = EXCLUDED.updated_by
                 WHERE customer_account_control.deleted = TRUE
@@ -358,7 +422,7 @@ class CustomerAccountAdminStore:
                 MAYAKO_PART_CUSTOMER_ID,
                 MAYAKO_SHIPMENT_COMPANY_ID,
                 bool(enabled),
-                permissions["canViewPrice"],
+                bool(can_view_price),
                 permissions["isAdmin"],
                 role,
                 updated_by,
@@ -384,28 +448,22 @@ class CustomerAccountAdminStore:
             return None
         current_role = normalize_customer_access_role(
             before.get("accessRole"),
-            can_view_price=bool(before["canViewPrice"]),
             is_admin=bool(before["isAdmin"]),
         )
         role = normalize_customer_access_role(
             access_role if access_role is not None else current_role,
-            can_view_price=(
-                bool(can_view_price)
-                if can_view_price is not None
-                else bool(before["canViewPrice"])
-            ),
             is_admin=bool(is_admin) if is_admin is not None else bool(before["isAdmin"]),
         )
-        if access_role is None and (can_view_price is not None or is_admin is not None):
+        if access_role is None and is_admin is not None:
             role = normalize_customer_access_role(
                 "",
-                can_view_price=(
-                    bool(can_view_price)
-                    if can_view_price is not None
-                    else bool(before["canViewPrice"])
-                ),
-                is_admin=bool(is_admin) if is_admin is not None else bool(before["isAdmin"]),
+                is_admin=bool(is_admin),
             )
+        price_access = (
+            bool(can_view_price)
+            if can_view_price is not None
+            else bool(before["canViewPrice"])
+        )
         permissions = customer_access_permissions(role)
         if self.database_url.startswith("memory://"):
             state = self._memory.get(key)
@@ -413,7 +471,7 @@ class CustomerAccountAdminStore:
                 return None
             state.update(
                 enabled=bool(enabled),
-                canViewPrice=permissions["canViewPrice"],
+                canViewPrice=price_access,
                 isAdmin=permissions["isAdmin"],
                 accessRole=role,
                 updatedAt=now,
@@ -452,7 +510,7 @@ class CustomerAccountAdminStore:
                 """,
                 key,
                 bool(enabled),
-                permissions["canViewPrice"],
+                price_access,
                 display_name.strip() if display_name is not None else None,
                 email.strip().casefold() if email is not None else None,
                 MAYAKO_CLIENT_NAME,
@@ -563,6 +621,187 @@ class CustomerAccountAdminStore:
                 client_ip[:120],
             )
 
+    async def claim_credentials_email(
+        self,
+        username: str,
+        *,
+        cooldown_seconds: int = 60,
+    ) -> int:
+        """Reserve an email send, returning zero or the remaining cooldown seconds."""
+        key = username.strip().casefold()
+        now = datetime.now(timezone.utc)
+        available_at = now + timedelta(seconds=max(1, cooldown_seconds))
+        if self.database_url.startswith("memory://"):
+            state = self._memory.get(key)
+            if not state or state["deleted"]:
+                raise KeyError(username)
+            current = state.get("credentialsEmailAvailableAt")
+            if current and current > now:
+                return max(1, math.ceil((current - now).total_seconds()))
+            state["credentialsEmailAvailableAt"] = available_at
+            return 0
+
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                """
+                UPDATE customer_account_control
+                SET credentials_email_available_at = $2
+                WHERE username_key = $1
+                  AND deleted = FALSE
+                  AND (
+                      credentials_email_available_at IS NULL
+                      OR credentials_email_available_at <= now()
+                  )
+                RETURNING credentials_email_available_at
+                """,
+                key,
+                available_at,
+            )
+            if row:
+                return 0
+            current = await conn.fetchval(
+                """
+                SELECT credentials_email_available_at
+                FROM customer_account_control
+                WHERE username_key = $1 AND deleted = FALSE
+                """,
+                key,
+            )
+        if current is None:
+            raise KeyError(username)
+        return max(
+            1,
+            math.ceil((current - datetime.now(timezone.utc)).total_seconds()),
+        )
+
+    async def release_credentials_email(self, username: str) -> None:
+        """Release a reservation after a failed delivery so a retry is possible."""
+        key = username.strip().casefold()
+        if self.database_url.startswith("memory://"):
+            state = self._memory.get(key)
+            if state and not state["deleted"]:
+                state["credentialsEmailAvailableAt"] = None
+            return
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE customer_account_control
+                SET credentials_email_available_at = NULL
+                WHERE username_key = $1 AND deleted = FALSE
+                """,
+                key,
+            )
+
+    async def complete_credentials_email(
+        self,
+        username: str,
+        *,
+        cooldown_seconds: int = 60,
+    ) -> None:
+        """Start a full cooldown after the SMTP server confirms delivery."""
+        key = username.strip().casefold()
+        available_at = datetime.now(timezone.utc) + timedelta(
+            seconds=max(1, cooldown_seconds),
+        )
+        if self.database_url.startswith("memory://"):
+            state = self._memory.get(key)
+            if not state or state["deleted"]:
+                raise KeyError(username)
+            state["credentialsEmailAvailableAt"] = available_at
+            return
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn:
+            updated = await conn.execute(
+                """
+                UPDATE customer_account_control
+                SET credentials_email_available_at = $2
+                WHERE username_key = $1 AND deleted = FALSE
+                """,
+                key,
+                available_at,
+            )
+        if updated == "UPDATE 0":
+            raise KeyError(username)
+
+    async def record_credentials_email_event(
+        self,
+        username: str,
+        *,
+        recipient_email: str,
+        status: str,
+        message: str = "",
+    ) -> None:
+        key = username.strip().casefold()
+        now = datetime.now(timezone.utc)
+        normalized_status = status if status in {"success", "failed", "blocked"} else "failed"
+        if self.database_url.startswith("memory://"):
+            state = self._memory.get(key)
+            if not state:
+                return
+            self._memory_email_events.append({
+                "id": len(self._memory_email_events) + 1,
+                "username": str(state["username"]),
+                "recipientEmail": recipient_email.strip().casefold(),
+                "status": normalized_status,
+                "message": message[:500],
+                "createdAt": now,
+            })
+            return
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO customer_account_email_event (
+                    username_key, username, recipient_email, status, message
+                )
+                SELECT username_key, username, $2, $3, $4
+                FROM customer_account_control
+                WHERE username_key = $1
+                """,
+                key,
+                recipient_email.strip().casefold(),
+                normalized_status,
+                message[:500],
+            )
+
+    async def list_credentials_email_events(
+        self,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        bounded_limit = min(max(1, limit), 200)
+        if self.database_url.startswith("memory://"):
+            return [
+                dict(event)
+                for event in reversed(self._memory_email_events[-bounded_limit:])
+            ]
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, username, recipient_email, status, message, created_at
+                FROM customer_account_email_event
+                ORDER BY created_at DESC, id DESC
+                LIMIT $1
+                """,
+                bounded_limit,
+            )
+        return [{
+            "id": int(row["id"]),
+            "username": str(row["username"]),
+            "recipientEmail": str(row["recipient_email"]),
+            "status": str(row["status"]),
+            "message": str(row["message"]),
+            "createdAt": row["created_at"],
+        } for row in rows]
+
     @staticmethod
     def _new_memory_state(account: Any) -> dict[str, Any]:
         return {
@@ -585,6 +824,7 @@ class CustomerAccountAdminStore:
             "lastFailedLoginAt": None,
             "successfulLoginCount": 0,
             "failedLoginCount": 0,
+            "credentialsEmailAvailableAt": None,
             "updatedAt": datetime.now(timezone.utc),
             "updatedBy": "environment",
         }
@@ -605,7 +845,6 @@ def _account_state_dict(row: asyncpg.Record) -> dict[str, Any]:
         "isAdmin": bool(row["is_admin"]),
         "accessRole": normalize_customer_access_role(
             row["access_role"],
-            can_view_price=bool(row["can_view_price"]),
             is_admin=bool(row["is_admin"]),
         ),
         "deleted": bool(row["deleted"]),
@@ -615,6 +854,7 @@ def _account_state_dict(row: asyncpg.Record) -> dict[str, Any]:
         "lastFailedLoginAt": row["last_failed_login_at"],
         "successfulLoginCount": int(row["successful_login_count"]),
         "failedLoginCount": int(row["failed_login_count"]),
+        "credentialsEmailAvailableAt": row["credentials_email_available_at"],
         "updatedAt": row["updated_at"],
         "updatedBy": str(row["updated_by"]),
     }

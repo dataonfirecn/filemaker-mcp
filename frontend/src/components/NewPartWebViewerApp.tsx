@@ -33,6 +33,19 @@ type Option = {
   label: string;
 };
 
+type VendorOption = {
+  vendorId: string;
+  vendorNumber: string;
+  vendorName: string;
+  status: string;
+  selectable: boolean;
+};
+
+type VendorSearchResponse = {
+  items: VendorOption[];
+  foundCount: number;
+};
+
 type GeneratorOptions = {
   materials: Option[];
   customers: Option[];
@@ -55,6 +68,7 @@ type PartCreationOptions = {
   materialSizes: Option[];
   exclusiveCustomers: Option[];
   generator: GeneratorOptions;
+  assetUploadsEnabled: boolean;
   defaults: {
     departmentDivision: string;
     statisticsCategory: string;
@@ -91,7 +105,9 @@ type FormState = {
   statisticsCategory: string;
   useDepartment: string;
   lifecycleStatus: string;
+  vendorId: string;
   vendorNumber: string;
+  vendorName: string;
   materialCategory: string;
   departmentDivision: string;
   partCategory: string;
@@ -102,7 +118,7 @@ type FormState = {
   locationSecondary: string;
   weightGrams: string;
   materialSize: string;
-  customerId: string;
+  customerCode: string;
   customerName: string;
   customerPartNumber: string;
 };
@@ -111,6 +127,7 @@ type PartPhoto = {
   name: string;
   mimeType: string;
   base64: string;
+  blob: Blob;
   previewUrl: string;
   size: number;
 };
@@ -127,6 +144,7 @@ type CreateResponse = {
   partId: string;
   partNumber: string;
   photoUploaded: boolean;
+  photoAssetId?: string;
   warnings: string[];
 };
 
@@ -157,7 +175,9 @@ const emptyForm: FormState = {
   statisticsCategory: "",
   useDepartment: "",
   lifecycleStatus: "",
+  vendorId: "",
   vendorNumber: "",
+  vendorName: "",
   materialCategory: "",
   departmentDivision: "",
   partCategory: "",
@@ -168,7 +188,7 @@ const emptyForm: FormState = {
   locationSecondary: "",
   weightGrams: "",
   materialSize: "",
-  customerId: "",
+  customerCode: "",
   customerName: "",
   customerPartNumber: ""
 };
@@ -265,6 +285,7 @@ async function preparePhoto(file: File): Promise<PartPhoto> {
     name: `${stem}.jpg`,
     mimeType: "image/jpeg",
     base64: previewUrl.split(",", 2)[1] ?? "",
+    blob: output,
     previewUrl,
     size: output.size
   };
@@ -298,13 +319,17 @@ function SelectField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className={`npw-field ${error ? "has-error" : ""}`}>
+    <div className={`npw-field ${error ? "has-error" : ""}`}>
       <span className="npw-label">
         {label}
         {required && <b>*</b>}
       </span>
-      <span className="npw-select-wrap">
-        <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <span className={`npw-select-wrap ${value ? "has-value" : ""}`}>
+        <select
+          aria-label={label}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
           <option value="">{placeholder}</option>
           {options.map((option) => (
             <option key={option.code} value={option.code}>
@@ -312,10 +337,25 @@ function SelectField({
             </option>
           ))}
         </select>
+        {value && (
+          <button
+            className="npw-select-clear"
+            type="button"
+            aria-label={`清空${label}`}
+            title={`清空${label}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onChange("");
+            }}
+          >
+            <X size={14} />
+          </button>
+        )}
         <ChevronDown size={16} />
       </span>
       {error && <small className="npw-field-error">{error}</small>}
-    </label>
+    </div>
   );
 }
 
@@ -353,6 +393,7 @@ function TextField({
 export default function NewPartWebViewerApp() {
   const didStart = useRef(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const vendorFieldRef = useRef<HTMLDivElement>(null);
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [options, setOptions] = useState<PartCreationOptions | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -372,6 +413,11 @@ export default function NewPartWebViewerApp() {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateResponse | null>(null);
   const [customerQuery, setCustomerQuery] = useState("");
+  const [vendorQuery, setVendorQuery] = useState("");
+  const [vendorResults, setVendorResults] = useState<VendorOption[]>([]);
+  const [vendorSearching, setVendorSearching] = useState(false);
+  const [vendorSearchError, setVendorSearchError] = useState<string | null>(null);
+  const [vendorOpen, setVendorOpen] = useState(false);
 
   useEffect(() => {
     document.title = "新建零件";
@@ -399,6 +445,16 @@ export default function NewPartWebViewerApp() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [generating, generatorModalOpen, resetConfirmOpen]);
+
+  useEffect(() => {
+    function closeVendorOnOutsideClick(event: MouseEvent) {
+      if (!vendorFieldRef.current?.contains(event.target as Node)) {
+        setVendorOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", closeVendorOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeVendorOnOutsideClick);
+  }, []);
 
   useEffect(() => {
     if (didStart.current) return;
@@ -443,6 +499,37 @@ export default function NewPartWebViewerApp() {
     }
     void start();
   }, []);
+
+  useEffect(() => {
+    if (!session || !vendorOpen || form.vendorId) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setVendorSearching(true);
+      setVendorSearchError(null);
+      try {
+        const params = new URLSearchParams({
+          q: vendorQuery.trim(),
+          limit: "40"
+        });
+        const response = await requestJson<VendorSearchResponse>(
+          `/api/part-creation/vendors?${params.toString()}`,
+          { signal: controller.signal },
+          session.token
+        );
+        setVendorResults(response.items);
+      } catch (nextError) {
+        if (nextError instanceof DOMException && nextError.name === "AbortError") return;
+        setVendorResults([]);
+        setVendorSearchError(parseError(nextError));
+      } finally {
+        if (!controller.signal.aborted) setVendorSearching(false);
+      }
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.vendorId, session, vendorOpen, vendorQuery]);
 
   const filteredCustomers = useMemo(() => {
     if (!options) return [];
@@ -543,8 +630,17 @@ export default function NewPartWebViewerApp() {
       setGeneratorError("这个编号已经存在，请重新生成。");
       return;
     }
+    const customer = options?.exclusiveCustomers.find(
+      (item) => item.code === generator.customer
+    );
+    if (!customer) {
+      setGeneratorError("此编号客户没有可用的 FileMaker 客户资料，请重新选择客户。");
+      return;
+    }
     patchForm({
       partNumber: generatorResult.partNumber,
+      customerCode: customer.code,
+      customerName: customer.label,
       ...(options?.materialCategories.some(
         (item) => item.code === generator.material
       )
@@ -554,13 +650,71 @@ export default function NewPartWebViewerApp() {
     setGeneratorModalOpen(false);
   }
 
-  function payload() {
+  function payload(photoUploadId = "") {
+    const useCosUpload = options?.assetUploadsEnabled ?? false;
     return {
       ...form,
-      photoName: photo?.name ?? "",
-      photoMimeType: photo?.mimeType ?? "",
-      photoBase64: photo?.base64 ?? ""
+      photoName: useCosUpload ? "" : photo?.name ?? "",
+      photoMimeType: useCosUpload ? "" : photo?.mimeType ?? "",
+      photoBase64: useCosUpload ? "" : photo?.base64 ?? "",
+      photoUploadId
     };
+  }
+
+  async function sha256Hex(blob: Blob): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  async function uploadPhotoToCos(): Promise<string> {
+    if (!session || !photo) return "";
+    const sha256 = await sha256Hex(photo.blob);
+    const draftId = `part_${crypto.randomUUID().replace(/-/g, "")}`;
+    const presign = await requestJson<{
+      uploadId: string;
+      uploadUrl: string;
+      headers: Record<string, string>;
+    }>(
+      "/api/part-assets/uploads/presign",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          draftId,
+          filename: photo.name,
+          mimeType: photo.mimeType,
+          fileSize: photo.size,
+          sha256,
+          assetType: "part_image",
+          assetRole: "primary",
+          visibility: "customer",
+          source: "file_picker"
+        })
+      },
+      session.token
+    );
+    const upload = await fetch(presign.uploadUrl, {
+      method: "PUT",
+      headers: presign.headers,
+      body: photo.blob
+    });
+    if (!upload.ok) {
+      throw new Error(`照片上传 COS 失败：HTTP ${upload.status}`);
+    }
+    await requestJson(
+      `/api/part-assets/uploads/${encodeURIComponent(presign.uploadId)}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          etag: upload.headers.get("etag") ?? "",
+          fileSize: photo.size,
+          sha256
+        })
+      },
+      session.token
+    );
+    return presign.uploadId;
   }
 
   async function validateForm(): Promise<boolean> {
@@ -597,11 +751,13 @@ export default function NewPartWebViewerApp() {
     setCreating(true);
     setError(null);
     try {
+      const photoUploadId =
+        photo && options?.assetUploadsEnabled ? await uploadPhotoToCos() : "";
       const response = await requestJson<CreateResponse>(
         "/api/part-creation",
         {
           method: "POST",
-          body: JSON.stringify(payload())
+          body: JSON.stringify(payload(photoUploadId))
         },
         session.token
       );
@@ -637,6 +793,11 @@ export default function NewPartWebViewerApp() {
     setError(null);
     setCreated(null);
     setCustomerQuery("");
+    setVendorQuery("");
+    setVendorResults([]);
+    setVendorSearching(false);
+    setVendorSearchError(null);
+    setVendorOpen(false);
   }
 
   if (starting) {
@@ -763,7 +924,107 @@ export default function NewPartWebViewerApp() {
               <SelectField label="统计分类" value={form.statisticsCategory} options={options.statisticsCategories} placeholder="选择统计分类" error={fieldErrors.statisticsCategory} onChange={(statisticsCategory) => patchForm({ statisticsCategory })} />
               <SelectField label="使用部门" value={form.useDepartment} options={options.useDepartments} placeholder="选择使用部门" error={fieldErrors.useDepartment} onChange={(useDepartment) => patchForm({ useDepartment })} />
               <SelectField label="量产状况" value={form.lifecycleStatus} options={options.lifecycleStatuses} placeholder="选择量产状况" error={fieldErrors.lifecycleStatus} onChange={(lifecycleStatus) => patchForm({ lifecycleStatus })} />
-              <TextField label="厂商编号" value={form.vendorNumber} placeholder="输入厂商编号" onChange={(vendorNumber) => patchForm({ vendorNumber })} />
+              <div
+                className={`npw-customer-field npw-vendor-field ${fieldErrors.vendorId ? "has-error" : ""}`}
+                ref={vendorFieldRef}
+              >
+                <span className="npw-label">厂商</span>
+                {form.vendorId ? (
+                  <span className="npw-customer-selected npw-vendor-selected">
+                    <strong>{form.vendorName}</strong>
+                    <small>{form.vendorNumber || "未设置编号"}</small>
+                    <button
+                      type="button"
+                      aria-label="清空厂商"
+                      title="清空厂商"
+                      onClick={() => {
+                        patchForm({ vendorId: "", vendorNumber: "", vendorName: "" });
+                        setVendorQuery("");
+                        setVendorResults([]);
+                        setVendorOpen(false);
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ) : (
+                  <span className="npw-customer-search npw-vendor-search">
+                    <Search size={15} />
+                    <input
+                      value={vendorQuery}
+                      placeholder="搜索厂商名称或编号"
+                      aria-label="搜索厂商名称或编号"
+                      onFocus={() => setVendorOpen(true)}
+                      onClick={() => setVendorOpen(true)}
+                      onChange={(event) => {
+                        setVendorQuery(event.target.value);
+                        setVendorOpen(true);
+                      }}
+                    />
+                    {vendorSearching && <Loader2 className="npw-spin" size={15} />}
+                    {vendorQuery && !vendorSearching && (
+                      <button
+                        className="npw-search-clear"
+                        type="button"
+                        aria-label="清空厂商搜索"
+                        title="清空厂商搜索"
+                        onClick={() => {
+                          setVendorQuery("");
+                          setVendorOpen(true);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                    {vendorOpen && (
+                      <span className="npw-customer-results npw-vendor-results">
+                        {vendorSearching ? (
+                          <em>正在读取 FileMaker 厂商资料…</em>
+                        ) : vendorSearchError ? (
+                          <em className="error">{vendorSearchError}</em>
+                        ) : vendorResults.length ? (
+                          vendorResults.map((vendor) => (
+                            <button
+                              key={vendor.vendorId}
+                              type="button"
+                              disabled={!vendor.selectable}
+                              title={
+                                vendor.selectable
+                                  ? `${vendor.vendorName} · ${vendor.vendorNumber || "未设置编号"}`
+                                  : `${vendor.status || "未审核"}，暂不可选`
+                              }
+                              onClick={() => {
+                                if (!vendor.selectable) return;
+                                patchForm({
+                                  vendorId: vendor.vendorId,
+                                  vendorNumber: vendor.vendorNumber,
+                                  vendorName: vendor.vendorName
+                                });
+                                setVendorQuery("");
+                                setVendorResults([]);
+                                setVendorOpen(false);
+                              }}
+                            >
+                              <span>
+                                <strong>{vendor.vendorName}</strong>
+                                <small>{vendor.vendorNumber || "未设置编号"}</small>
+                              </span>
+                              <i className={vendor.selectable ? "approved" : "pending"}>
+                                {vendor.selectable ? "已审核" : vendor.status || "未审核"}
+                              </i>
+                            </button>
+                          ))
+                        ) : (
+                          <em>没有匹配厂商</em>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {fieldErrors.vendorId && (
+                  <small className="npw-field-error">{fieldErrors.vendorId}</small>
+                )}
+              </div>
             </div>
 
             <div className="npw-field-column">
@@ -774,11 +1035,11 @@ export default function NewPartWebViewerApp() {
               <TextField label="材质" value={form.materialSpec} placeholder="输入材质说明" onChange={(materialSpec) => patchForm({ materialSpec })} />
               <div className="npw-customer-field">
                 <span className="npw-label">专属客户</span>
-                {form.customerId ? (
+                {form.customerCode ? (
                   <span className="npw-customer-selected">
                     <strong>{form.customerName}</strong>
-                    <small>{form.customerId}</small>
-                    <button type="button" onClick={() => patchForm({ customerId: "", customerName: "" })}><X size={14} /></button>
+                    <small>{form.customerCode}</small>
+                    <button type="button" onClick={() => patchForm({ customerCode: "", customerName: "" })}><X size={14} /></button>
                   </span>
                 ) : (
                   <span className="npw-customer-search">
@@ -788,7 +1049,7 @@ export default function NewPartWebViewerApp() {
                       <span className="npw-customer-results">
                         {filteredCustomers.length ? filteredCustomers.map((customer) => (
                           <button key={customer.code} type="button" onClick={() => {
-                            patchForm({ customerId: customer.code, customerName: customer.label });
+                            patchForm({ customerCode: customer.code, customerName: customer.label });
                             setCustomerQuery("");
                           }}>
                             <strong>{customer.label}</strong><small>{customer.code}</small>
@@ -798,7 +1059,7 @@ export default function NewPartWebViewerApp() {
                     )}
                   </span>
                 )}
-                {fieldErrors.customerId && <small className="npw-field-error">{fieldErrors.customerId}</small>}
+                {fieldErrors.customerCode && <small className="npw-field-error">{fieldErrors.customerCode}</small>}
               </div>
             </div>
 
@@ -813,13 +1074,24 @@ export default function NewPartWebViewerApp() {
               <TextField label="重量" value={form.weightGrams} placeholder="0" suffix="g" error={fieldErrors.weightGrams} onChange={(weightGrams) => patchForm({ weightGrams })} />
               <label className="npw-field">
                 <span className="npw-label">材料尺寸</span>
-                <span className="npw-input-wrap">
+                <span className={`npw-input-wrap ${form.materialSize ? "has-value" : ""}`}>
                   <input
                     list="npw-material-sizes"
                     value={form.materialSize}
                     placeholder="选择或输入材料尺寸"
                     onChange={(event) => patchForm({ materialSize: event.target.value })}
                   />
+                  {form.materialSize && (
+                    <button
+                      className="npw-input-clear"
+                      type="button"
+                      aria-label="清空材料尺寸"
+                      title="清空材料尺寸"
+                      onClick={() => patchForm({ materialSize: "" })}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                   <datalist id="npw-material-sizes">
                     {options.materialSizes.map((option) => (
                       <option key={option.code} value={option.code}>{option.label}</option>

@@ -76,19 +76,20 @@ python -m scripts.hash_customer_password
 ```dotenv
 CUSTOMER_CHAT_ENABLED=true
 CUSTOMER_CHAT_TOKEN_SECRET=<使用 openssl rand -hex 32 生成>
-CUSTOMER_CHAT_ACCOUNTS_JSON='[{"username":"acme","displayName":"ACME 客户","clientName":"ACME","productPrivilege":"0780","partCustomerId":"CU638","accessRole":"team","passwordHash":"pbkdf2_sha256$..."}]'
+CUSTOMER_CHAT_ACCOUNTS_JSON='[{"username":"acme","displayName":"ACME 客户","clientName":"ACME","productPrivilege":"0780","partCustomerId":"CU638","accessRole":"team","canViewPrice":false,"passwordHash":"pbkdf2_sha256$..."}]'
 ```
 
 `clientName` 必须与 FileMaker 产品资料里的 `Client` 值精确一致。客户入口直接读取 FileMaker，
 并按账号配置限制客户、产品、零件和出货单范围；不使用 RAG 记录缓存。`accessRole`
 固定为 `admin`、`manager`、`team` 或 `agent`：Admin 可访问全部内容与账号管理；
-管理者可看价格和订单；团队可看订单但不返回单价、订单金额或运费金额；代理商只保留
-产品和零件库存查询。成本、报价、供应商及其他内部财务字段对所有外部账号保持关闭。
+管理者和团队可访问订单，代理商只保留产品和零件库存查询。价格可见性由独立的
+`canViewPrice` 开关控制，不再与 4 种权限集绑定。关闭时不返回单价、订单金额或运费金额；
+成本、报价、供应商及其他内部财务字段对所有外部账号保持关闭。
 Admin 可以访问 `/customer-chat/admin/analytics`，查看保存在 PostgreSQL 中的聊天历史
 和问题汇总；回归测试流量默认不会计入运营分析。
 管理员还可以访问 `/customer-chat/admin/accounts`，在 PostgreSQL 中实时启用或停用账号、
-调整 4 种权限集，并查看每个账号的最近成功登录、最近登录尝试和成功/失败次数。停用账号
-或改变权限集会立即使该账号已有会话失效；环境文件中的账号列表只作为初始账号来源。
+调整 4 种权限集及独立价格权限，并查看每个账号的最近成功登录、最近登录尝试和成功/失败次数。
+停用账号、改变权限集或价格权限会立即使该账号已有会话失效；环境文件中的账号列表只作为初始账号来源。
 当前 MayakoFM 部署把客户、产品、零件与出货公司数据范围固定在后端，账号管理页不开放
 这些技术范围字段；未来扩展多客户时再恢复可配置范围。
 

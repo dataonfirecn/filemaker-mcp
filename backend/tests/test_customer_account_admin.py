@@ -10,6 +10,7 @@ from app.api.customer_chat import (
     create_customer_account_admin,
     delete_customer_account_admin,
     get_customer_accounts_admin,
+    get_customer_credentials_email_logs_admin,
     update_customer_account_admin,
 )
 from app.core.config import Settings
@@ -93,31 +94,43 @@ def _admin_session(*, can_view_price: bool = False) -> CustomerSession:
     )
 
 
-def test_four_customer_access_roles_have_fixed_permissions() -> None:
+def test_four_customer_access_roles_have_non_price_permissions() -> None:
     assert customer_access_permissions("admin") == {
-        "canViewPrice": True,
         "canViewOrders": True,
         "canViewDetails": True,
         "isAdmin": True,
     }
     assert customer_access_permissions("manager") == {
-        "canViewPrice": True,
         "canViewOrders": True,
         "canViewDetails": True,
         "isAdmin": False,
     }
     assert customer_access_permissions("team") == {
-        "canViewPrice": False,
         "canViewOrders": True,
         "canViewDetails": True,
         "isAdmin": False,
     }
     assert customer_access_permissions("agent") == {
-        "canViewPrice": False,
         "canViewOrders": False,
         "canViewDetails": False,
         "isAdmin": False,
     }
+
+
+@pytest.mark.parametrize("access_role", ["admin", "manager", "team", "agent"])
+@pytest.mark.parametrize("can_view_price", [False, True])
+def test_price_access_is_independent_for_every_role(
+    access_role: str,
+    can_view_price: bool,
+) -> None:
+    account = _account(
+        access_role=access_role,
+        can_view_price=can_view_price,
+    )
+
+    assert account.access_role == access_role
+    assert account.can_view_price is can_view_price
+    assert account.is_admin is (access_role == "admin")
 
 
 @pytest.mark.asyncio
@@ -147,6 +160,148 @@ async def test_account_store_updates_permissions_and_records_every_login_attempt
 
 
 @pytest.mark.asyncio
+async def test_account_store_resolves_username_or_email_and_rejects_ambiguous_email() -> None:
+    store = CustomerAccountAdminStore("memory://")
+    await store.init({"mayako": _account()})
+
+    by_username, username_ambiguous = await store.resolve_login_state("MAYAKO")
+    by_email, email_ambiguous = await store.resolve_login_state("MAYAKO@EXAMPLE.COM")
+
+    assert by_username is not None
+    assert by_username["username"] == "mayako"
+    assert username_ambiguous is False
+    assert by_email is not None
+    assert by_email["username"] == "mayako"
+    assert email_ambiguous is False
+
+    duplicate = replace(
+        _account(),
+        username="mayako-two",
+        email="mayako@example.com",
+    )
+    await store.init({"mayako-two": duplicate})
+    resolved, ambiguous = await store.resolve_login_state("mayako@example.com")
+
+    assert resolved is None
+    assert ambiguous is True
+
+
+@pytest.mark.asyncio
+async def test_credentials_email_cooldown_is_server_enforced_and_logged() -> None:
+    store = CustomerAccountAdminStore("memory://")
+    await store.init({"mayako": _account()})
+
+    assert await store.claim_credentials_email("mayako", cooldown_seconds=60) == 0
+    state = await store.get_state("mayako")
+    assert state is not None
+    assert state["credentialsEmailAvailableAt"] is not None
+
+    remaining = await store.claim_credentials_email("mayako", cooldown_seconds=60)
+    assert 1 <= remaining <= 60
+    await store.complete_credentials_email("mayako", cooldown_seconds=60)
+    completed_remaining = await store.claim_credentials_email(
+        "mayako",
+        cooldown_seconds=60,
+    )
+    assert 59 <= completed_remaining <= 60
+    await store.record_credentials_email_event(
+        "mayako",
+        recipient_email="mayako@example.com",
+        status="success",
+        message="Login credentials email sent.",
+    )
+    await store.record_credentials_email_event(
+        "mayako",
+        recipient_email="mayako@example.com",
+        status="blocked",
+        message=f"Send blocked by {remaining}-second cooldown.",
+    )
+
+    logs = await store.list_credentials_email_events()
+    assert [row["status"] for row in logs] == ["blocked", "success"]
+    assert logs[0]["recipientEmail"] == "mayako@example.com"
+
+    await store.release_credentials_email("mayako")
+    assert (await store.get_state("mayako"))["credentialsEmailAvailableAt"] is None
+    assert await store.claim_credentials_email("mayako", cooldown_seconds=60) == 0
+
+
+@pytest.mark.asyncio
+async def test_credentials_email_create_sets_cooldown_and_immediate_resend_is_blocked(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    account = _account()
+    store = CustomerAccountAdminStore("memory://")
+    await store.init({"mayako": account})
+    credential_store = CustomerCredentialStore(str(tmp_path / "credentials.db"))
+    await credential_store.init()
+
+    class AuditLog:
+        async def record(self, **kwargs):
+            return None
+
+    deliveries: list[dict[str, str]] = []
+
+    def fake_send(_settings, **kwargs):
+        deliveries.append(kwargs)
+
+    monkeypatch.setattr("app.api.customer_chat.send_customer_credentials_email", fake_send)
+    settings = _settings(account)
+    settings.customer_smtp_host = "smtp.example.com"
+    settings.customer_smtp_from_email = "portal@example.com"
+
+    created = await create_customer_account_admin(
+        body=CustomerAccountAdminCreateRequest(
+            username="email.test",
+            displayName="Email Test",
+            email="recipient@example.com",
+            password="temporary-password-value",
+            enabled=True,
+            sendCredentials=True,
+            accessRole="team",
+        ),
+        session=_admin_session(),
+        account_admin_store=store,
+        credential_store=credential_store,
+        audit_log=AuditLog(),
+        settings=settings,
+    )
+
+    assert created.credentials_email_sent is True
+    assert created.credentials_email_available_at is not None
+    assert deliveries[0]["recipient_email"] == "recipient@example.com"
+
+    before_hash = await credential_store.get_password_hash("email.test")
+    with pytest.raises(HTTPException) as exc_info:
+        await update_customer_account_admin(
+            username="email.test",
+            body=CustomerAccountAdminUpdateRequest(
+                displayName="Should Not Be Saved",
+                newPassword="another-temporary-password",
+                sendCredentials=True,
+            ),
+            session=_admin_session(),
+            account_admin_store=store,
+            credential_store=credential_store,
+            audit_log=AuditLog(),
+            settings=settings,
+        )
+
+    assert exc_info.value.status_code == 429
+    assert (await store.get_state("email.test"))["displayName"] == "Email Test"
+    assert await credential_store.get_password_hash("email.test") == before_hash
+    assert len(deliveries) == 1
+
+    response = await get_customer_credentials_email_logs_admin(
+        limit=100,
+        session=_admin_session(),
+        account_admin_store=store,
+    )
+    assert [item.status for item in response.logs] == ["blocked", "success"]
+
+
+@pytest.mark.asyncio
 async def test_permission_change_and_disable_invalidate_existing_tokens(tmp_path) -> None:
     account = _account(access_role="team")
     settings = _settings(account)
@@ -167,7 +322,11 @@ async def test_permission_change_and_disable_invalidate_existing_tokens(tmp_path
     with pytest.raises(CustomerAuthError, match="account has changed"):
         await verify_customer_token_with_store(token, settings, credential_store, account_store)
 
-    price_token, _ = issue_customer_token(replace(account, access_role="manager"), settings)
+    price_account = customer_account_from_admin_state(
+        await account_store.get_state("mayako"),
+        account.password_hash,
+    )
+    price_token, _ = issue_customer_token(price_account, settings)
     assert (await verify_customer_token_with_store(
         price_token, settings, credential_store, account_store
     )).can_view_price is True
@@ -205,6 +364,7 @@ async def test_admin_has_complete_account_crud_and_cannot_remove_self(tmp_path) 
             password="dealer-password-value",
             enabled=True,
             accessRole="agent",
+            canViewPrice=True,
         ),
         session=session,
         account_admin_store=store,
@@ -223,6 +383,7 @@ async def test_admin_has_complete_account_crud_and_cannot_remove_self(tmp_path) 
             displayName="Dealer One Updated",
             enabled=True,
             accessRole="manager",
+            canViewPrice=False,
             newPassword="dealer-new-password",
         ),
         session=session,
@@ -237,11 +398,13 @@ async def test_admin_has_complete_account_crud_and_cannot_remove_self(tmp_path) 
     assert created.product_privilege == MAYAKO_PRODUCT_PRIVILEGE
     assert created.part_customer_id == MAYAKO_PART_CUSTOMER_ID
     assert created.shipment_company_id == MAYAKO_SHIPMENT_COMPANY_ID
+    assert created.access_role == "agent"
+    assert created.can_view_price is True
     assert len(response.accounts) == 2
     assert updated.display_name == "Dealer One Updated"
     assert updated.product_privilege == MAYAKO_PRODUCT_PRIVILEGE
     assert updated.access_role == "manager"
-    assert updated.can_view_price is True
+    assert updated.can_view_price is False
     assert updated.can_view_orders is True
     assert updated.is_admin is False
     assert await credential_store.get_password_hash("dealer.one") is not None

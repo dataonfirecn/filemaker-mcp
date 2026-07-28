@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     filemaker_part_number_field: str = "part_number"
     filemaker_part_photo_field: str = "影像 | 容器"
     filemaker_part_max_photo_bytes: int = 8 * 1024 * 1024
+    # Dedicated PartAssets path. Keep disabled until the FileMaker table/layout
+    # has been installed; legacy container reads and writes remain available.
+    filemaker_part_assets_enabled: bool = False
+    filemaker_part_asset_layout: str = "PartAssets"
     filemaker_odata_enabled: bool = True
     filemaker_odata_version: str = "v4"
     filemaker_odata_auth_mode: str = "basic"
@@ -188,7 +192,9 @@ class Settings(BaseSettings):
     cos_presign_ttl_seconds: int = 10 * 60
     cos_max_upload_bytes: int = 10 * 1024 * 1024
     cos_max_attachments_per_receipt: int = 8
-    cos_allowed_content_types: str = "image/jpeg,image/png,image/heic,image/heif"
+    cos_allowed_content_types: str = (
+        "image/jpeg,image/png,image/webp,image/heic,image/heif"
+    )
 
     qr_base_url: str = "http://localhost:8080/q"
 
@@ -301,6 +307,18 @@ class Settings(BaseSettings):
             problems.append(
                 "COS_ENABLED=true，但 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET "
                 "或 COS_REGION 未完整配置。"
+            )
+        if self.filemaker_part_assets_enabled and not self.cos_configured:
+            problems.append(
+                "FILEMAKER_PART_ASSETS_ENABLED=true，但零件资产所需的 COS 配置不完整。"
+            )
+        if (
+            self.filemaker_part_assets_enabled
+            and not self.filemaker_part_asset_layout.strip()
+        ):
+            problems.append(
+                "FILEMAKER_PART_ASSETS_ENABLED=true，但 "
+                "FILEMAKER_PART_ASSET_LAYOUT 为空。"
             )
         if not 60 <= self.cos_presign_ttl_seconds <= 60 * 60:
             problems.append(

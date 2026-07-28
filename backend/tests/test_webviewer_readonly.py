@@ -80,6 +80,26 @@ def test_webviewer_session_round_trip() -> None:
     assert operator.name == "Amy"
 
 
+def test_webviewer_session_normalizes_renamed_filemaker_order_id() -> None:
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_session_ttl_seconds=60,
+    )
+    context = create_mock_context(
+        operator_account="amy",
+        operator_name="Amy",
+    )
+    context.pop("orderId")
+    context["id"] = "PI0017287"
+
+    token, payload = issue_session_token(context, settings)
+    verified = verify_session_token(token, settings)
+
+    assert payload["orderId"] == "PI0017287"
+    assert verified["orderId"] == "PI0017287"
+    assert "id" not in payload
+
+
 def test_filemaker_write_guard_blocks_when_read_only() -> None:
     settings = Settings(filemaker_read_only=True)
 

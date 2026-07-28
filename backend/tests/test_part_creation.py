@@ -8,6 +8,7 @@ from app.services.part_creation import (
     PartCreationError,
     create_part,
     load_part_creation_options,
+    search_part_vendors,
     validate_part_creation,
 )
 
@@ -23,9 +24,16 @@ def _values(name, *values):
 
 
 class FakeFileMaker:
-    def __init__(self, *, duplicate=False, upload_error=False):
+    def __init__(
+        self,
+        *,
+        duplicate=False,
+        upload_error=False,
+        vendor_status="已审核",
+    ):
         self.duplicate = duplicate
         self.upload_error = upload_error
+        self.vendor_status = vendor_status
         self.created_fields = None
         self.uploaded = None
         self.deleted = []
@@ -65,6 +73,21 @@ class FakeFileMaker:
                     else []
                 ),
                 "foundCount": 1 if self.duplicate else 0,
+            }
+        if layout == "@S廠商":
+            return {
+                "data": [
+                    {
+                        "recordId": "19",
+                        "fieldData": {
+                            "ID": "FE2F8FA0-CDBB-5D4A-A3EE-C7EA9F951E68",
+                            "ID_廠商編號": "10",
+                            "廠商名稱": "阿雄五金",
+                            "status": self.vendor_status,
+                        },
+                    }
+                ],
+                "foundCount": 1,
             }
         records = {
             "MaterialManufactor_EDIT": [("LD", "镭雕")],
@@ -119,6 +142,45 @@ class FakeFileMaker:
         ]
 
 
+class FakeOData:
+    def __init__(self, *, customer_id="CU840"):
+        self.customer_id = customer_id
+        self.calls = []
+
+    async def records(
+        self,
+        table,
+        *,
+        select=None,
+        filter_expr=None,
+        expand=None,
+        orderby=None,
+        top=10,
+        skip=0,
+        count=True,
+    ):
+        self.calls.append(
+            {
+                "table": table,
+                "filter": filter_expr,
+                "top": top,
+                "count": count,
+            }
+        )
+        if not self.customer_id:
+            return {"rows": [], "count": 0}
+        return {
+            "rows": [
+                {
+                    "ID": self.customer_id,
+                    "客戶代號": "0840",
+                    "客戶公司簡稱": "Army Racing",
+                }
+            ],
+            "count": 1,
+        }
+
+
 def _settings(**overrides):
     values = {
         "filemaker_part_create_enabled": True,
@@ -139,16 +201,29 @@ def _request(**overrides):
         "statisticsCategory": "统计",
         "useDepartment": "采购部",
         "lifecycleStatus": "可量产",
+        "vendorId": "FE2F8FA0-CDBB-5D4A-A3EE-C7EA9F951E68",
+        "vendorNumber": "10",
+        "vendorName": "阿雄五金",
         "materialCategory": "CB",
         "departmentDivision": "采购",
         "partCategory": "底板",
         "materialProperties": "原材料",
         "weightGrams": "12.5",
-        "customerId": "0840",
+        "customerCode": "0840",
         "customerName": "Army Racing",
     }
     values.update(overrides)
     return PartCreationRequest(**values)
+
+
+def test_customer_code_uses_explicit_alias_and_accepts_legacy_payload() -> None:
+    request = _request()
+    payload = request.model_dump(by_alias=True)
+
+    assert payload["customerCode"] == "0840"
+    legacy_payload = {**payload, "customerId": payload["customerCode"]}
+    legacy_payload.pop("customerCode")
+    assert PartCreationRequest(**legacy_payload).customer_code == "0840"
 
 
 @pytest.mark.asyncio
@@ -164,6 +239,17 @@ async def test_options_are_loaded_from_native_new_part_layout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vendor_search_returns_uuid_display_fields_and_approval_state() -> None:
+    response = await search_part_vendors(FakeFileMaker(), "阿雄", limit=40)
+
+    assert response.found_count == 1
+    assert response.items[0].vendor_id == "FE2F8FA0-CDBB-5D4A-A3EE-C7EA9F951E68"
+    assert response.items[0].vendor_number == "10"
+    assert response.items[0].vendor_name == "阿雄五金"
+    assert response.items[0].selectable is True
+
+
+@pytest.mark.asyncio
 async def test_validation_rejects_placeholder_duplicate_and_stale_option() -> None:
     response = await validate_part_creation(
         FakeFileMaker(duplicate=True),
@@ -172,6 +258,7 @@ async def test_validation_rejects_placeholder_duplicate_and_stale_option() -> No
             internalName="新零件，請填寫正確中文名稱＆詳細資訊",
             warehouseDivision="已删除选项",
         ),
+        odata=FakeOData(),
     )
 
     assert response.valid is False
@@ -191,6 +278,8 @@ async def test_create_maps_fields_and_uploads_photo() -> None:
             photoMimeType="image/jpeg",
             photoBase64=base64.b64encode(b"jpeg-data").decode(),
         ),
+        odata=FakeOData(),
+        created_by="amy",
     )
 
     assert response.record_id == "101"
@@ -198,7 +287,13 @@ async def test_create_maps_fields_and_uploads_photo() -> None:
     assert response.photo_uploaded is True
     assert filemaker.created_fields["倉庫分工"] == "发料"
     assert filemaker.created_fields["material_category"] == "CB"
-    assert filemaker.created_fields["customer_id"] == "0840"
+    assert filemaker.created_fields["customer_id"] == "CU840"
+    assert filemaker.created_fields["exclusive_customer_name"] == "Army Racing"
+    assert (
+        filemaker.created_fields["ID_廠商"]
+        == "FE2F8FA0-CDBB-5D4A-A3EE-C7EA9F951E68"
+    )
+    assert filemaker.created_fields["created_by"] == "amy"
     assert filemaker.uploaded["field"] == "影像 | 容器"
     assert filemaker.uploaded["filename"] == "sample.jpg"
 
@@ -216,6 +311,8 @@ async def test_photo_upload_failure_rolls_back_new_record() -> None:
                 photoMimeType="image/jpeg",
                 photoBase64=base64.b64encode(b"jpeg-data").decode(),
             ),
+            odata=FakeOData(),
+            created_by="amy",
         )
 
     assert filemaker.deleted == [("@零件", "101")]
@@ -228,6 +325,47 @@ async def test_create_requires_dedicated_feature_toggle() -> None:
             FakeFileMaker(),
             _settings(filemaker_part_create_enabled=False),
             _request(),
+            odata=FakeOData(),
+            created_by="amy",
         )
 
     assert exc.value.code == "PART_CREATE_DISABLED"
+
+
+@pytest.mark.asyncio
+async def test_validation_rejects_customer_code_without_internal_id_mapping() -> None:
+    response = await validate_part_creation(
+        FakeFileMaker(),
+        _settings(),
+        _request(),
+        odata=FakeOData(customer_id=""),
+    )
+
+    assert response.valid is False
+    assert "customerCode" in response.errors
+
+
+@pytest.mark.asyncio
+async def test_validation_rejects_unapproved_vendor() -> None:
+    response = await validate_part_creation(
+        FakeFileMaker(vendor_status="未审核"),
+        _settings(),
+        _request(),
+        odata=FakeOData(),
+    )
+
+    assert response.valid is False
+    assert response.errors["vendorId"] == "该厂商尚未审核，暂时不能用于建立零件。"
+
+
+@pytest.mark.asyncio
+async def test_validation_rejects_vendor_display_data_mismatch() -> None:
+    response = await validate_part_creation(
+        FakeFileMaker(),
+        _settings(),
+        _request(vendorName="旧厂商名称"),
+        odata=FakeOData(),
+    )
+
+    assert response.valid is False
+    assert "vendorId" in response.errors

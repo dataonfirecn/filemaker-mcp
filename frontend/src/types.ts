@@ -15,6 +15,7 @@ export type SessionResponse = {
       privilege: string;
     };
     access: WebViewerPermissions;
+    partPermissions: PartPermissionMap;
   };
   readOnly: boolean;
   bomWriteEnabled: boolean;
@@ -32,13 +33,45 @@ export type WebViewerPermissions = {
   canMergeOrders: boolean;
 };
 
+export type PartPermissionMap = Record<string, boolean>;
+
+export type PartPermissionCatalogAction = {
+  key: string;
+  label: string;
+  description: string;
+  risk: "normal" | "sensitive" | "high";
+  permission: string;
+};
+
+export type PartPermissionCatalogModule = {
+  key: string;
+  label: string;
+  description: string;
+  actions: PartPermissionCatalogAction[];
+};
+
+export type PartPermissionCatalogGroup = {
+  key: string;
+  label: string;
+  description: string;
+  modules: PartPermissionCatalogModule[];
+};
+
+export type PartPermissionCatalog = {
+  version: number;
+  permissionCount: number;
+  groups: PartPermissionCatalogGroup[];
+};
+
 export type WebViewerAdminAccount = {
   username: string;
   displayName: string;
   filemakerPrivilegeSet: string;
   enabled: boolean;
   permissions: WebViewerPermissions;
+  partPermissions: PartPermissionMap;
   inheritsPrivilegeSet: boolean;
+  inheritsPartPermissions: boolean;
   origin: string;
   lastSeenAt: string | null;
   updatedAt: string;
@@ -49,6 +82,7 @@ export type WebViewerAdminPrivilegeSet = {
   name: string;
   enabled: boolean;
   permissions: WebViewerPermissions;
+  partPermissions: PartPermissionMap;
   accountCount: number;
   updatedAt: string;
   updatedBy: string;
@@ -87,6 +121,7 @@ export type ThemeMode = "light" | "dark";
 export type BomStep = "select" | "bom" | "calc" | "done";
 export type Page =
   | "home"
+  | "chat"
   | "productInventory"
   | "internalOrderMerge"
   | "orderDetail"
@@ -96,6 +131,8 @@ export type Page =
   | "kitIssue"
   | "businessProducts"
   | "businessProductDetail"
+  | "parts"
+  | "partDetail"
   | "ragControl"
   | "accessAdmin";
 

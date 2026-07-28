@@ -21,7 +21,6 @@ CUSTOMER_ACCESS_ROLES: tuple[CustomerAccessRole, ...] = (
 def normalize_customer_access_role(
     value: object,
     *,
-    can_view_price: bool = False,
     is_admin: bool = False,
 ) -> CustomerAccessRole:
     normalized = str(value or "").strip().casefold()
@@ -29,15 +28,12 @@ def normalize_customer_access_role(
         return cast(CustomerAccessRole, normalized)
     if is_admin:
         return "admin"
-    if can_view_price:
-        return "manager"
     return "team"
 
 
 def customer_access_permissions(role: object) -> dict[str, bool]:
     normalized = normalize_customer_access_role(role)
     return {
-        "canViewPrice": normalized in {"admin", "manager"},
         "canViewOrders": normalized in {"admin", "manager", "team"},
         "canViewDetails": normalized in {"admin", "manager", "team"},
         "isAdmin": normalized == "admin",

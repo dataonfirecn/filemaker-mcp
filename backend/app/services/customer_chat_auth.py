@@ -45,12 +45,10 @@ class CustomerAccount:
     def __post_init__(self) -> None:
         role = normalize_customer_access_role(
             self.access_role,
-            can_view_price=self.can_view_price,
             is_admin=self.is_admin,
         )
         permissions = customer_access_permissions(role)
         object.__setattr__(self, "access_role", role)
-        object.__setattr__(self, "can_view_price", permissions["canViewPrice"])
         object.__setattr__(self, "is_admin", permissions["isAdmin"])
 
     @property
@@ -79,12 +77,10 @@ class CustomerSession:
     def __post_init__(self) -> None:
         role = normalize_customer_access_role(
             self.access_role,
-            can_view_price=self.can_view_price,
             is_admin=self.is_admin,
         )
         permissions = customer_access_permissions(role)
         object.__setattr__(self, "access_role", role)
-        object.__setattr__(self, "can_view_price", permissions["canViewPrice"])
         object.__setattr__(self, "is_admin", permissions["isAdmin"])
 
     @property
@@ -206,7 +202,6 @@ def load_customer_accounts(settings: Settings) -> dict[str, CustomerAccount]:
         is_admin = item.get("isAdmin") is True
         access_role = normalize_customer_access_role(
             item.get("accessRole"),
-            can_view_price=can_view_price,
             is_admin=is_admin,
         )
         password_hash = str(item.get("passwordHash") or "").strip()
@@ -254,7 +249,16 @@ def authenticate_customer(
     account = account_override
     if account is None:
         accounts = load_customer_accounts(settings)
-        account = accounts.get(username.strip().casefold())
+        identifier = username.strip().casefold()
+        account = accounts.get(identifier)
+        if account is None and identifier:
+            email_matches = [
+                candidate
+                for candidate in accounts.values()
+                if candidate.email.strip().casefold() == identifier
+            ]
+            if len(email_matches) == 1:
+                account = email_matches[0]
     # Unknown users still perform a deliberately expensive hash check to reduce timing leakage.
     if account:
         account = account_with_password_hash(account, password_hash_override)

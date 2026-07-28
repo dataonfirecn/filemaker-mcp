@@ -148,23 +148,42 @@ export function MaterialIdSearchSelect({
         {label}
         {required && <b aria-label="必填">*</b>}
       </span>
-      <button
-        className={`mid-select-trigger ${value ? "has-value" : ""}`}
-        type="button"
-        disabled={disabled}
-        title={value ? optionText(value) : undefined}
-        aria-label={`${label}${required ? " 必填" : ""}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={(event) => {
-          event.stopPropagation();
-          setQuery("");
-          setOpen((current) => !current);
-        }}
-      >
-        <span>{value ? optionText(value) : placeholder}</span>
-        <ChevronDown size={16} />
-      </button>
+      <span className="mid-select-control">
+        <button
+          className={`mid-select-trigger ${value ? "has-value" : ""}`}
+          type="button"
+          disabled={disabled}
+          title={value ? optionText(value) : undefined}
+          aria-label={`${label}${required ? " 必填" : ""}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.stopPropagation();
+            setQuery("");
+            setOpen((current) => !current);
+          }}
+        >
+          <span>{value ? optionText(value) : placeholder}</span>
+          <ChevronDown size={16} />
+        </button>
+        {value && !disabled && (
+          <button
+            className="mid-select-clear"
+            type="button"
+            aria-label={`清空${label}`}
+            title={`清空${label}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onChange(null);
+              setQuery("");
+              setOpen(false);
+            }}
+          >
+            <X size={14} />
+          </button>
+        )}
+      </span>
       {open && (
         <span className="mid-select-popover">
           <span className="mid-select-search">

@@ -2,7 +2,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.core.config import Settings
@@ -61,6 +61,49 @@ class COSStorageService:
             )
         )
 
+    def create_part_asset_object_key(
+        self,
+        *,
+        draft_id: str,
+        upload_id: str,
+        mime_type: str,
+        original_filename: str = "",
+        now: datetime | None = None,
+    ) -> str:
+        timestamp = now or datetime.now(timezone.utc)
+        extension = _asset_extension(mime_type, original_filename)
+        return str(
+            PurePosixPath(
+                "starrc",
+                "parts",
+                "original",
+                f"{timestamp:%Y}",
+                f"{timestamp:%m}",
+                _safe_segment(draft_id),
+                f"{_safe_segment(upload_id)}.{extension}",
+            )
+        )
+
+    def create_migrated_part_asset_object_key(
+        self,
+        *,
+        part_id: str,
+        asset_id: str,
+        mime_type: str,
+        original_filename: str = "",
+    ) -> str:
+        extension = _asset_extension(mime_type, original_filename)
+        return str(
+            PurePosixPath(
+                "starrc",
+                "parts",
+                "original",
+                "migration",
+                _safe_segment(part_id),
+                f"{_safe_segment(asset_id)}.{extension}",
+            )
+        )
+
     def create_presigned_upload(
         self,
         *,
@@ -105,6 +148,25 @@ class COSStorageService:
             .lower(),
             etag=str(response.get("ETag") or "").strip('"'),
         )
+
+    def put_object(
+        self,
+        *,
+        object_key: str,
+        content: bytes,
+        content_type: str,
+    ) -> str:
+        client = self._require_client()
+        try:
+            response = client.put_object(
+                Bucket=self.settings.cos_bucket,
+                Key=object_key,
+                Body=content,
+                ContentType=content_type,
+            )
+        except Exception as exc:
+            raise COSStorageError("Unable to upload COS object") from exc
+        return str(response.get("ETag") or "").strip('"')
 
     def create_presigned_download(self, object_key: str) -> tuple[str, datetime]:
         client = self._require_client()
@@ -159,3 +221,21 @@ def _extension_for_mime_type(mime_type: str) -> str:
         "image/heic": "heic",
         "image/heif": "heif",
     }.get(mime_type.lower(), "bin")
+
+
+def _asset_extension(mime_type: str, original_filename: str) -> str:
+    known = {
+        "application/pdf": "pdf",
+        "image/bmp": "bmp",
+        "image/gif": "gif",
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/heic": "heic",
+        "image/heif": "heif",
+    }.get(mime_type.lower())
+    if known:
+        return known
+    suffix = Path(original_filename).suffix.lower().lstrip(".")
+    safe_suffix = re.sub(r"[^a-z0-9]+", "", suffix)
+    return safe_suffix[:12] or "bin"

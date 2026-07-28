@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.models.material_ids import MaterialIdOptionsResponse
 
@@ -6,6 +6,23 @@ from app.models.material_ids import MaterialIdOptionsResponse
 class PartCreationOption(BaseModel):
     code: str
     label: str
+
+
+class PartVendorOption(BaseModel):
+    vendor_id: str = Field(alias="vendorId")
+    vendor_number: str = Field(alias="vendorNumber")
+    vendor_name: str = Field(alias="vendorName")
+    status: str
+    selectable: bool
+
+    model_config = {"populate_by_name": True}
+
+
+class PartVendorSearchResponse(BaseModel):
+    items: list[PartVendorOption]
+    found_count: int = Field(alias="foundCount")
+
+    model_config = {"populate_by_name": True}
 
 
 class PartCreationDefaults(BaseModel):
@@ -31,6 +48,7 @@ class PartCreationOptionsResponse(BaseModel):
     exclusive_customers: list[PartCreationOption] = Field(alias="exclusiveCustomers")
     generator: MaterialIdOptionsResponse
     defaults: PartCreationDefaults
+    asset_uploads_enabled: bool = Field(default=False, alias="assetUploadsEnabled")
 
     model_config = {"populate_by_name": True}
 
@@ -45,7 +63,9 @@ class PartCreationRequest(BaseModel):
     statistics_category: str = Field(default="", alias="statisticsCategory", max_length=80)
     use_department: str = Field(default="", alias="useDepartment", max_length=120)
     lifecycle_status: str = Field(default="", alias="lifecycleStatus", max_length=80)
+    vendor_id: str = Field(default="", alias="vendorId", max_length=80)
     vendor_number: str = Field(default="", alias="vendorNumber", max_length=160)
+    vendor_name: str = Field(default="", alias="vendorName", max_length=240)
     material_category: str = Field(alias="materialCategory", max_length=80)
     department_division: str = Field(default="", alias="departmentDivision", max_length=80)
     part_category: str = Field(default="", alias="partCategory", max_length=120)
@@ -56,7 +76,12 @@ class PartCreationRequest(BaseModel):
     location_secondary: str = Field(default="", alias="locationSecondary", max_length=160)
     weight_grams: str = Field(default="", alias="weightGrams", max_length=80)
     material_size: str = Field(default="", alias="materialSize", max_length=200)
-    customer_id: str = Field(default="", alias="customerId", max_length=120)
+    customer_code: str = Field(
+        default="",
+        validation_alias=AliasChoices("customerCode", "customerId"),
+        serialization_alias="customerCode",
+        max_length=120,
+    )
     customer_name: str = Field(default="", alias="customerName", max_length=240)
     customer_part_number: str = Field(
         default="",
@@ -66,6 +91,7 @@ class PartCreationRequest(BaseModel):
     photo_name: str = Field(default="", alias="photoName", max_length=240)
     photo_mime_type: str = Field(default="", alias="photoMimeType", max_length=80)
     photo_base64: str = Field(default="", alias="photoBase64")
+    photo_upload_id: str = Field(default="", alias="photoUploadId", max_length=80)
 
     model_config = {"populate_by_name": True}
 
@@ -82,6 +108,7 @@ class PartCreationResponse(BaseModel):
     part_id: str = Field(alias="partId")
     part_number: str = Field(alias="partNumber")
     photo_uploaded: bool = Field(alias="photoUploaded")
+    photo_asset_id: str = Field(default="", alias="photoAssetId")
     warnings: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}

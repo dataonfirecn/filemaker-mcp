@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ChevronLeft, ChevronRight, Home, PanelLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Page } from "../types";
 
@@ -62,17 +62,6 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
             <span>运营导航中心</span>
           </div>
         </div>
-
-        <button
-          className="sidebar-toggle"
-          type="button"
-          onClick={toggle}
-          title={collapsed ? "展开导航" : "折叠导航"}
-          aria-label={collapsed ? "展开导航" : "折叠导航"}
-          aria-expanded={!collapsed}
-        >
-          {collapsed ? <PanelLeft size={18} /> : <ChevronLeft size={18} />}
-        </button>
       </div>
 
       {onGoHome && (
@@ -83,7 +72,9 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
           aria-current={activePage === "home" ? "page" : undefined}
           title="导航首页"
         >
-          <Home size={18} />
+          <span className="sidebar-item-icon" aria-hidden="true">
+            <Home size={18} />
+          </span>
           <span>导航首页</span>
         </button>
       )}

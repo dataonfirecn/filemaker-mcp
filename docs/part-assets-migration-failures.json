@@ -1,0 +1,795 @@
+{
+  "mode": "commit",
+  "sourceLayout": "@零件",
+  "targetLayout": "PartAssets",
+  "excludedBarcodeFields": [
+    "barcode_image",
+    "qrcode_image",
+    "發料收料標籤貼紙",
+    "零件標籤貼紙"
+  ],
+  "sourcePartsScanned": 45103,
+  "partsMissingPartId": 0,
+  "candidateAssets": 51164,
+  "candidateByField": {
+    "影像 | 容器": 27207,
+    "影像 | 容器2": 3203,
+    "圖面 | 容器": 6263,
+    "打樣圖面": 4234,
+    "打樣圖面 | 容器": 7153,
+    "外加工圖面": 234,
+    "影像 | 容器3": 99,
+    "印刷logo": 8,
+    "外紙箱": 38,
+    "說明書": 40,
+    "雷雕檔": 320,
+    "雷雕美工檔": 578,
+    "雷雕製具": 43,
+    "零件照片3": 624,
+    "雷雕照片": 343,
+    "雷雕製具2": 3,
+    "貼紙": 28,
+    "影像 | 容器4": 83,
+    "彩盒": 5,
+    "零件照片4": 49,
+    "印刷車殼": 1,
+    "影像 | 容器5": 7,
+    "檔案2D": 287,
+    "檔案3D": 314
+  },
+  "copied": 0,
+  "skippedExisting": 51071,
+  "failed": 93,
+  "failureByReason": {
+    "source_http_401": 77,
+    "external_container_host": 4,
+    "over_size_limit": 11,
+    "source_http_404": 1
+  },
+  "failureDetails": [
+    {
+      "recordId": "44827",
+      "partId": "S43627",
+      "partNumber": "RU-UPSILON-T-02",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "44770",
+      "partId": "S43570",
+      "partNumber": "RU-DELTA-T-03",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "48614",
+      "partId": "S47400",
+      "partNumber": "SP2005-YE不用",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "49616",
+      "partId": "S48402",
+      "partNumber": "AL2511-35-LDEXO",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "49960",
+      "partId": "S48746",
+      "partNumber": "BAH-2100YS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "50068",
+      "partId": "S48854",
+      "partNumber": "AL17001-35PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "51405",
+      "partId": "S50191",
+      "partNumber": "AL2373-20-KCY23T",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "51522",
+      "partId": "S50308",
+      "partNumber": "BX-11",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "52325",
+      "partId": "S51111",
+      "partNumber": "PL2028-10",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "53229",
+      "partId": "S52015",
+      "partNumber": "AL20001-CY23T",
+      "field": "影像 | 容器",
+      "reason": "external_container_host",
+      "error": "Container URL does not belong to the FileMaker host"
+    },
+    {
+      "recordId": "53917",
+      "partId": "S52700",
+      "partNumber": "AL2538-30LD31003-15",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "54783",
+      "partId": "S53566",
+      "partNumber": "SE01143",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "54961",
+      "partId": "S53744",
+      "partNumber": "SE01128",
+      "field": "影像 | 容器",
+      "reason": "external_container_host",
+      "error": "Container URL does not belong to the FileMaker host"
+    },
+    {
+      "recordId": "58679",
+      "partId": "S57460",
+      "partNumber": "AL07060-DBR",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "59281",
+      "partId": "S58062",
+      "partNumber": "C-R05",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "59522",
+      "partId": "S58303",
+      "partNumber": "AL18042-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "59887",
+      "partId": "S58668",
+      "partNumber": "MN-TT-6412",
+      "field": "說明書",
+      "reason": "over_size_limit",
+      "error": "Container is 114317792 bytes, over 104857600"
+    },
+    {
+      "recordId": "59887",
+      "partId": "S58668",
+      "partNumber": "MN-TT-6412",
+      "field": "影像 | 容器",
+      "reason": "over_size_limit",
+      "error": "Container is 190116479 bytes, over 104857600"
+    },
+    {
+      "recordId": "60076",
+      "partId": "S58857",
+      "partNumber": "SE07190",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "60667",
+      "partId": "S59448",
+      "partNumber": "BX-RU10001",
+      "field": "彩盒",
+      "reason": "over_size_limit",
+      "error": "Container is 190643555 bytes, over 104857600"
+    },
+    {
+      "recordId": "60757",
+      "partId": "S59536",
+      "partNumber": "SE18053",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "60822",
+      "partId": "S59601",
+      "partNumber": "AL01374",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "60977",
+      "partId": "S59753",
+      "partNumber": "AL08089-DBS DP",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61592",
+      "partId": "S60368",
+      "partNumber": "SP46003",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61692",
+      "partId": "S60468",
+      "partNumber": "SE08069",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61730",
+      "partId": "S60506",
+      "partNumber": "BX-FH1014",
+      "field": "影像 | 容器",
+      "reason": "over_size_limit",
+      "error": "Container is 137333780 bytes, over 104857600"
+    },
+    {
+      "recordId": "61723",
+      "partId": "S60499",
+      "partNumber": "BX-FH1015",
+      "field": "影像 | 容器",
+      "reason": "over_size_limit",
+      "error": "Container is 130168922 bytes, over 104857600"
+    },
+    {
+      "recordId": "61837",
+      "partId": "S60613",
+      "partNumber": "AL05200-DBK",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61864",
+      "partId": "S60640",
+      "partNumber": "AL21076-LD (B)",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61839",
+      "partId": "S60615",
+      "partNumber": "AL05201-DBK",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61841",
+      "partId": "S60617",
+      "partNumber": "AL05204-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "61980",
+      "partId": "S60756",
+      "partNumber": "SE46020",
+      "field": "影像 | 容器2",
+      "reason": "external_container_host",
+      "error": "Container URL does not belong to the FileMaker host"
+    },
+    {
+      "recordId": "62178",
+      "partId": "S60954",
+      "partNumber": "HSS-30-YM1/16",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "62449",
+      "partId": "S61225",
+      "partNumber": "SP46015",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "62602",
+      "partId": "S61378",
+      "partNumber": "SB01331",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "62887",
+      "partId": "S61663",
+      "partNumber": "MN-MAT-PT1",
+      "field": "說明書",
+      "reason": "over_size_limit",
+      "error": "Container is 1004899608 bytes, over 104857600"
+    },
+    {
+      "recordId": "62891",
+      "partId": "S61667",
+      "partNumber": "PL-PT1-P01-P0110-PQYERE",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "63003",
+      "partId": "S61779",
+      "partNumber": "SP46018-2.0",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "63545",
+      "partId": "S62321",
+      "partNumber": "BX-007-500402127",
+      "field": "彩盒",
+      "reason": "over_size_limit",
+      "error": "Container is 498807362 bytes, over 104857600"
+    },
+    {
+      "recordId": "63622",
+      "partId": "S62398",
+      "partNumber": "JPL7167-3.5ZK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "64040",
+      "partId": "S62816",
+      "partNumber": "AL01369-RE LD 25T",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "64003",
+      "partId": "S62779",
+      "partNumber": "SE07244-FH",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "64036",
+      "partId": "S62812",
+      "partNumber": "AL01368-BL LD 24T",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "64386",
+      "partId": "S63162",
+      "partNumber": "BX-FH1016",
+      "field": "影像 | 容器",
+      "reason": "over_size_limit",
+      "error": "Container is 137333780 bytes, over 104857600"
+    },
+    {
+      "recordId": "64979",
+      "partId": "S63755",
+      "partNumber": "PLM07-027-02 YE",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65203",
+      "partId": "S63979",
+      "partNumber": "AL0552001-24T",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65358",
+      "partId": "S64134",
+      "partNumber": "AL01410-QG",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65357",
+      "partId": "S64133",
+      "partNumber": "AL01409-QG",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65313",
+      "partId": "S64089",
+      "partNumber": "AL08128-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65449",
+      "partId": "S64225",
+      "partNumber": "RU07-154",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65541",
+      "partId": "S64317",
+      "partNumber": "AL39065-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65529",
+      "partId": "S64305",
+      "partNumber": "AL39060-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65544",
+      "partId": "S64320",
+      "partNumber": "AL39066-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65504",
+      "partId": "S64280",
+      "partNumber": "AL39042-RTR PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65509",
+      "partId": "S64285",
+      "partNumber": "AL39043-RTR PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65630",
+      "partId": "S64406",
+      "partNumber": "AL39072-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65663",
+      "partId": "S64439",
+      "partNumber": "AL08145",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65626",
+      "partId": "S64402",
+      "partNumber": "AL39071-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65628",
+      "partId": "S64404",
+      "partNumber": "AL39072",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "65644",
+      "partId": "S64420",
+      "partNumber": "SP39005-26",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "66053",
+      "partId": "S64829",
+      "partNumber": "AL08146",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "66432",
+      "partId": "S65208",
+      "partNumber": "AL46068-00DGU",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "66566",
+      "partId": "S65342",
+      "partNumber": "AL05239-DBK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "66783",
+      "partId": "S65559",
+      "partNumber": "AL012002-LD ProTek RC",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "66823",
+      "partId": "S65599",
+      "partNumber": "AL08143-DRE",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67019",
+      "partId": "S65795",
+      "partNumber": "SE574018",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67121",
+      "partId": "S65897",
+      "partNumber": "PLM07-P10-18808-02-01",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67039",
+      "partId": "S65815",
+      "partNumber": "PL0031-00GY",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67072",
+      "partId": "S65848",
+      "partNumber": "SP39012",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67319",
+      "partId": "S66095",
+      "partNumber": "SE08124-BK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67399",
+      "partId": "S66175",
+      "partNumber": "AL05247-R-DBK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67699",
+      "partId": "S66475",
+      "partNumber": "SE05152",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "67893",
+      "partId": "S66669",
+      "partNumber": "SE08130-DP",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "68360",
+      "partId": "S67136",
+      "partNumber": "RU01-131-35",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "68452",
+      "partId": "S67228",
+      "partNumber": "MN-46-80068",
+      "field": "說明書",
+      "reason": "over_size_limit",
+      "error": "Container is 330988207 bytes, over 104857600"
+    },
+    {
+      "recordId": "68643",
+      "partId": "S67417",
+      "partNumber": "SE575004",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "68620",
+      "partId": "S67394",
+      "partNumber": "BAG-008-001",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "68642",
+      "partId": "S67416",
+      "partNumber": "SE575003",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "68884",
+      "partId": "S67658",
+      "partNumber": "MN-46-80168",
+      "field": "說明書",
+      "reason": "over_size_limit",
+      "error": "Container is 156117674 bytes, over 104857600"
+    },
+    {
+      "recordId": "69026",
+      "partId": "S67800",
+      "partNumber": "AL12056-XB",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "69032",
+      "partId": "S67806",
+      "partNumber": "AL12057-LD",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "69123",
+      "partId": "S67897",
+      "partNumber": "PLM07-P70-18808-09-07BL",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "69394",
+      "partId": "S68168",
+      "partNumber": "AL08109-DBK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "69645",
+      "partId": "S68419",
+      "partNumber": "81C0500081",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "70116",
+      "partId": "S68890",
+      "partNumber": "AL05297-PS",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "70336",
+      "partId": "S69110",
+      "partNumber": "RU590-004-R",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "70436",
+      "partId": "S69210",
+      "partNumber": "ALT05146-ZK",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "70849",
+      "partId": "S69623",
+      "partNumber": "PLM575-031-02-PQ",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "71321",
+      "partId": "S70095",
+      "partNumber": "BD07-215",
+      "field": "影像 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "71398",
+      "partId": "S70172",
+      "partNumber": "SE46-092",
+      "field": "打樣圖面 | 容器",
+      "reason": "source_http_401",
+      "error": "Container download failed: HTTP 401"
+    },
+    {
+      "recordId": "72713",
+      "partId": "S71487",
+      "partNumber": "BD21-C00166CL",
+      "field": "影像 | 容器",
+      "reason": "external_container_host",
+      "error": "Container URL does not belong to the FileMaker host"
+    },
+    {
+      "recordId": "75936",
+      "partId": "S74709",
+      "partNumber": "TI05226",
+      "field": "圖面 | 容器",
+      "reason": "source_http_404",
+      "error": "Container download failed: HTTP 404"
+    },
+    {
+      "recordId": "77791",
+      "partId": "S76563",
+      "partNumber": "MN-780-GP001",
+      "field": "說明書",
+      "reason": "over_size_limit",
+      "error": "Container is 105287719 bytes, over 104857600"
+    }
+  ]
+}

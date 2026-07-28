@@ -67,6 +67,8 @@ import {
   type CustomerAccountBulkStatusResponse,
   type CustomerAdminAccount,
   type CustomerAdminAccountsResponse,
+  type CustomerCredentialsEmailLogItem,
+  type CustomerCredentialsEmailLogResponse,
   type CustomerOrderQueryRow,
   type CustomerPartDetail,
   type CustomerProductDetail,
@@ -1173,18 +1175,31 @@ type CustomerAccountDraft = {
   password: string;
   enabled: boolean;
   accessRole: CustomerAccessRole;
+  canViewPrice: boolean;
   sendCredentials: boolean;
+  credentialsEmailAvailableAt: string | null;
 };
+
+type CustomerAccountSaveProgress = {
+  mode: "create" | "edit";
+  displayName: string;
+  sendingEmail: boolean;
+};
+
+const showCustomerEmailDebugLogs = (
+  import.meta.env.DEV
+  || import.meta.env.VITE_CUSTOMER_EMAIL_DEBUG_LOGS === "true"
+);
 
 const customerAccessRoles: Array<{
   value: CustomerAccessRole;
   label: string;
   description: string;
 }> = [
-  { value: "admin", label: "Admin", description: "Full access to content, prices, orders, accounts, and analytics" },
-  { value: "manager", label: "Manager", description: "Products, details, prices, and all orders; no account administration" },
-  { value: "team", label: "Team member", description: "Products, details, and orders with all prices and totals hidden" },
-  { value: "agent", label: "Agent", description: "Inventory lookup only; no order, detail, or price access" }
+  { value: "admin", label: "Admin", description: "Content, orders, account administration, and analytics" },
+  { value: "manager", label: "Manager", description: "Products, details, and all orders; no account administration" },
+  { value: "team", label: "Team member", description: "Products, details, and orders; no account administration" },
+  { value: "agent", label: "Agent", description: "Inventory lookup only; no order or detail access" }
 ];
 
 function generateTemporaryPassword(): string {
@@ -1217,7 +1232,9 @@ function newCustomerAccountDraft(sendCredentials = false): CustomerAccountDraft 
     password: generateTemporaryPassword(),
     enabled: true,
     accessRole: "team",
-    sendCredentials
+    canViewPrice: false,
+    sendCredentials,
+    credentialsEmailAvailableAt: null
   };
 }
 
@@ -1229,27 +1246,25 @@ function accountDraft(account: CustomerAdminAccount): CustomerAccountDraft {
     password: "",
     enabled: account.enabled,
     accessRole: account.accessRole,
-    sendCredentials: false
+    canViewPrice: account.canViewPrice,
+    sendCredentials: false,
+    credentialsEmailAvailableAt: account.credentialsEmailAvailableAt
   };
 }
 
-function accountUpdatePayload(
-  account: CustomerAdminAccount,
-  overrides: Partial<CustomerAccountDraft> = {}
-) {
-  const accessRole = overrides.accessRole ?? account.accessRole;
-  const permissions = customerAccessRolePermissions(accessRole);
-  const email = overrides.email ?? account.email;
-  return {
-    displayName: overrides.displayName ?? account.displayName,
-    ...(email ? { email } : {}),
-    enabled: overrides.enabled ?? account.enabled,
-    accessRole,
-    canViewPrice: permissions.canViewPrice,
-    isAdmin: permissions.isAdmin,
-    newPassword: overrides.password || null,
-    sendCredentials: overrides.sendCredentials ?? false
-  };
+function credentialsEmailCooldownSeconds(
+  availableAt: string | null | undefined,
+  now: number,
+): number {
+  if (!availableAt) return 0;
+  const availableTimestamp = new Date(availableAt).getTime();
+  if (!Number.isFinite(availableTimestamp)) return 0;
+  return Math.max(0, Math.ceil((availableTimestamp - now) / 1000));
+}
+
+function formatEmailCooldown(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function AdminAccountsPage({
@@ -1263,7 +1278,6 @@ function AdminAccountsPage({
 }) {
   const [accounts, setAccounts] = useState<CustomerAdminAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingUsername, setSavingUsername] = useState("");
   const [editor, setEditor] = useState<{ mode: "create" | "edit"; draft: CustomerAccountDraft } | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<CustomerAdminAccount | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1276,7 +1290,14 @@ function AdminAccountsPage({
   const [bulkActionMenuOpen, setBulkActionMenuOpen] = useState(false);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [emailCountdownNow, setEmailCountdownNow] = useState(() => Date.now());
+  const [emailLogsOpen, setEmailLogsOpen] = useState(false);
+  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
+  const [emailLogs, setEmailLogs] = useState<CustomerCredentialsEmailLogItem[]>([]);
+  const [saveProgress, setSaveProgress] = useState<CustomerAccountSaveProgress | null>(null);
   const bulkActionMenuRef = useRef<HTMLDivElement>(null);
+  const saveInFlightRef = useRef(false);
+  const saveProgressRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -1301,6 +1322,11 @@ function AdminAccountsPage({
   }, [onUnauthorized, token]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => setEmailCountdownNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     if (!bulkActionMenuOpen) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!bulkActionMenuRef.current?.contains(event.target as Node)) {
@@ -1318,6 +1344,20 @@ function AdminAccountsPage({
     };
   }, [bulkActionMenuOpen]);
 
+  useEffect(() => {
+    if (!saveProgress) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    saveProgressRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
+  }, [saveProgress]);
+
   function handleRequestError(requestError: unknown, fallback: string) {
     if (requestError instanceof ApiError && requestError.status === 401) {
       onUnauthorized();
@@ -1332,6 +1372,28 @@ function AdminAccountsPage({
       mode: "create",
       draft: newCustomerAccountDraft(emailDeliveryEnabled)
     });
+  }
+
+  async function loadEmailLogs() {
+    setEmailLogsLoading(true);
+    setError("");
+    try {
+      const response = await requestJson<CustomerCredentialsEmailLogResponse>(
+        "/api/customer-chat/admin/accounts/email-logs?limit=100",
+        {},
+        token
+      );
+      setEmailLogs(response.logs);
+    } catch (requestError) {
+      handleRequestError(requestError, "Email logs could not be loaded.");
+    } finally {
+      setEmailLogsLoading(false);
+    }
+  }
+
+  function openEmailLogs() {
+    setEmailLogsOpen(true);
+    void loadEmailLogs();
   }
 
   async function copyEditorCredentials() {
@@ -1359,32 +1421,15 @@ function AdminAccountsPage({
     }
   }
 
-  async function updateAccount(account: CustomerAdminAccount, overrides: Partial<CustomerAccountDraft>) {
-    setSavingUsername(account.username);
-    setError("");
-    setNotice("");
-    try {
-      const response = await requestJson<CustomerAdminAccount>(
-        `/api/customer-chat/admin/accounts/${encodeURIComponent(account.username)}`,
-        { method: "PATCH", body: JSON.stringify(accountUpdatePayload(account, overrides)) },
-        token
-      );
-      const updated = normalizeCustomerAdminAccount(response);
-      setAccounts((current) => current.map((item) => item.username === updated.username ? updated : item));
-      setNotice(`${updated.displayName} was updated.`);
-      if (updated.username.toLocaleLowerCase() === currentUsername.toLocaleLowerCase()) {
-        onUnauthorized();
-      }
-    } catch (requestError) {
-      handleRequestError(requestError, "The account could not be updated.");
-    } finally {
-      setSavingUsername("");
-    }
-  }
-
   async function saveEditor(event: ReactFormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editor) return;
+    if (!editor || saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
+    setSaveProgress({
+      mode: editor.mode,
+      displayName: editor.draft.displayName.trim() || editor.draft.username.trim() || "customer account",
+      sendingEmail: editor.draft.sendCredentials
+    });
     setSubmitting(true);
     setError("");
     setNotice("");
@@ -1400,7 +1445,7 @@ function AdminAccountsPage({
             ...editor.draft,
             username: editor.draft.username.trim(),
             password: editor.draft.password,
-            canViewPrice: permissions.canViewPrice,
+            canViewPrice: editor.draft.canViewPrice,
             isAdmin: permissions.isAdmin
           }
         : {
@@ -1408,7 +1453,7 @@ function AdminAccountsPage({
             email: editor.draft.email,
             enabled: editor.draft.enabled,
             accessRole: editor.draft.accessRole,
-            canViewPrice: permissions.canViewPrice,
+            canViewPrice: editor.draft.canViewPrice,
             isAdmin: permissions.isAdmin,
             newPassword: editor.draft.password || null,
             sendCredentials: editor.draft.sendCredentials
@@ -1436,6 +1481,7 @@ function AdminAccountsPage({
       const currentSessionChanged = previousAccount && (
         previousAccount.displayName !== saved.displayName ||
         previousAccount.accessRole !== saved.accessRole ||
+        previousAccount.canViewPrice !== saved.canViewPrice ||
         Boolean(editor.draft.password)
       );
       if (
@@ -1448,7 +1494,9 @@ function AdminAccountsPage({
     } catch (requestError) {
       handleRequestError(requestError, "The account could not be saved.");
     } finally {
+      saveInFlightRef.current = false;
       setSubmitting(false);
+      setSaveProgress(null);
     }
   }
 
@@ -1537,6 +1585,10 @@ function AdminAccountsPage({
       ? "Disable selected"
       : "Choose action";
   const roleCount = (role: CustomerAccessRole) => accounts.filter((account) => account.accessRole === role).length;
+  const editorEmailCooldown = credentialsEmailCooldownSeconds(
+    editor?.draft.credentialsEmailAvailableAt,
+    emailCountdownNow
+  );
 
   return (
     <section className="cp-admin-page">
@@ -1548,6 +1600,15 @@ function AdminAccountsPage({
         </div>
         <div className="cp-page-actions">
           <span className="cp-count">{accounts.length} accounts</span>
+          {showCustomerEmailDebugLogs && (
+            <button
+              className="cp-btn-ghost"
+              type="button"
+              onClick={openEmailLogs}
+            >
+              <History size={15} /> Email logs
+            </button>
+          )}
           <button
             className="cp-btn-mini"
             type="button"
@@ -1672,10 +1733,13 @@ function AdminAccountsPage({
             </thead>
             <tbody>
               {!loading && accounts.map((account) => {
-                const saving = savingUsername === account.username;
                 const isCurrent = account.username.toLocaleLowerCase() === currentUsername.toLocaleLowerCase();
                 const canBulkUpdate = !isCurrent;
                 const isSelected = selectedSet.has(account.username);
+                const emailCooldown = credentialsEmailCooldownSeconds(
+                  account.credentialsEmailAvailableAt,
+                  emailCountdownNow
+                );
                 return (
                   <tr className={isSelected ? "cp-account-row-selected" : ""} key={account.username}>
                     <td className="cp-account-select-cell">
@@ -1691,6 +1755,9 @@ function AdminAccountsPage({
                       <span className="cp-account-cell-title">
                         <strong>{account.displayName}</strong>
                         {account.isAdmin && <span className="cp-role-badge"><ShieldCheck size={11} /> Admin</span>}
+                        <span className="cp-account-locked-badge" title="Click Edit to make changes">
+                          <LockKeyhole size={10} /> Locked
+                        </span>
                       </span>
                       <small className="cp-admin-intent">{account.username}</small>
                     </td>
@@ -1698,23 +1765,28 @@ function AdminAccountsPage({
                       <span className={account.email ? "cp-account-email" : "cp-account-email missing"}>
                         {account.email || "No email"}
                       </span>
+                      {emailCooldown > 0 && (
+                        <small className="cp-email-cooldown" aria-live="polite">
+                          <Mail size={11} /> Ready in {formatEmailCooldown(emailCooldown)}
+                        </small>
+                      )}
                     </td>
                     <td>
-                      <button
+                      <span
                         className={`cp-account-toggle ${account.enabled ? "enabled" : "disabled"}`}
-                        type="button"
-                        disabled={saving || (isCurrent && account.enabled)}
-                        title={isCurrent && account.enabled ? "You cannot disable your current administrator account" : "Change account status"}
-                        onClick={() => void updateAccount(account, { enabled: !account.enabled })}
                       >
-                        {saving ? <Loader2 className="spin" size={14} /> : <Power size={14} />}
+                        <Power size={14} />
                         {account.enabled ? "Enabled" : "Disabled"}
-                      </button>
+                      </span>
                     </td>
                     <td>
                       <span className={`cp-permission-badge role-${account.accessRole}`}>
                         {customerAccessRoles.find((role) => role.value === account.accessRole)?.label ?? account.accessRole}
                       </span>
+                      <small className={`cp-price-access-state ${account.canViewPrice ? "allowed" : "hidden"}`}>
+                        {account.canViewPrice ? <Eye size={12} /> : <EyeOff size={12} />}
+                        {account.canViewPrice ? "Prices visible" : "Prices hidden"}
+                      </small>
                     </td>
                     <td>
                       {formatAccountDate(account.lastSuccessfulLoginAt)}
@@ -1769,8 +1841,9 @@ function AdminAccountsPage({
               </div>
               <button className="cp-icon-btn" type="button" aria-label="Close" disabled={submitting} onClick={() => setEditor(null)}><X size={17} /></button>
             </div>
-            <form onSubmit={(event) => void saveEditor(event)}>
-              <div className="cp-modal-body cp-account-form">
+            <form aria-busy={submitting} onSubmit={(event) => void saveEditor(event)}>
+              <fieldset className="cp-account-editor-lock" disabled={submitting}>
+                <div className="cp-modal-body cp-account-form">
                 <label>
                   <span>Username</span>
                   <input
@@ -1849,7 +1922,12 @@ function AdminAccountsPage({
                     <input
                       type="checkbox"
                       checked={editor.draft.sendCredentials}
-                      disabled={!emailDeliveryEnabled || !editor.draft.email || !editor.draft.password}
+                      disabled={
+                        !emailDeliveryEnabled
+                        || !editor.draft.email
+                        || !editor.draft.password
+                        || editorEmailCooldown > 0
+                      }
                       onChange={(event) => setEditor({
                         ...editor,
                         draft: { ...editor.draft, sendCredentials: event.target.checked }
@@ -1860,7 +1938,9 @@ function AdminAccountsPage({
                       <strong>Email login credentials after saving</strong>
                       <small>
                         {emailDeliveryEnabled
-                          ? "Send the username and temporary password to this email address."
+                          ? editorEmailCooldown > 0
+                            ? `Available again in ${formatEmailCooldown(editorEmailCooldown)}.`
+                            : "Send the username and temporary password to this email address."
                           : "SMTP is not configured. Add the mail server credentials to enable delivery."}
                       </small>
                     </span>
@@ -1887,15 +1967,84 @@ function AdminAccountsPage({
                     ))}
                   </div>
                 </fieldset>
-              </div>
-              <div className="cp-modal-footer">
-                <button className="cp-btn-ghost" type="button" disabled={submitting} onClick={() => setEditor(null)}>Cancel</button>
-                <button className="cp-btn-mini" type="submit" disabled={submitting}>
-                  {submitting ? <Loader2 className="spin" size={15} /> : editor.mode === "create" ? <UserPlus size={15} /> : <Pencil size={15} />}
-                  {submitting ? "Saving…" : editor.mode === "create" ? "Create account" : "Save changes"}
-                </button>
-              </div>
+                <div className="cp-account-enabled cp-price-access-option cp-account-form-wide">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={editor.draft.canViewPrice}
+                      onChange={(event) => setEditor({
+                        ...editor,
+                        draft: { ...editor.draft, canViewPrice: event.target.checked }
+                      })}
+                    />
+                    <span>
+                      <strong>Can view prices</strong>
+                      <small>This setting is independent of the selected permission set.</small>
+                    </span>
+                  </label>
+                </div>
+                </div>
+                <div className="cp-modal-footer">
+                  <button className="cp-btn-ghost" type="button" onClick={() => setEditor(null)}>Cancel</button>
+                  <button className="cp-btn-mini" type="submit">
+                    {editor.mode === "create" ? <UserPlus size={15} /> : <Pencil size={15} />}
+                    {editor.mode === "create" ? "Create account" : "Save changes"}
+                  </button>
+                </div>
+              </fieldset>
             </form>
+          </div>
+        </div>
+      )}
+
+      {saveProgress && (
+        <div
+          className="cp-account-save-backdrop"
+          role="presentation"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" || event.key === "Tab") event.preventDefault();
+          }}
+        >
+          <div
+            className="cp-account-save-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cp-account-save-title"
+            aria-describedby="cp-account-save-description"
+            tabIndex={-1}
+            ref={saveProgressRef}
+          >
+            <span className="cp-account-save-spinner" aria-hidden="true">
+              <Loader2 className="spin" size={28} />
+            </span>
+            <div>
+              <div className="cp-eyebrow">Please keep this window open</div>
+              <h2 id="cp-account-save-title">
+                {saveProgress.mode === "create" ? "Creating account…" : "Saving changes…"}
+              </h2>
+              <p id="cp-account-save-description">
+                Saving {saveProgress.displayName}.
+                {saveProgress.sendingEmail
+                  ? " Waiting for the mail server to confirm delivery."
+                  : " Finalizing permissions and account security."}
+              </p>
+            </div>
+            <div
+              className="cp-account-save-progress"
+              role="progressbar"
+              aria-label="Account save progress"
+              aria-valuetext={saveProgress.sendingEmail ? "Sending login email" : "Saving account"}
+            >
+              <span />
+            </div>
+            <div className="cp-account-save-steps" aria-live="polite">
+              <span className="active"><CheckCircle2 size={14} /> Changes locked</span>
+              <span className="active"><Loader2 className="spin" size={14} /> Saving account</span>
+              {saveProgress.sendingEmail && (
+                <span className="active"><Mail size={14} /> Confirming email delivery</span>
+              )}
+            </div>
+            <small>You can continue editing after this operation finishes.</small>
           </div>
         </div>
       )}
@@ -1950,6 +2099,52 @@ function AdminAccountsPage({
                   ? "Updating…"
                   : `${bulkAction === "enable" ? "Enable" : "Disable"} accounts`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCustomerEmailDebugLogs && emailLogsOpen && (
+        <div className="cp-modal-backdrop" role="presentation">
+          <div className="cp-modal cp-email-log-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-email-log-title">
+            <div className="cp-modal-header">
+              <div>
+                <div className="cp-eyebrow">Debug only</div>
+                <h2 id="cp-email-log-title">Credential email logs</h2>
+                <p>Recent deliveries, failures, and cooldown blocks.</p>
+              </div>
+              <button className="cp-icon-btn" type="button" aria-label="Close email logs" onClick={() => setEmailLogsOpen(false)}>
+                <X size={17} />
+              </button>
+            </div>
+            <div className="cp-modal-body cp-email-log-body">
+              {emailLogsLoading && (
+                <div className="cp-modal-loading"><Loader2 className="spin" size={18} /> Loading email logs…</div>
+              )}
+              {!emailLogsLoading && emailLogs.length === 0 && (
+                <div className="cp-table-state">No credential email events have been recorded.</div>
+              )}
+              {!emailLogsLoading && emailLogs.length > 0 && (
+                <div className="cp-email-log-list">
+                  {emailLogs.map((log) => (
+                    <article className="cp-email-log-item" key={log.id}>
+                      <span className={`cp-admin-status ${log.status}`}>{log.status}</span>
+                      <div>
+                        <strong>{log.username}</strong>
+                        <small>{log.recipientEmail}</small>
+                        <p>{log.message || "No additional details."}</p>
+                      </div>
+                      <time dateTime={log.createdAt}>{formatAccountDate(log.createdAt)}</time>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="cp-modal-footer">
+              <button className="cp-btn-ghost" type="button" disabled={emailLogsLoading} onClick={() => void loadEmailLogs()}>
+                {emailLogsLoading ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} Refresh
+              </button>
+              <button className="cp-btn-mini" type="button" onClick={() => setEmailLogsOpen(false)}>Close</button>
             </div>
           </div>
         </div>

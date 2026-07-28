@@ -23,7 +23,12 @@ class WebViewerAccountAdminItem(BaseModel):
     filemaker_privilege_set: str = Field(alias="filemakerPrivilegeSet")
     enabled: bool
     permissions: WebViewerPermissions
+    part_permissions: dict[str, bool] = Field(
+        default_factory=dict,
+        alias="partPermissions",
+    )
     inherits_privilege_set: bool = Field(alias="inheritsPrivilegeSet")
+    inherits_part_permissions: bool = Field(alias="inheritsPartPermissions")
     origin: str
     last_seen_at: datetime | None = Field(alias="lastSeenAt")
     updated_at: datetime = Field(alias="updatedAt")
@@ -36,6 +41,10 @@ class WebViewerPrivilegeSetAdminItem(BaseModel):
     name: str
     enabled: bool
     permissions: WebViewerPermissions
+    part_permissions: dict[str, bool] = Field(
+        default_factory=dict,
+        alias="partPermissions",
+    )
     account_count: int = Field(alias="accountCount")
     updated_at: datetime = Field(alias="updatedAt")
     updated_by: str = Field(alias="updatedBy")
@@ -58,14 +67,45 @@ class WebViewerAccountRegisterRequest(BaseModel):
         min_length=1,
         max_length=160,
     )
+    enabled: bool = True
+    permissions: WebViewerPermissions | None = None
+    part_permissions: dict[str, bool] | None = Field(
+        default=None,
+        alias="partPermissions",
+    )
+    inherit_privilege_set: bool = Field(default=True, alias="inheritPrivilegeSet")
+    inherit_part_permissions: bool = Field(
+        default=True,
+        alias="inheritPartPermissions",
+    )
 
     model_config = {"populate_by_name": True}
 
 
 class WebViewerAccountAdminUpdateRequest(BaseModel):
+    display_name: str | None = Field(
+        default=None,
+        alias="displayName",
+        min_length=1,
+        max_length=120,
+    )
+    filemaker_privilege_set: str | None = Field(
+        default=None,
+        alias="filemakerPrivilegeSet",
+        min_length=1,
+        max_length=160,
+    )
     enabled: bool
     permissions: WebViewerPermissions
+    part_permissions: dict[str, bool] | None = Field(
+        default=None,
+        alias="partPermissions",
+    )
     inherit_privilege_set: bool = Field(default=False, alias="inheritPrivilegeSet")
+    inherit_part_permissions: bool = Field(
+        default=False,
+        alias="inheritPartPermissions",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -73,6 +113,10 @@ class WebViewerAccountAdminUpdateRequest(BaseModel):
 class WebViewerPrivilegeSetAdminUpdateRequest(BaseModel):
     enabled: bool
     permissions: WebViewerPermissions
+    part_permissions: dict[str, bool] | None = Field(
+        default=None,
+        alias="partPermissions",
+    )
 
     model_config = {"populate_by_name": True}
 

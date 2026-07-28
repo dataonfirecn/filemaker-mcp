@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CellClickedEvent, CellValueChangedEvent, ColDef, ICellRendererParams } from "ag-grid-community";
-import { Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -12,6 +12,9 @@ import CalculationGrid from "./components/CalculationGrid";
 import KitIssueRecordsPage from "./components/KitIssueRecordsPage";
 import BusinessProductsPage from "./components/BusinessProductsPage";
 import BusinessProductDetailPage from "./components/BusinessProductDetailPage";
+import PartDirectoryPage, { type PartDirectoryRow } from "./components/PartDirectoryPage";
+import PartDetailPrototypePage from "./components/PartDetailPrototypePage";
+import DashboardPage from "./components/DashboardPage";
 import HomePage from "./components/HomePage";
 import RagControlPage from "./components/RagControlPage";
 import OrderDetailPage from "./components/OrderDetailPage";
@@ -66,6 +69,10 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
     title: "Star-RC",
     subtitle: "企业运营导航中心"
   },
+  chat: {
+    title: "智能对话",
+    subtitle: "使用自然语言查询 FileMaker 产品、零件、库存和日期数据。"
+  },
   productInventory: {
     title: "出入库记录",
     subtitle: "当前产品的只读库存流水。"
@@ -102,6 +109,14 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
     title: "产品资料详情",
     subtitle: "查看 FileMaker 产品核心字段、商务分类和原始字段。"
   },
+  parts: {
+    title: "零件资料",
+    subtitle: "搜索、筛选和浏览零件主数据，默认每页显示 10 条。"
+  },
+  partDetail: {
+    title: "零件详细资料",
+    subtitle: "采购视角的零件主数据、图片、图面、成本、包装和质量信息。"
+  },
   ragControl: {
     title: "RAG 控制",
     subtitle: "查看 FileMaker RAG 索引状态，手动刷新并调试语义搜索命中。"
@@ -136,6 +151,10 @@ async function postJson<T>(path: string, body: unknown, token?: string): Promise
 function queryValue(params: URLSearchParams, key: string, fallback: string): string {
   const value = params.get(key);
   return value && value.trim() ? value.trim() : fallback;
+}
+
+function orderIdQueryValue(params: URLSearchParams): string {
+  return queryValue(params, "orderId", queryValue(params, "id", ""));
 }
 
 function formatQty(value: number | string | null | undefined): string {
@@ -174,13 +193,20 @@ export default function App() {
   const [remoteLoginLoading, setRemoteLoginLoading] = useState(false);
   const [remoteLoginError, setRemoteLoginError] = useState<string | null>(null);
   const [productBom, setProductBom] = useState<ProductBomResponse | null>(null);
-  const [page, setPage] = useState<Page>(() =>
-    new URLSearchParams(window.location.search).get("page") === "productInventory"
+  const [page, setPage] = useState<Page>(() => {
+    const requestedPage = new URLSearchParams(window.location.search).get("page");
+    return requestedPage === "productInventory"
       ? "productInventory"
-      : new URLSearchParams(window.location.search).get("page") === "internalOrderMerge"
+      : requestedPage === "internalOrderMerge"
         ? "internalOrderMerge"
-        : "home"
-  );
+        : requestedPage === "chat"
+          ? "chat"
+        : requestedPage === "parts"
+          ? "parts"
+          : requestedPage === "partDetail" || requestedPage === "partDetailPrototype"
+            ? "partDetail"
+          : "home";
+  });
   // BOM 单页工作台阶段与 SKU 输入
   const [bomStep, setBomStep] = useState<BomStep>("select");
   const [bomSkuInput, setBomSkuInput] = useState("");
@@ -206,6 +232,9 @@ export default function App() {
   const [businessProductsLoading, setBusinessProductsLoading] = useState(false);
   const [businessProductDetail, setBusinessProductDetail] = useState<BusinessProductRow | null>(null);
   const [businessProductDetailLoading, setBusinessProductDetailLoading] = useState(false);
+  const [selectedPartIdentifier, setSelectedPartIdentifier] = useState(
+    () => new URLSearchParams(window.location.search).get("partId") ?? ""
+  );
   const [naturalQueryPrompt, setNaturalQueryPrompt] = useState("");
   const [naturalQueryLoading, setNaturalQueryLoading] = useState(false);
   const [naturalQueryExchanges, setNaturalQueryExchanges] = useState<NaturalQueryExchange[]>([]);
@@ -247,7 +276,7 @@ export default function App() {
   async function startSession(credentials?: { username: string; password: string }) {
     const params = new URLSearchParams(window.location.search);
     const productSku = queryValue(params, "productSku", "STRX-202");
-    const orderId = queryValue(params, "orderId", "");
+    const orderId = orderIdQueryValue(params);
     const operatorAccount = queryValue(params, "operatorAccount", "mock.operator");
     const operatorName = queryValue(params, "operatorName", "本地测试操作员");
     const customerId = queryValue(params, "customerId", "");
@@ -259,6 +288,8 @@ export default function App() {
         ? "productInventory"
         : pageParam === "internalOrderMerge"
         ? "internalOrderMerge"
+        : pageParam === "chat"
+        ? "chat"
         : pageParam === "orderDetail"
         ? "orderDetail"
         : pageParam === "bom" || pageParam === "product"
@@ -267,6 +298,10 @@ export default function App() {
           ? "kitIssue"
           : pageParam === "businessProducts"
             ? "businessProducts"
+            : pageParam === "parts"
+              ? "parts"
+              : pageParam === "partDetail" || pageParam === "partDetailPrototype"
+                ? "partDetail"
             : pageParam === "ragControl"
               ? "ragControl"
               : "home";
@@ -819,6 +854,16 @@ export default function App() {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    if (page !== "parts" && page !== "partDetail") return;
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+    });
+  }, [page, selectedPartIdentifier]);
+
   function toggleTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
@@ -890,6 +935,32 @@ export default function App() {
     setBusinessProductDetail(row);
     setPage("businessProductDetail");
     void loadBusinessProductDetail(row.recordId, row);
+  }
+
+  function setPartPageUrl(nextPage: "parts" | "partDetail", part?: PartDirectoryRow) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", nextPage);
+    if (nextPage === "partDetail" && part) {
+      url.searchParams.set("partId", part.partId || part.partNumber);
+    } else {
+      url.searchParams.delete("partId");
+    }
+    window.history.pushState({}, "", url);
+  }
+
+  function openPartDetail(part: PartDirectoryRow) {
+    setSelectedPartIdentifier(part.partId || part.partNumber);
+    setPage("partDetail");
+    setError(null);
+    setPartPageUrl("partDetail", part);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
+  function returnToParts() {
+    setPage("parts");
+    setError(null);
+    setPartPageUrl("parts");
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
   const bomColumns = useMemo<ColDef<ProductBomRow>[]>(
@@ -1210,9 +1281,13 @@ export default function App() {
     session?.context.operator.name || session?.context.operator.account || "";
   const access = session?.context.access;
   const requestedOrderId =
-    session?.context.orderId || queryValue(new URLSearchParams(window.location.search), "orderId", "");
+    session?.context.orderId || orderIdQueryValue(new URLSearchParams(window.location.search));
   const calculationPageReady = Boolean(preview || document || calcLines.length > 0);
-  const activeNavPage: Page = page === "businessProductDetail" ? "businessProducts" : page;
+  const activeNavPage: Page = page === "businessProductDetail"
+    ? "businessProducts"
+    : page === "partDetail"
+      ? "parts"
+      : page;
   const showBOMWorkflow = page === "bom" || page === "product" || page === "issue";
   const sidebarGroups = useMemo<SidebarNavGroup[]>(
     () => [
@@ -1263,6 +1338,15 @@ export default function App() {
             disabled: access ? !access.canViewProducts : false,
             disabledReason: "当前 FileMaker 权限集未开放产品资料",
             badge: businessProductsData ? `${businessProductsData.foundCount} 条` : undefined
+          },
+          {
+            id: "parts",
+            label: "零件资料",
+            description: "零件主表、关联资料与 COS 多图详情",
+            Icon: Boxes,
+            disabled: access ? !access.canViewProducts : false,
+            disabledReason: "当前 FileMaker 权限集未开放产品资料",
+            badge: "筛选查询"
           }
         ]
       },
@@ -1270,6 +1354,14 @@ export default function App() {
         id: "ai-search",
         label: "智能搜索",
         items: [
+          {
+            id: "chat",
+            label: "智能对话",
+            description: "用自然语言查询 FileMaker 数据",
+            Icon: MessageCircle,
+            disabled: access ? !access.canUseNaturalQuery : false,
+            disabledReason: "当前 FileMaker 权限集未开放智能问答"
+          },
           {
             id: "ragControl",
             label: "RAG 控制",
@@ -1321,6 +1413,9 @@ export default function App() {
     }
     setPage(nextPage);
     setError(null);
+    if (nextPage === "parts") {
+      setPartPageUrl("parts");
+    }
     if (nextPage === "bom") {
       // 首次进入工作台：从产品选择开始；若已有数据则恢复到对应阶段
       if (!productBom && !preview && !document) {
@@ -1419,7 +1514,7 @@ export default function App() {
 
   return (
     <main className={`app app-${page}`}>
-      {page === "home" ? (
+      {page === "chat" ? (
         <HomePage
           operatorName={operatorName}
           naturalQueryPrompt={naturalQueryPrompt}
@@ -1430,6 +1525,7 @@ export default function App() {
           onNaturalQueryPromptChange={setNaturalQueryPrompt}
           onNaturalQuerySubmit={(prompt) => void submitNaturalQuery(prompt)}
           onOpenBusinessProduct={openBusinessProductDetail}
+          onOpenDashboard={() => handleNavigate("home")}
         />
       ) : (
         <div className={`app-layout ${page === "orderDetail" ? "app-layout-standalone" : ""}`}>
@@ -1458,6 +1554,16 @@ export default function App() {
 
             {error && <div className="alert">{error}</div>}
             {success && <SuccessAlert message={success} onClose={() => setSuccess(null)} />}
+
+            {page === "home" && (
+              <DashboardPage
+                groups={sidebarGroups}
+                operatorName={operatorName}
+                canViewPrice={session?.context.access.canViewPrice ?? false}
+                readOnly={session?.readOnly ?? true}
+                onNavigate={handleNavigate}
+              />
+            )}
 
             {page === "product" && (
               <ProductInfoCard
@@ -1645,6 +1751,23 @@ export default function App() {
                 loading={businessProductDetailLoading}
                 formatQty={formatQty}
                 onBack={() => handleNavigate("businessProducts")}
+              />
+            )}
+
+            {page === "parts" && (
+              <PartDirectoryPage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
+                onOpenPart={openPartDetail}
+              />
+            )}
+
+            {page === "partDetail" && (
+              <PartDetailPrototypePage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
+                identifier={selectedPartIdentifier}
+                onBack={returnToParts}
               />
             )}
 

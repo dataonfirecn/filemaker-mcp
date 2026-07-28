@@ -61,12 +61,16 @@ def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[st
         "sessionId": str(uuid.uuid4()),
         "operator": context.get("operator") or {},
         "productSku": context.get("productSku") or "",
-        "orderId": context.get("orderId") or "",
+        # FileMaker renamed the order primary-key field from "出貨單 ID" to
+        # "id". Keep the public WebViewer contract as "orderId", while
+        # accepting signed contexts produced with the renamed field key.
+        "orderId": context.get("orderId") or context.get("id") or "",
         "bomCalcId": context.get("bomCalcId") or "",
         "customerId": context.get("customerId") or "",
         "customerName": context.get("customerName") or "",
         "currency": context.get("currency") or "",
         "access": context.get("access") or {},
+        "partPermissions": context.get("partPermissions") or {},
         "iat": now,
         "exp": now + settings.webviewer_session_ttl_seconds,
     }

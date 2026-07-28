@@ -18,6 +18,8 @@ from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
+from app.services.part_asset_upload_store import PartAssetUploadStore
+from app.services.part_permission_catalog import PART_PERMISSION_KEY_SET
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_session import (
@@ -96,6 +98,10 @@ def get_receipt_attachment_store(request: Request) -> ReceiptAttachmentStore:
     return request.app.state.receipt_attachment_store
 
 
+def get_part_asset_upload_store(request: Request) -> PartAssetUploadStore:
+    return request.app.state.part_asset_upload_store
+
+
 def get_rag_index_worker(request: Request) -> RagIndexWorker | None:
     return getattr(request.app.state, "rag_index_worker", None)
 
@@ -130,9 +136,12 @@ async def get_webviewer_session_context(request: Request) -> dict:
         )
 
     access = dict(account["permissions"])
+    part_permissions = dict(account["partPermissions"])
     request.state.webviewer_access = access
+    request.state.webviewer_part_permissions = part_permissions
     request.state.webviewer_account = account
     context["access"] = access
+    context["partPermissions"] = part_permissions
     required_permission = _permission_for_request(request)
     if required_permission and not access.get(required_permission, False):
         raise HTTPException(
@@ -155,6 +164,43 @@ async def get_webviewer_access(
     session_context: dict = Depends(get_webviewer_session_context),
 ) -> dict[str, bool]:
     return dict(session_context.get("access") or {})
+
+
+async def get_webviewer_part_permissions(
+    session_context: dict = Depends(get_webviewer_session_context),
+) -> dict[str, bool]:
+    return dict(session_context.get("partPermissions") or {})
+
+
+def assert_webviewer_part_permission(
+    part_permissions: dict[str, bool],
+    permission: str,
+) -> None:
+    if permission not in PART_PERMISSION_KEY_SET:
+        raise ValueError(f"Unknown StarRC part permission: {permission}")
+    if not part_permissions.get(permission, False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "当前账号没有执行此零件模块操作的权限。",
+                "permission": permission,
+            },
+        )
+
+
+def require_webviewer_part_permission(permission: str):
+    if permission not in PART_PERMISSION_KEY_SET:
+        raise ValueError(f"Unknown StarRC part permission: {permission}")
+
+    async def dependency(
+        part_permissions: dict[str, bool] = Depends(
+            get_webviewer_part_permissions
+        ),
+    ) -> dict[str, bool]:
+        assert_webviewer_part_permission(part_permissions, permission)
+        return part_permissions
+
+    return dependency
 
 
 async def get_customer_session(request: Request) -> CustomerSession:
@@ -211,6 +257,8 @@ def _permission_for_request(request: Request) -> str | None:
             "/api/bom-calculations",
             "/api/bom-documents",
             "/api/parts",
+            "/api/part-directory",
+            "/api/part-assets",
             "/api/part-creation",
             "/api/kit-issue-records",
             "/api/material-ids",

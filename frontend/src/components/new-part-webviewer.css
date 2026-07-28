@@ -248,6 +248,53 @@
   padding-right: 34px;
 }
 
+.npw-select-wrap.has-value select {
+  padding-right: 65px;
+}
+
+.npw-select-clear,
+.npw-input-clear,
+.npw-search-clear {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: #7e8d99;
+  background: #edf2f6;
+  cursor: pointer;
+}
+
+.npw-select-clear {
+  position: absolute;
+  z-index: 2;
+  right: 29px;
+}
+
+.npw-input-wrap.has-value input {
+  padding-right: 4px;
+}
+
+.npw-input-clear {
+  margin-right: 7px;
+}
+
+.npw-select-clear:hover,
+.npw-input-clear:hover,
+.npw-search-clear:hover {
+  color: #40576a;
+  background: #e1e9f0;
+}
+
+.npw-select-clear:focus-visible,
+.npw-input-clear:focus-visible,
+.npw-search-clear:focus-visible {
+  outline: 2px solid var(--npw-blue);
+  outline-offset: 1px;
+}
+
 .npw-select-wrap > svg {
   position: absolute;
   right: 10px;
@@ -447,6 +494,15 @@
   padding-left: 8px;
 }
 
+.npw-customer-search > .npw-spin {
+  flex: 0 0 auto;
+  margin-right: 9px;
+}
+
+.npw-search-clear {
+  margin-right: 7px;
+}
+
 .npw-customer-results {
   position: absolute;
   top: calc(100% + 5px);
@@ -480,6 +536,55 @@
 
 .npw-customer-results button:hover {
   background: #f0f5fb;
+}
+
+.npw-vendor-results button {
+  min-height: 44px;
+}
+
+.npw-vendor-results button > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.npw-vendor-results button > span strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npw-vendor-results button > i {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 6px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.npw-vendor-results button > i.approved {
+  color: #14745e;
+  background: #e8f7f1;
+}
+
+.npw-vendor-results button > i.pending {
+  color: #8b6a27;
+  background: #fff4d8;
+}
+
+.npw-vendor-results button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.npw-vendor-results button:disabled:hover {
+  background: transparent;
+}
+
+.npw-vendor-results em.error {
+  color: var(--npw-error);
 }
 
 .npw-customer-results strong {

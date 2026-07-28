@@ -506,6 +506,7 @@ def test_order_endpoint_applies_session_web_client_scope_without_shipment_uuid()
         part_customer_id="CU638",
         expires_at=9999999999,
         shipment_company_id="",
+        can_view_price=True,
         access_role="manager",
     )
 
@@ -652,6 +653,7 @@ def test_order_summary_uses_all_filtered_records_and_web_price_field() -> None:
         part_customer_id="CU638",
         expires_at=9999999999,
         shipment_company_id="0E254109-8698-4F5D-BE70-ABFD2B929CE9",
+        can_view_price=True,
         access_role="manager",
     )
 

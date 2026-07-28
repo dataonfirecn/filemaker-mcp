@@ -188,12 +188,49 @@
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
+.mid-select-control {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
 .mid-select-trigger {
   justify-content: space-between;
   gap: 10px;
   padding: 0 12px;
   cursor: pointer;
   text-align: left;
+}
+
+.mid-select-trigger.has-value {
+  padding-right: 44px;
+}
+
+.mid-select-clear {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 29px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 7px;
+  color: #7e8d99;
+  background: #edf2f6;
+  cursor: pointer;
+}
+
+.mid-select-clear:hover {
+  color: #40576a;
+  background: #e1e9f0;
+}
+
+.mid-select-clear:focus-visible {
+  outline: 2px solid var(--mid-blue);
+  outline-offset: 1px;
 }
 
 .mid-select-trigger span {

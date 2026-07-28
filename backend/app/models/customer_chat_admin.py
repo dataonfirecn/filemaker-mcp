@@ -88,6 +88,10 @@ class CustomerAccountAdminItem(BaseModel):
     failed_login_count: int = Field(alias="failedLoginCount")
     updated_at: datetime = Field(alias="updatedAt")
     updated_by: str = Field(alias="updatedBy")
+    credentials_email_available_at: datetime | None = Field(
+        default=None,
+        alias="credentialsEmailAvailableAt",
+    )
     credentials_email_sent: bool | None = Field(default=None, alias="credentialsEmailSent")
     credentials_email_error: str = Field(default="", alias="credentialsEmailError")
 
@@ -97,6 +101,23 @@ class CustomerAccountAdminItem(BaseModel):
 class CustomerAccountAdminResponse(BaseModel):
     accounts: list[CustomerAccountAdminItem]
     email_delivery_enabled: bool = Field(alias="emailDeliveryEnabled")
+
+    model_config = {"populate_by_name": True}
+
+
+class CustomerCredentialsEmailLogItem(BaseModel):
+    id: int
+    username: str
+    recipient_email: str = Field(alias="recipientEmail")
+    status: Literal["success", "failed", "blocked"]
+    message: str
+    created_at: datetime = Field(alias="createdAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class CustomerCredentialsEmailLogResponse(BaseModel):
+    logs: list[CustomerCredentialsEmailLogItem]
 
     model_config = {"populate_by_name": True}
 

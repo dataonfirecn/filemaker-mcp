@@ -270,7 +270,11 @@ class FileMakerClient:
     def _is_no_records_error(self, exc: FileMakerAPIError) -> bool:
         payload = exc.payload if isinstance(exc.payload, dict) else {}
         messages = payload.get("messages") or payload.get("response", {}).get("messages") or []
-        return any(str(message.get("code")) == "401" for message in messages if isinstance(message, dict))
+        return any(
+            str(message.get("code")) in {"101", "401"}
+            for message in messages
+            if isinstance(message, dict)
+        )
 
     async def get_record(self, layout: str, record_id: str) -> Any:
         encoded_layout = self._encode_param(layout)

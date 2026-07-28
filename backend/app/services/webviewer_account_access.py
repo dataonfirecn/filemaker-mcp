@@ -7,6 +7,10 @@ from typing import Any, Iterable
 
 import asyncpg
 
+from app.services.part_permission_catalog import (
+    default_part_permissions_for_privilege_set,
+    normalize_part_permissions,
+)
 from app.services.rag_semantic_registry import RagSemanticRegistry
 
 
@@ -254,6 +258,7 @@ class WebViewerAccountAccessStore:
                     privilege_set_name TEXT NOT NULL,
                     enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    part_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                     updated_by TEXT NOT NULL DEFAULT 'system'
                 );
@@ -265,6 +270,7 @@ class WebViewerAccountAccessStore:
                     privilege_set_key TEXT NOT NULL DEFAULT '',
                     enabled_override BOOLEAN,
                     permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    part_permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
                     origin TEXT NOT NULL DEFAULT 'filemaker',
                     last_seen_at TIMESTAMPTZ,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -274,6 +280,38 @@ class WebViewerAccountAccessStore:
                     ON webviewer_account_control (privilege_set_key, username_key);
                 """
             )
+            await conn.execute(
+                """
+                ALTER TABLE webviewer_privilege_set_control
+                    ADD COLUMN IF NOT EXISTS part_permissions JSONB
+                    NOT NULL DEFAULT '{}'::jsonb;
+                ALTER TABLE webviewer_account_control
+                    ADD COLUMN IF NOT EXISTS part_permission_overrides JSONB
+                    NOT NULL DEFAULT '{}'::jsonb;
+                """
+            )
+            empty_part_policy_rows = await conn.fetch(
+                """
+                SELECT privilege_set_key, privilege_set_name
+                FROM webviewer_privilege_set_control
+                WHERE part_permissions = '{}'::jsonb
+                """
+            )
+            for row in empty_part_policy_rows:
+                await conn.execute(
+                    """
+                    UPDATE webviewer_privilege_set_control
+                    SET part_permissions = $2::jsonb
+                    WHERE privilege_set_key = $1
+                      AND part_permissions = '{}'::jsonb
+                    """,
+                    str(row["privilege_set_key"]),
+                    json.dumps(
+                        default_part_permissions_for_privilege_set(
+                            str(row["privilege_set_name"])
+                        )
+                    ),
+                )
         for item in privilege_set_policies:
             await self._seed_privilege_set(item)
         for item in seed_accounts:
@@ -327,6 +365,7 @@ class WebViewerAccountAccessStore:
         if self.database_url.startswith("memory://"):
             existing = self._memory_accounts.get(username_key)
             if existing:
+                existing.setdefault("partPermissionOverrides", {})
                 existing.update(
                     username=normalized_username,
                     displayName=display_name.strip() or normalized_username,
@@ -345,6 +384,7 @@ class WebViewerAccountAccessStore:
                     "privilegeSetKey": privilege_key,
                     "enabledOverride": None,
                     "permissionOverrides": {},
+                    "partPermissionOverrides": {},
                     "origin": origin,
                     "lastSeenAt": now if seen else None,
                     "updatedAt": now,
@@ -398,7 +438,8 @@ class WebViewerAccountAccessStore:
             row = await conn.fetchrow(
                 """
                 SELECT account.*, privilege.enabled AS privilege_enabled,
-                       privilege.permissions AS privilege_permissions
+                       privilege.permissions AS privilege_permissions,
+                       privilege.part_permissions AS privilege_part_permissions
                 FROM webviewer_account_control AS account
                 JOIN webviewer_privilege_set_control AS privilege
                   ON privilege.privilege_set_key = account.privilege_set_key
@@ -420,7 +461,8 @@ class WebViewerAccountAccessStore:
             rows = await conn.fetch(
                 """
                 SELECT account.*, privilege.enabled AS privilege_enabled,
-                       privilege.permissions AS privilege_permissions
+                       privilege.permissions AS privilege_permissions,
+                       privilege.part_permissions AS privilege_part_permissions
                 FROM webviewer_account_control AS account
                 JOIN webviewer_privilege_set_control AS privilege
                   ON privilege.privilege_set_key = account.privilege_set_key
@@ -454,6 +496,9 @@ class WebViewerAccountAccessStore:
                 "name": str(row["privilege_set_name"]),
                 "enabled": bool(row["enabled"]),
                 "permissions": normalize_permissions(row["permissions"]),
+                "partPermissions": normalize_part_permissions(
+                    row["part_permissions"]
+                ),
                 "accountCount": int(row["account_count"]),
                 "updatedAt": row["updated_at"],
                 "updatedBy": str(row["updated_by"]),
@@ -468,16 +513,44 @@ class WebViewerAccountAccessStore:
         enabled: bool,
         permissions: dict[str, bool],
         updated_by: str,
+        part_permissions: dict[str, bool] | None = None,
         inherit_privilege_set: bool = False,
+        inherit_part_permissions: bool = False,
+        display_name: str | None = None,
+        privilege_set: str | None = None,
     ) -> dict[str, Any] | None:
         key = username.strip().casefold()
         normalized_permissions = normalize_permissions(permissions)
+        current = await self.get_account(username)
+        if not current:
+            return None
+        normalized_part_permissions = normalize_part_permissions(
+            part_permissions
+            if part_permissions is not None
+            else current["partPermissions"]
+        )
+        target_display_name = (
+            display_name.strip()
+            if display_name is not None and display_name.strip()
+            else current["displayName"]
+        )
+        target_privilege_set = (
+            privilege_set.strip()
+            if privilege_set is not None and privilege_set.strip()
+            else current["filemakerPrivilegeSet"]
+        )
+        target_privilege_key = target_privilege_set.casefold()
+        await self._ensure_privilege_set(target_privilege_set, updated_by=updated_by)
+
         if self.database_url.startswith("memory://"):
             row = self._memory_accounts.get(key)
             if not row:
                 return None
-            privilege = self._memory_privilege_sets[row["privilegeSetKey"]]
+            privilege = self._memory_privilege_sets[target_privilege_key]
             privilege_permissions = normalize_permissions(privilege["permissions"])
+            privilege_part_permissions = normalize_part_permissions(
+                privilege.get("partPermissions")
+            )
             permission_overrides = (
                 {}
                 if inherit_privilege_set
@@ -487,13 +560,26 @@ class WebViewerAccountAccessStore:
                     if value != privilege_permissions[permission_key]
                 }
             )
+            part_permission_overrides = (
+                {}
+                if inherit_part_permissions
+                else {
+                    permission_key: value
+                    for permission_key, value in normalized_part_permissions.items()
+                    if value != privilege_part_permissions[permission_key]
+                }
+            )
             enabled_override = _enabled_override(
                 requested_enabled=enabled,
                 privilege_enabled=bool(privilege["enabled"]),
                 inherit_privilege_set=inherit_privilege_set,
             )
+            row["displayName"] = target_display_name
+            row["filemakerPrivilegeSet"] = target_privilege_set
+            row["privilegeSetKey"] = target_privilege_key
             row["enabledOverride"] = enabled_override
             row["permissionOverrides"] = permission_overrides
+            row["partPermissionOverrides"] = part_permission_overrides
             row["updatedAt"] = datetime.now(timezone.utc)
             row["updatedBy"] = updated_by
             return self._effective_account(row)
@@ -503,17 +589,18 @@ class WebViewerAccountAccessStore:
         async with self._pool.acquire() as conn:
             privilege = await conn.fetchrow(
                 """
-                SELECT privilege.enabled, privilege.permissions
-                FROM webviewer_account_control AS account
-                JOIN webviewer_privilege_set_control AS privilege
-                  ON privilege.privilege_set_key = account.privilege_set_key
-                WHERE account.username_key = $1
+                SELECT enabled, permissions, part_permissions
+                FROM webviewer_privilege_set_control
+                WHERE privilege_set_key = $1
                 """,
-                key,
+                target_privilege_key,
             )
             if not privilege:
                 return None
             privilege_permissions = normalize_permissions(privilege["permissions"])
+            privilege_part_permissions = normalize_part_permissions(
+                privilege["part_permissions"]
+            )
             permission_overrides = (
                 {}
                 if inherit_privilege_set
@@ -521,6 +608,15 @@ class WebViewerAccountAccessStore:
                     permission_key: value
                     for permission_key, value in normalized_permissions.items()
                     if value != privilege_permissions[permission_key]
+                }
+            )
+            part_permission_overrides = (
+                {}
+                if inherit_part_permissions
+                else {
+                    permission_key: value
+                    for permission_key, value in normalized_part_permissions.items()
+                    if value != privilege_part_permissions[permission_key]
                 }
             )
             enabled_override = _enabled_override(
@@ -531,20 +627,45 @@ class WebViewerAccountAccessStore:
             result = await conn.execute(
                 """
                 UPDATE webviewer_account_control
-                SET enabled_override = $2,
-                    permission_overrides = $3::jsonb,
+                SET display_name = $2,
+                    filemaker_privilege_set = $3,
+                    privilege_set_key = $4,
+                    enabled_override = $5,
+                    permission_overrides = $6::jsonb,
+                    part_permission_overrides = $7::jsonb,
                     updated_at = now(),
-                    updated_by = $4
+                    updated_by = $8
                 WHERE username_key = $1
                 """,
                 key,
+                target_display_name,
+                target_privilege_set,
+                target_privilege_key,
                 enabled_override,
                 json.dumps(permission_overrides),
+                json.dumps(part_permission_overrides),
                 updated_by,
             )
         if result == "UPDATE 0":
             return None
         return await self.get_account(username)
+
+    async def delete_account(self, username: str) -> dict[str, Any] | None:
+        key = username.strip().casefold()
+        current = await self.get_account(username)
+        if not current:
+            return None
+        if self.database_url.startswith("memory://"):
+            self._memory_accounts.pop(key, None)
+            return current
+        if not self._pool:
+            raise RuntimeError("WebViewer account access store is not initialized")
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM webviewer_account_control WHERE username_key = $1",
+                key,
+            )
+        return current if result != "DELETE 0" else None
 
     async def update_privilege_set(
         self,
@@ -553,15 +674,27 @@ class WebViewerAccountAccessStore:
         enabled: bool,
         permissions: dict[str, bool],
         updated_by: str,
+        part_permissions: dict[str, bool] | None = None,
     ) -> dict[str, Any] | None:
         key = privilege_set.strip().casefold()
         normalized_permissions = normalize_permissions(permissions)
+        current_sets = await self.list_privilege_sets()
+        current = next(
+            (item for item in current_sets if item["name"].casefold() == key),
+            None,
+        )
+        if not current:
+            return None
+        normalized_part_permissions = normalize_part_permissions(
+            part_permissions
+            if part_permissions is not None
+            else current["partPermissions"]
+        )
         if self.database_url.startswith("memory://"):
             row = self._memory_privilege_sets.get(key)
-            if not row:
-                return None
             row["enabled"] = bool(enabled)
             row["permissions"] = normalized_permissions
+            row["partPermissions"] = normalized_part_permissions
             row["updatedAt"] = datetime.now(timezone.utc)
             row["updatedBy"] = updated_by
             return self._public_privilege_set(row)
@@ -574,14 +707,16 @@ class WebViewerAccountAccessStore:
                 UPDATE webviewer_privilege_set_control
                 SET enabled = $2,
                     permissions = $3::jsonb,
+                    part_permissions = $4::jsonb,
                     updated_at = now(),
-                    updated_by = $4
+                    updated_by = $5
                 WHERE privilege_set_key = $1
                 RETURNING *
                 """,
                 key,
                 bool(enabled),
                 json.dumps(normalized_permissions),
+                json.dumps(normalized_part_permissions),
                 updated_by,
             )
         if not row:
@@ -591,6 +726,7 @@ class WebViewerAccountAccessStore:
             "name": str(row["privilege_set_name"]),
             "enabled": bool(row["enabled"]),
             "permissions": normalize_permissions(row["permissions"]),
+            "partPermissions": normalize_part_permissions(row["part_permissions"]),
             "accountCount": sum(
                 account["filemakerPrivilegeSet"].casefold() == key for account in accounts
             ),
@@ -601,6 +737,7 @@ class WebViewerAccountAccessStore:
     async def _ensure_privilege_set(self, privilege_set: str, *, updated_by: str) -> None:
         key = privilege_set.casefold()
         defaults = default_permissions_for_privilege_set(privilege_set)
+        part_defaults = default_part_permissions_for_privilege_set(privilege_set)
         now = datetime.now(timezone.utc)
         if self.database_url.startswith("memory://"):
             self._memory_privilege_sets.setdefault(
@@ -609,6 +746,7 @@ class WebViewerAccountAccessStore:
                     "name": privilege_set,
                     "enabled": True,
                     "permissions": defaults,
+                    "partPermissions": part_defaults,
                     "accountCount": 0,
                     "updatedAt": now,
                     "updatedBy": updated_by,
@@ -621,15 +759,17 @@ class WebViewerAccountAccessStore:
             await conn.execute(
                 """
                 INSERT INTO webviewer_privilege_set_control (
-                    privilege_set_key, privilege_set_name, enabled, permissions, updated_by
+                    privilege_set_key, privilege_set_name, enabled, permissions,
+                    part_permissions, updated_by
                 )
-                VALUES ($1, $2, TRUE, $3::jsonb, $4)
+                VALUES ($1, $2, TRUE, $3::jsonb, $4::jsonb, $5)
                 ON CONFLICT (privilege_set_key) DO UPDATE
                 SET privilege_set_name = EXCLUDED.privilege_set_name
                 """,
                 key,
                 privilege_set,
                 json.dumps(defaults),
+                json.dumps(part_defaults),
                 updated_by,
             )
 
@@ -640,6 +780,10 @@ class WebViewerAccountAccessStore:
         key = name.casefold()
         enabled = bool(item.get("enabled", True))
         permissions = normalize_permissions(item.get("permissions") or {})
+        part_permissions = normalize_part_permissions(
+            item.get("partPermissions")
+            or default_part_permissions_for_privilege_set(name)
+        )
         now = datetime.now(timezone.utc)
         if self.database_url.startswith("memory://"):
             existing = self._memory_privilege_sets.get(key)
@@ -652,6 +796,7 @@ class WebViewerAccountAccessStore:
                 "name": name,
                 "enabled": enabled,
                 "permissions": permissions,
+                "partPermissions": part_permissions,
                 "accountCount": int((existing or {}).get("accountCount") or 0),
                 "updatedAt": now,
                 "updatedBy": "filemaker-security-audit",
@@ -665,21 +810,24 @@ class WebViewerAccountAccessStore:
                 """
                 INSERT INTO webviewer_privilege_set_control (
                     privilege_set_key, privilege_set_name, enabled, permissions,
+                    part_permissions,
                     updated_at, updated_by
                 )
-                VALUES ($1, $2, $3, $4::jsonb, now(), 'filemaker-security-audit')
+                VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, now(), 'filemaker-security-audit')
                 ON CONFLICT (privilege_set_key) DO UPDATE
                 SET privilege_set_name = EXCLUDED.privilege_set_name,
                     enabled = EXCLUDED.enabled,
                     permissions = EXCLUDED.permissions,
+                    part_permissions = EXCLUDED.part_permissions,
                     updated_at = now(),
                     updated_by = EXCLUDED.updated_by
-                WHERE webviewer_privilege_set_control.updated_by = ANY($5::text[])
+                WHERE webviewer_privilege_set_control.updated_by = ANY($6::text[])
                 """,
                 key,
                 name,
                 enabled,
                 json.dumps(permissions),
+                json.dumps(part_permissions),
                 sorted(CONFIG_POLICY_OWNERS),
             )
 
@@ -691,6 +839,18 @@ class WebViewerAccountAccessStore:
             key: bool(overrides[key]) if key in overrides else privilege_permissions[key]
             for key in PERMISSION_KEYS
         }
+        privilege_part_permissions = normalize_part_permissions(
+            privilege.get("partPermissions")
+        )
+        part_overrides = _json_object(row.get("partPermissionOverrides"))
+        effective_part_permissions = {
+            key: (
+                bool(part_overrides[key])
+                if key in part_overrides
+                else privilege_part_permissions[key]
+            )
+            for key in privilege_part_permissions
+        }
         enabled_override = row.get("enabledOverride")
         return {
             "username": row["username"],
@@ -698,7 +858,9 @@ class WebViewerAccountAccessStore:
             "filemakerPrivilegeSet": row["filemakerPrivilegeSet"],
             "enabled": bool(privilege["enabled"]) and enabled_override is not False,
             "permissions": effective,
+            "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,
+            "inheritsPartPermissions": not part_overrides,
             "origin": row["origin"],
             "lastSeenAt": row.get("lastSeenAt"),
             "updatedAt": row["updatedAt"],
@@ -712,6 +874,18 @@ class WebViewerAccountAccessStore:
             key: bool(overrides[key]) if key in overrides else privilege_permissions[key]
             for key in PERMISSION_KEYS
         }
+        privilege_part_permissions = normalize_part_permissions(
+            row["privilege_part_permissions"]
+        )
+        part_overrides = _json_object(row["part_permission_overrides"])
+        effective_part_permissions = {
+            key: (
+                bool(part_overrides[key])
+                if key in part_overrides
+                else privilege_part_permissions[key]
+            )
+            for key in privilege_part_permissions
+        }
         enabled_override = row["enabled_override"]
         return {
             "username": str(row["username"]),
@@ -719,7 +893,9 @@ class WebViewerAccountAccessStore:
             "filemakerPrivilegeSet": str(row["filemaker_privilege_set"]),
             "enabled": bool(row["privilege_enabled"]) and enabled_override is not False,
             "permissions": effective,
+            "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,
+            "inheritsPartPermissions": not part_overrides,
             "origin": str(row["origin"]),
             "lastSeenAt": row["last_seen_at"],
             "updatedAt": row["updated_at"],
@@ -732,6 +908,9 @@ class WebViewerAccountAccessStore:
             "name": row["name"],
             "enabled": bool(row["enabled"]),
             "permissions": normalize_permissions(row["permissions"]),
+            "partPermissions": normalize_part_permissions(
+                row.get("partPermissions")
+            ),
             "accountCount": sum(
                 account["privilegeSetKey"] == key
                 for account in self._memory_accounts.values()
@@ -759,8 +938,10 @@ def _enabled_override(
     privilege_enabled: bool,
     inherit_privilege_set: bool,
 ) -> bool | None:
-    if inherit_privilege_set or requested_enabled == privilege_enabled:
+    # Permission inheritance does not prevent an individual account from being
+    # disabled. A disabled privilege set remains authoritative.
+    if requested_enabled == privilege_enabled:
         return None
-    # A disabled privilege set is always authoritative. Accounts can be
-    # disabled individually, but cannot override a disabled set back to active.
+    if inherit_privilege_set and not privilege_enabled:
+        return None
     return False if privilege_enabled else None

@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 
-from app.services.filemaker_client import FileMakerClient
+from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 
 
 class SettingsStub:
@@ -178,3 +178,19 @@ async def test_find_records_list_uses_total_record_count_when_unfiltered(
     result = await client.find_records("Parts")
 
     assert result == {"data": [], "foundCount": 44675, "returnedCount": 0}
+
+
+@pytest.mark.asyncio
+async def test_empty_new_layout_record_missing_is_treated_as_no_records(
+    client: FileMakerClient,
+) -> None:
+    error = FileMakerAPIError(
+        "FileMaker API request failed",
+        status_code=500,
+        payload={
+            "messages": [{"code": "101", "message": "Record is missing"}],
+            "response": {},
+        },
+    )
+
+    assert client._is_no_records_error(error)

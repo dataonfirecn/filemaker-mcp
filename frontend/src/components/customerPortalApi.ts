@@ -4,7 +4,6 @@ export type CustomerAccessRole = "admin" | "manager" | "team" | "agent";
 
 export function customerAccessRolePermissions(role: CustomerAccessRole) {
   return {
-    canViewPrice: role === "admin" || role === "manager",
     canViewOrders: role !== "agent",
     canViewDetails: role !== "agent",
     isAdmin: role === "admin"
@@ -24,12 +23,12 @@ export type CustomerProfile = {
 
 export function normalizeCustomerProfile(profile: CustomerProfile): CustomerProfile {
   const accessRole = profile.accessRole
-    ?? (profile.isAdmin ? "admin" : profile.canViewPrice ? "manager" : "team");
+    ?? (profile.isAdmin ? "admin" : "team");
   const permissions = customerAccessRolePermissions(accessRole);
   return {
     ...profile,
     accessRole,
-    canViewPrice: profile.canViewPrice ?? permissions.canViewPrice,
+    canViewPrice: profile.canViewPrice ?? false,
     canViewOrders: profile.canViewOrders ?? permissions.canViewOrders,
     canViewDetails: profile.canViewDetails ?? permissions.canViewDetails,
     isAdmin: profile.isAdmin ?? permissions.isAdmin
@@ -159,6 +158,7 @@ export type CustomerAdminAccount = {
   failedLoginCount: number;
   updatedAt: string;
   updatedBy: string;
+  credentialsEmailAvailableAt: string | null;
   credentialsEmailSent?: boolean | null;
   credentialsEmailError?: string;
 };
@@ -166,6 +166,19 @@ export type CustomerAdminAccount = {
 export type CustomerAdminAccountsResponse = {
   accounts: CustomerAdminAccount[];
   emailDeliveryEnabled: boolean;
+};
+
+export type CustomerCredentialsEmailLogItem = {
+  id: number;
+  username: string;
+  recipientEmail: string;
+  status: "success" | "failed" | "blocked";
+  message: string;
+  createdAt: string;
+};
+
+export type CustomerCredentialsEmailLogResponse = {
+  logs: CustomerCredentialsEmailLogItem[];
 };
 
 export type CustomerAccountBulkStatusResponse = {

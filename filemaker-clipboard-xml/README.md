@@ -34,6 +34,8 @@ MES_FILEMAKER_SCRIPT_NAME=MES_UpdateWorkOrder_Test
 - `04-test-callback-payload.json`：后端 callback 测试请求体。
 - `08-open-new-part-webviewer-script-steps.fmxmlsnippet.xml`：打开 `Create New Part_Web` 的 Card/Dialog 窗口脚本步骤。
 - `09-new-part-webviewer-callback-script-steps.fmxmlsnippet.xml`：接收新建零件结果、保存全局变量并关闭当前 WebViewer 窗口的回调脚本步骤。
+- `10-part-assets-table-with-fields.fmxmlsnippet.xml`：建立 `PartAssets` 表及
+  34 个字段。二进制文件以 COS 为权威来源，表内 `asset_file` 只作为兼容容器。
 - `FILEMAKER_TABLE_XML_NOTES.md`：本次成功创建表和字段的格式记录、失败原因和检查命令。
 - `FILEMAKER_LAYOUT_XML_NOTES.md`：本次布局对象显示问题的原因、成功策略和检查命令。
 

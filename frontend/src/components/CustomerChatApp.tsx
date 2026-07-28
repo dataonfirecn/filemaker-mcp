@@ -97,7 +97,7 @@ export default function CustomerChatApp() {
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!username.trim() || !password) {
-      setLoginError("Enter your customer ID and password.");
+      setLoginError("Enter your username or email and password.");
       return;
     }
     setLoginLoading(true);
@@ -174,13 +174,13 @@ export default function CustomerChatApp() {
         {themeToggle}
         <form className="cp-login-card" onSubmit={handleLogin}>
           <h2>Customer sign in</h2>
-          <p>Use your assigned customer account to continue</p>
+          <p>Use your assigned username or email to continue</p>
 
           <label className="cp-field">
-            <span>Customer ID</span>
+            <span>Username or email</span>
             <span className="cp-control">
               <UserRound size={17} />
-              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="Enter your customer ID" disabled={loginLoading} autoFocus />
+              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="Enter your username or email" disabled={loginLoading} autoFocus />
             </span>
           </label>
 

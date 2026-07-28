@@ -5,6 +5,11 @@ from app.api.natural_language_query import run_natural_language_query
 from app.core.config import Settings
 from app.models.natural_language_query import NaturalLanguageQueryRequest
 from app.services.audit_log import OperatorContext
+from app.services.dependencies import assert_webviewer_part_permission
+from app.services.part_permission_catalog import (
+    PART_PERMISSION_KEYS,
+    permission_catalog,
+)
 from app.services.rag_semantic_registry import RagSemanticRegistry
 from app.services.webviewer_account_access import (
     WebViewerAccountAccessStore,
@@ -100,6 +105,70 @@ async def test_full_access_privilege_bootstraps_account_admin() -> None:
     assert account["permissions"]["canManageAccounts"] is True
     assert account["permissions"]["canViewPrice"] is True
     assert all(account["permissions"].values())
+    assert all(account["partPermissions"].values())
+
+
+@pytest.mark.asyncio
+async def test_part_permissions_inherit_override_and_delete() -> None:
+    store = WebViewerAccountAccessStore("memory://webviewer-part-access")
+    await store.init()
+    account = await store.observe_account(
+        username="buyer",
+        display_name="Buyer",
+        privilege_set="採購助理_一般權限",
+    )
+    read_key = "part.procurement.quotations.read"
+    approve_key = "part.procurement.quotations.approve"
+
+    assert account["partPermissions"][read_key] is True
+    assert account["partPermissions"][approve_key] is False
+    assert account["inheritsPartPermissions"] is True
+
+    updated = await store.update_account(
+        "buyer",
+        enabled=True,
+        permissions=account["permissions"],
+        part_permissions={
+            **account["partPermissions"],
+            approve_key: True,
+        },
+        updated_by="admin",
+    )
+
+    assert updated is not None
+    assert updated["partPermissions"][approve_key] is True
+    assert updated["inheritsPartPermissions"] is False
+
+    deleted = await store.delete_account("buyer")
+    assert deleted is not None
+    assert await store.get_account("buyer") is None
+
+
+def test_part_permission_catalog_has_six_groups_and_stable_keys() -> None:
+    catalog = permission_catalog()
+
+    assert [group["key"] for group in catalog["groups"]] == [
+        "procurement",
+        "business",
+        "design",
+        "quality",
+        "warehouse",
+        "laser",
+    ]
+    assert catalog["permissionCount"] == len(PART_PERMISSION_KEYS)
+    assert len(PART_PERMISSION_KEYS) == len(set(PART_PERMISSION_KEYS))
+    assert all(key.startswith("part.") for key in PART_PERMISSION_KEYS)
+
+
+def test_exact_part_permission_is_enforced_server_side() -> None:
+    permission = "part.design.drawings2d.publish"
+
+    with pytest.raises(HTTPException) as denied:
+        assert_webviewer_part_permission({permission: False}, permission)
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail["permission"] == permission
+    assert_webviewer_part_permission({permission: True}, permission)
 
 
 def test_localized_full_access_privilege_bootstraps_account_admin() -> None:

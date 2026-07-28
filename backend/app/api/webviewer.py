@@ -19,6 +19,7 @@ from app.services.customer_email import (
     CustomerEmailError,
     send_admin_credentials_email,
 )
+from app.services.part_permission_catalog import permission_catalog
 from app.services.dependencies import (
     get_audit_log_store,
     get_operator_context,
@@ -135,6 +136,7 @@ async def create_webviewer_session(
             detail={"message": "此 StarRC 账号或其 FileMaker 权限集已停用。"},
         )
     context["access"] = dict(account_state["permissions"])
+    context["partPermissions"] = dict(account_state["partPermissions"])
     token, session_payload = issue_session_token(context, settings)
     session_id = session_payload["sessionId"]
     operator = session_payload.get("operator") or {}
@@ -181,6 +183,34 @@ async def list_webviewer_accounts(
     )
 
 
+@router.get(
+    "/admin/part-permission-catalog",
+    response_model=dict,
+)
+async def get_part_permission_catalog(
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+) -> dict:
+    return permission_catalog()
+
+
+@router.get(
+    "/admin/accounts/{username}",
+    response_model=WebViewerAccountAdminItem,
+)
+async def get_webviewer_account(
+    username: str,
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+    store: WebViewerAccountAccessStore = Depends(get_webviewer_account_access_store),
+) -> WebViewerAccountAdminItem:
+    account = await store.get_account(username)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "找不到此账号。"},
+        )
+    return WebViewerAccountAdminItem.model_validate(account)
+
+
 @router.post(
     "/admin/accounts",
     response_model=WebViewerAccountAdminItem,
@@ -205,6 +235,30 @@ async def register_webviewer_account(
         seen=False,
         updated_by=operator.account,
     )
+    requested_permissions = (
+        body.permissions.model_dump(by_alias=True)
+        if body.permissions is not None
+        else account["permissions"]
+    )
+    requested_part_permissions = (
+        body.part_permissions
+        if body.part_permissions is not None
+        else account["partPermissions"]
+    )
+    account = await store.update_account(
+        body.username,
+        enabled=body.enabled,
+        permissions=requested_permissions,
+        part_permissions=requested_part_permissions,
+        inherit_privilege_set=body.inherit_privilege_set,
+        inherit_part_permissions=body.inherit_part_permissions,
+        updated_by=operator.account,
+    )
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": "账号创建后无法写入权限设置。"},
+        )
     await audit_log.record(
         operator=operator,
         action_type="WEBVIEWER_ACCOUNT_REGISTER",
@@ -232,24 +286,52 @@ async def update_webviewer_account(
 ) -> WebViewerAccountAdminItem:
     current_username = str((session_context.get("operator") or {}).get("account") or "")
     permissions = body.permissions.model_dump(by_alias=True)
-    if username.casefold() == current_username.casefold() and (
-        not body.enabled or not permissions["canManageAccounts"]
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "不能停用当前管理员或移除自己的账号管理权限。"},
-        )
     before = await store.get_account(username)
     if not before:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "找不到此账号。"},
         )
+    if username.casefold() == current_username.casefold():
+        target_privilege_name = (
+            body.filemaker_privilege_set or before["filemakerPrivilegeSet"]
+        )
+        target_privilege = next(
+            (
+                item
+                for item in await store.list_privilege_sets()
+                if item["name"].casefold() == target_privilege_name.casefold()
+            ),
+            None,
+        )
+        inherited_admin_access = bool(
+            target_privilege
+            and target_privilege["enabled"]
+            and target_privilege["permissions"]["canManageAccounts"]
+        )
+        retains_admin_access = (
+            inherited_admin_access
+            if body.inherit_privilege_set
+            else bool(
+                target_privilege
+                and target_privilege["enabled"]
+                and permissions["canManageAccounts"]
+            )
+        )
+        if not body.enabled or not retains_admin_access:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"message": "不能停用当前管理员或移除自己的账号管理权限。"},
+            )
     updated = await store.update_account(
         username,
         enabled=body.enabled,
         permissions=permissions,
+        part_permissions=body.part_permissions,
         inherit_privilege_set=body.inherit_privilege_set,
+        inherit_part_permissions=body.inherit_part_permissions,
+        display_name=body.display_name,
+        privilege_set=body.filemaker_privilege_set,
         updated_by=operator.account,
     )
     if not updated:
@@ -262,6 +344,46 @@ async def update_webviewer_account(
         after_data=updated,
     )
     return WebViewerAccountAdminItem.model_validate(updated)
+
+
+@router.delete(
+    "/admin/accounts/{username}",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_webviewer_account(
+    username: str,
+    session_context: dict = Depends(get_webviewer_session_context),
+    operator: OperatorContext = Depends(get_operator_context),
+    store: WebViewerAccountAccessStore = Depends(get_webviewer_account_access_store),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> dict:
+    current_username = str((session_context.get("operator") or {}).get("account") or "")
+    if username.casefold() == current_username.casefold():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "不能删除当前登录的管理员账号。"},
+        )
+    deleted = await store.delete_account(username)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "找不到此账号。"},
+        )
+    await audit_log.record(
+        operator=operator,
+        action_type="WEBVIEWER_ACCOUNT_DELETE",
+        status="success",
+        before_data=deleted,
+        response_payload={
+            "username": deleted["username"],
+            "origin": deleted["origin"],
+        },
+    )
+    return {
+        "ok": True,
+        "username": deleted["username"],
+        "willResync": deleted["origin"] == "filemaker",
+    }
 
 
 @router.patch(
@@ -302,6 +424,7 @@ async def update_webviewer_privilege_set(
         privilege_set,
         enabled=body.enabled,
         permissions=permissions,
+        part_permissions=body.part_permissions,
         updated_by=operator.account,
     )
     if not updated:

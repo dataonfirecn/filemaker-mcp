@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef } from "react";
-import { ExternalLink, Loader2, Search, SendHorizontal } from "lucide-react";
+import { ExternalLink, LayoutDashboard, Loader2, Search, SendHorizontal } from "lucide-react";
 import type { BusinessProductRow, NaturalQueryExchange } from "../types";
 
 export type HomePageProps = {
@@ -12,6 +12,7 @@ export type HomePageProps = {
   onNaturalQueryPromptChange: (value: string) => void;
   onNaturalQuerySubmit: (prompt?: string) => void;
   onOpenBusinessProduct: (row: BusinessProductRow) => void;
+  onOpenDashboard: () => void;
 };
 
 const queryExamples = [
@@ -245,7 +246,8 @@ export default function HomePage({
   canViewPrice,
   onNaturalQueryPromptChange,
   onNaturalQuerySubmit,
-  onOpenBusinessProduct
+  onOpenBusinessProduct,
+  onOpenDashboard
 }: HomePageProps) {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const visibleExamples = canViewPrice
@@ -259,6 +261,10 @@ export default function HomePage({
   return (
     <div className="home-page">
       <header className="home-chat-topbar" aria-label="当前用户">
+        <button className="home-chat-dashboard-button" type="button" onClick={onOpenDashboard}>
+          <LayoutDashboard size={17} />
+          <span>返回 Dashboard</span>
+        </button>
         <strong className="home-chat-user">{operatorName || "-"}</strong>
       </header>
 
