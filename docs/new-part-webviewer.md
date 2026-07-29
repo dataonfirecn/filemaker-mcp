@@ -64,8 +64,9 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 
 ## FileMaker 数据来源
 
-`GET /api/part-creation/options` 每次打开时从 FileMaker
-`新增零件资料` 布局读取值列表：
+`GET /api/part-creation/options` 从 Web 后端的持久化参考资料缓存返回以下
+FileMaker `新增零件资料` 布局值列表，不会因每次打开 WebViewer 而重新访问
+FileMaker：
 
 - `倉庫分工`
 - `零件性質`
@@ -81,11 +82,35 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 - `客戶`
 
 编号生成选项继续来自 `MaterialIDGenerator_Gen`。性质、客户、厂商代码、颜色
-和其他材质编号配置会在后端进程内缓存 1 天，并发首次读取会合并成一次请求；
-缓存时间可由 `FILEMAKER_MATERIAL_OPTIONS_CACHE_TTL_SECONDS` 调整，设为 `0`
-可关闭。正式建立和重复检查仍实时读取 FileMaker，不使用该缓存。如果
-FileMaker 暂时没有返回仓库值列表，仓库字段会退回为手工输入，并在验证结果
-中提示。
+和其他材质编号配置与上面的值列表一起保存在 Web 服务的 `app.db`
+`filemaker_reference_cache` 表中，同时保留内存副本。服务重启后会直接恢复
+最后一次成功缓存；即使 FileMaker 在刷新时暂时不可用，页面也继续使用上一份
+有效数据，不会清空缓存。
+
+默认每天自动刷新一次，由
+`FILEMAKER_PART_OPTIONS_CACHE_REFRESH_INTERVAL_SECONDS=86400` 控制；失败后
+默认每 300 秒重试。缓存状态可通过
+`GET /api/part-creation/cache/status` 查看。具有 `canManageAccounts` 权限的
+管理员可调用 `POST /api/part-creation/cache/refresh` 立即刷新，操作会写入
+审计日志；新建零件页面顶部也会仅向管理员显示“刷新选项”按钮：
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer <WebViewer session token>" \
+  https://starrc.dataonfire.cn/api/part-creation/cache/refresh
+```
+
+适合缓存的数据包括仓库、分类、部门、状态、材料、尺寸、客户选择列表，以及
+编号生成的性质、客户、制造代码、颜色和其他代码。以下数据始终实时访问
+FileMaker，不进入长期缓存：
+
+- 厂商名称/编号搜索和厂商 UUID、审核状态复核
+- 客户代号到客户 UUID 的最终映射
+- 自动流水号扫描及零件编号重复检查
+- 正式建立前的关键值列表复核和最终记录写入
+
+如果 FileMaker 暂时没有返回仓库值列表，仓库字段会退回为手工输入，并在验证
+结果中提示。
 
 WebViewer 的 API 请求不携带浏览器 Cookie，只使用签名会话换取的
 `Authorization`。前端 Nginx 同时放宽请求头缓冲并在转发 API 时移除 Cookie，
@@ -99,7 +124,8 @@ WebViewer 的 API 请求不携带浏览器 Cookie，只使用签名会话换取�
 
 ## 验证与建立
 
-- `POST /api/part-creation/validate` 只验证，不写入记录。
+- `POST /api/part-creation/validate` 使用缓存的值列表校验表单，同时实时检查
+  重复编号、客户和厂商映射，不写入记录。
 - `POST /api/part-creation/create` 再次读取实时选项、检查重复编号，然后通过
   Data API 在 `@零件` 建立记录。
 - 必填：零件编号、正确的内部名称、正确的对外名称、仓库分工、零件性质。

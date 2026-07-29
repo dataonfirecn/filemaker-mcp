@@ -53,6 +53,22 @@ class PartCreationOptionsResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class PartCreationCacheStatus(BaseModel):
+    available: bool
+    source: str
+    refreshed_at: str | None = Field(alias="refreshedAt")
+    age_seconds: int | None = Field(alias="ageSeconds")
+    refresh_interval_seconds: int = Field(alias="refreshIntervalSeconds")
+    next_refresh_at: str | None = Field(alias="nextRefreshAt")
+    refreshing: bool
+    last_attempt_at: str | None = Field(alias="lastAttemptAt")
+    last_error: str | None = Field(alias="lastError")
+    last_refresh_reason: str | None = Field(alias="lastRefreshReason")
+    counts: dict[str, int]
+
+    model_config = {"populate_by_name": True}
+
+
 class PartCreationRequest(BaseModel):
     part_number: str = Field(alias="partNumber", max_length=320)
     internal_name: str = Field(alias="internalName", max_length=2000)

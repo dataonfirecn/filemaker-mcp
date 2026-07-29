@@ -78,6 +78,10 @@ type PartCreationOptions = {
   };
 };
 
+type CacheStatus = {
+  refreshedAt: string | null;
+};
+
 type GeneratorState = {
   material: string;
   customer: string;
@@ -424,6 +428,8 @@ export default function NewPartWebViewerApp() {
   const [vendorSearching, setVendorSearching] = useState(false);
   const [vendorSearchError, setVendorSearchError] = useState<string | null>(null);
   const [vendorOpen, setVendorOpen] = useState(false);
+  const [cacheRefreshing, setCacheRefreshing] = useState(false);
+  const [cacheNotice, setCacheNotice] = useState("");
 
   useEffect(() => {
     document.title = "新建零件";
@@ -777,6 +783,38 @@ export default function NewPartWebViewerApp() {
     }
   }
 
+  async function refreshOptionsCache() {
+    if (!session || cacheRefreshing) return;
+    setCacheRefreshing(true);
+    setCacheNotice("");
+    setError(null);
+    try {
+      const status = await requestJson<CacheStatus>(
+        "/api/part-creation/cache/refresh",
+        { method: "POST" },
+        session.token
+      );
+      const nextOptions = await requestJson<PartCreationOptions>(
+        "/api/part-creation/options",
+        {},
+        session.token
+      );
+      setOptions(nextOptions);
+      setCacheNotice(
+        status.refreshedAt
+          ? `已更新 ${new Date(status.refreshedAt).toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit"
+            })}`
+          : "选项已更新"
+      );
+    } catch (nextError) {
+      setError(`刷新选项缓存失败：${parseError(nextError)}`);
+    } finally {
+      setCacheRefreshing(false);
+    }
+  }
+
   function completeInFileMaker(action: FileMakerCompletionAction) {
     if (!created) return;
     if (!window.FileMaker) {
@@ -1062,7 +1100,21 @@ export default function NewPartWebViewerApp() {
           <strong>新建零件资料</strong>
           <small>验证完成后通过 FileMaker Data API 建立零件</small>
         </span>
-        <span className="npw-connected"><i /> 已连接 FileMaker</span>
+        <span className="npw-header-actions">
+          {session.context.access.canManageAccounts && (
+            <button
+              className="npw-cache-refresh"
+              type="button"
+              onClick={() => void refreshOptionsCache()}
+              disabled={cacheRefreshing}
+              title="立即从 FileMaker 更新所有新建零件选项"
+            >
+              <RefreshCw className={cacheRefreshing ? "npw-spin" : ""} size={13} />
+              {cacheRefreshing ? "刷新中…" : cacheNotice || "刷新选项"}
+            </button>
+          )}
+          <span className="npw-connected"><i /> 已连接 FileMaker</span>
+        </span>
       </header>
 
       <div className="npw-page">
@@ -1144,7 +1196,7 @@ export default function NewPartWebViewerApp() {
         <section className="npw-card">
           <div className="npw-section-title">
             <span><small>02</small><strong>分类与仓储</strong></span>
-            <em>选项实时来自 FileMaker 值列表</em>
+            <em>选项来自每日更新的 Web 缓存</em>
           </div>
 
           <div className="npw-classification-grid">
@@ -1552,7 +1604,7 @@ export default function NewPartWebViewerApp() {
 
                 <footer className="mid-source-note">
                   <Database size={14} />
-                  <span>选项与重复编号检查均实时读取 FileMaker</span>
+                  <span>选项来自 Web 缓存；流水号与重复检查实时读取 FileMaker</span>
                 </footer>
               </aside>
             </div>

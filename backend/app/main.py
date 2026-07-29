@@ -44,6 +44,7 @@ from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.part_asset_upload_store import PartAssetUploadStore
+from app.services.part_creation_options_cache import PartCreationOptionsCache
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_account_access import (
@@ -76,6 +77,13 @@ async def lifespan(app: FastAPI):
     await receipt_attachment_store.init()
     part_asset_upload_store = PartAssetUploadStore(settings.database_path)
     await part_asset_upload_store.init()
+    part_creation_options_cache = PartCreationOptionsCache(
+        database_path=settings.database_path,
+        filemaker=filemaker_client,
+        settings=settings,
+    )
+    await part_creation_options_cache.init()
+    await part_creation_options_cache.ensure_seeded()
     cos_storage_service = COSStorageService(settings)
     customer_credential_store = CustomerCredentialStore(settings.database_path)
     await customer_credential_store.init()
@@ -131,6 +139,7 @@ async def lifespan(app: FastAPI):
     app.state.webviewer_account_access_store = webviewer_account_access_store
     app.state.receipt_attachment_store = receipt_attachment_store
     app.state.part_asset_upload_store = part_asset_upload_store
+    app.state.part_creation_options_cache = part_creation_options_cache
     app.state.cos_storage_service = cos_storage_service
     app.state.natural_query_conversation_store = natural_query_conversation_store
     app.state.natural_query_analytics_worker = natural_query_analytics_worker
@@ -141,9 +150,11 @@ async def lifespan(app: FastAPI):
     callback_worker.start()
     rag_index_worker.start()
     natural_query_analytics_worker.start()
+    part_creation_options_cache.start()
     try:
         yield
     finally:
+        await part_creation_options_cache.stop()
         await natural_query_analytics_worker.stop()
         await rag_index_worker.stop()
         await callback_worker.stop()

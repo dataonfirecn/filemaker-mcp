@@ -38,6 +38,16 @@ class Settings(BaseSettings):
         ge=0,
         le=7 * 24 * 60 * 60,
     )
+    filemaker_part_options_cache_refresh_interval_seconds: int = Field(
+        default=24 * 60 * 60,
+        ge=0,
+        le=7 * 24 * 60 * 60,
+    )
+    filemaker_part_options_cache_retry_seconds: int = Field(
+        default=5 * 60,
+        ge=10,
+        le=60 * 60,
+    )
     filemaker_timeout_seconds: float = 30.0
     filemaker_ssl_verify: bool = False
     filemaker_read_only: bool = True

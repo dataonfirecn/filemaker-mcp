@@ -19,6 +19,7 @@ from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.part_asset_upload_store import PartAssetUploadStore
+from app.services.part_creation_options_cache import PartCreationOptionsCache
 from app.services.part_permission_catalog import PART_PERMISSION_KEY_SET
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
@@ -100,6 +101,10 @@ def get_receipt_attachment_store(request: Request) -> ReceiptAttachmentStore:
 
 def get_part_asset_upload_store(request: Request) -> PartAssetUploadStore:
     return request.app.state.part_asset_upload_store
+
+
+def get_part_creation_options_cache(request: Request) -> PartCreationOptionsCache:
+    return request.app.state.part_creation_options_cache
 
 
 def get_rag_index_worker(request: Request) -> RagIndexWorker | None:

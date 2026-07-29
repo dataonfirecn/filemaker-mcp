@@ -125,12 +125,19 @@ class ResolvedVendor:
 async def load_part_creation_options(
     filemaker: FileMakerClient,
     settings: Settings,
+    *,
+    material_cache_ttl_seconds: int | None = None,
 ) -> PartCreationOptionsResponse:
+    generator_cache_ttl = (
+        settings.filemaker_material_options_cache_ttl_seconds
+        if material_cache_ttl_seconds is None
+        else material_cache_ttl_seconds
+    )
     metadata, generator = await asyncio.gather(
         filemaker.get_layout_metadata(settings.filemaker_part_read_layout),
         load_material_id_options(
             filemaker,
-            cache_ttl_seconds=settings.filemaker_material_options_cache_ttl_seconds,
+            cache_ttl_seconds=generator_cache_ttl,
         ),
     )
     value_lists = {
