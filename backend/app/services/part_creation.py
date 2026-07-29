@@ -128,7 +128,10 @@ async def load_part_creation_options(
 ) -> PartCreationOptionsResponse:
     metadata, generator = await asyncio.gather(
         filemaker.get_layout_metadata(settings.filemaker_part_read_layout),
-        load_material_id_options(filemaker),
+        load_material_id_options(
+            filemaker,
+            cache_ttl_seconds=settings.filemaker_material_options_cache_ttl_seconds,
+        ),
     )
     value_lists = {
         str(item.get("name") or ""): item

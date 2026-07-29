@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CellClickedEvent, CellValueChangedEvent, ColDef, ICellRendererParams } from "ag-grid-community";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type CellClickedEvent,
+  type CellValueChangedEvent,
+  type ColDef,
+  type ICellRendererParams
+} from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
 import { Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
@@ -53,6 +62,8 @@ import type {
   SessionResponse,
   ThemeMode
 } from "./types";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 const THEME_STORAGE_KEY = "starrc-theme";

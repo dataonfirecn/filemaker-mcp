@@ -213,6 +213,7 @@ async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
+    credentials: "omit",
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

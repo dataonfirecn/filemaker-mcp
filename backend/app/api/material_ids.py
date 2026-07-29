@@ -36,10 +36,14 @@ router = APIRouter(prefix="/material-ids", tags=["material-ids"])
 @router.get("/options", response_model=MaterialIdOptionsResponse)
 async def get_material_id_options(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
+    settings: Settings = Depends(get_settings),
     _: OperatorContext = Depends(get_operator_context),
 ) -> MaterialIdOptionsResponse:
     try:
-        return await load_material_id_options(filemaker)
+        return await load_material_id_options(
+            filemaker,
+            cache_ttl_seconds=settings.filemaker_material_options_cache_ttl_seconds,
+        )
     except FileMakerAPIError as exc:
         raise HTTPException(
             status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,

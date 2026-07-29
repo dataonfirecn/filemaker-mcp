@@ -80,8 +80,18 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 - `零件材料尺寸`
 - `客戶`
 
-编号生成选项继续来自 `MaterialIDGenerator_Gen`。如果 FileMaker 暂时没有
-返回仓库值列表，仓库字段会退回为手工输入，并在验证结果中提示。
+编号生成选项继续来自 `MaterialIDGenerator_Gen`。性质、客户、厂商代码、颜色
+和其他材质编号配置会在后端进程内缓存 1 天，并发首次读取会合并成一次请求；
+缓存时间可由 `FILEMAKER_MATERIAL_OPTIONS_CACHE_TTL_SECONDS` 调整，设为 `0`
+可关闭。正式建立和重复检查仍实时读取 FileMaker，不使用该缓存。如果
+FileMaker 暂时没有返回仓库值列表，仓库字段会退回为手工输入，并在验证结果
+中提示。
+
+WebViewer 的 API 请求不携带浏览器 Cookie，只使用签名会话换取的
+`Authorization`。前端 Nginx 同时放宽请求头缓冲并在转发 API 时移除 Cookie，
+避免 FileMaker WebViewer 长期使用后因 Cookie 累积出现
+`400 Request Header Or Cookie Too Large`。带内容哈希的静态资源缓存 1 年，
+入口 HTML 不缓存，以兼顾首次加载速度和版本更新。
 
 厂商不再手工输入编号。`GET /api/part-creation/vendors` 会按名称或编号实时
 搜索 `@S廠商`，结果显示厂商名称、厂商编号和审核状态；没有编号时显示
@@ -143,7 +153,8 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 
 ## 验收
 
-- 所有页面选项均由 FileMaker 实时提供。
+- 页面选项均由 FileMaker 提供；材质编号相关选项缓存 1 天，建立与重复检查
+  始终实时读取。
 - 已验证编号生成、重复检查、必填/占位名称错误、仓库分工缺失、照片预处理
   和成功返回结构。
 - 已在正式 FileMaker 建立临时测试零件，核对厂商 UUID、客户 UUID 和

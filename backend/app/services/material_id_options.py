@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from app.models.material_ids import (
     MaterialIdOption,
@@ -13,6 +16,7 @@ from app.services.filemaker_client import FileMakerClient
 
 GENERATOR_LAYOUT = "MaterialIDGenerator_Gen"
 PART_LAYOUT = "@零件"
+DEFAULT_OPTIONS_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 CONFIG_LAYOUTS = {
     "manufactures": "MaterialManufactor_EDIT",
@@ -31,11 +35,72 @@ PART_FIELDS = {
     "external": "part_name_external",
 }
 
+_options_cache: WeakKeyDictionary[
+    FileMakerClient, tuple[float, MaterialIdOptionsResponse]
+] = WeakKeyDictionary()
+_options_locks: WeakKeyDictionary[FileMakerClient, asyncio.Lock] = WeakKeyDictionary()
+
 
 async def load_material_id_options(
     filemaker: FileMakerClient,
+    *,
+    cache_ttl_seconds: int = DEFAULT_OPTIONS_CACHE_TTL_SECONDS,
 ) -> MaterialIdOptionsResponse:
-    metadata = await filemaker.get_layout_metadata(GENERATOR_LAYOUT)
+    ttl_seconds = max(0, int(cache_ttl_seconds))
+    cached = _cached_options(filemaker, ttl_seconds)
+    if cached is not None:
+        return cached
+
+    lock = _options_locks.get(filemaker)
+    if lock is None:
+        lock = asyncio.Lock()
+        _options_locks[filemaker] = lock
+
+    async with lock:
+        cached = _cached_options(filemaker, ttl_seconds)
+        if cached is not None:
+            return cached
+
+        response = await _load_material_id_options_uncached(filemaker)
+        if ttl_seconds > 0:
+            _options_cache[filemaker] = (time.monotonic(), response)
+        return response.model_copy(deep=True)
+
+
+def clear_material_id_options_cache(filemaker: FileMakerClient | None = None) -> None:
+    if filemaker is None:
+        _options_cache.clear()
+        return
+    _options_cache.pop(filemaker, None)
+
+
+def _cached_options(
+    filemaker: FileMakerClient,
+    ttl_seconds: int,
+) -> MaterialIdOptionsResponse | None:
+    if ttl_seconds <= 0:
+        return None
+    cached = _options_cache.get(filemaker)
+    if cached is None:
+        return None
+    cached_at, response = cached
+    if time.monotonic() - cached_at >= ttl_seconds:
+        _options_cache.pop(filemaker, None)
+        return None
+    return response.model_copy(deep=True)
+
+
+async def _load_material_id_options_uncached(
+    filemaker: FileMakerClient,
+) -> MaterialIdOptionsResponse:
+    config_items = list(CONFIG_LAYOUTS.items())
+    metadata, *config_results = await asyncio.gather(
+        filemaker.get_layout_metadata(GENERATOR_LAYOUT),
+        *(
+            filemaker.find_records(layout, limit=500)
+            for _, layout in config_items
+        ),
+    )
     value_lists = {
         str(item.get("name") or ""): item
         for item in metadata.get("valueLists", [])
@@ -47,8 +112,7 @@ async def load_material_id_options(
         value_list = value_lists.get(value_list_name) or {}
         values[response_key] = _options_from_value_list(value_list.get("values"))
 
-    for response_key, layout in CONFIG_LAYOUTS.items():
-        result = await filemaker.find_records(layout, limit=500)
+    for (response_key, _), result in zip(config_items, config_results, strict=True):
         values[response_key] = _options_from_records(result.get("data"))
 
     return MaterialIdOptionsResponse(

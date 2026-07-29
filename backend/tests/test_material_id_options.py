@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.services.material_id_options import (
@@ -7,8 +9,13 @@ from app.services.material_id_options import (
 
 
 class FakeFileMaker:
+    def __init__(self):
+        self.metadata_calls = 0
+        self.record_calls: list[str] = []
+
     async def get_layout_metadata(self, layout):
         assert layout == "MaterialIDGenerator_Gen"
+        self.metadata_calls += 1
         return {
             "valueLists": [
                 {
@@ -28,6 +35,7 @@ class FakeFileMaker:
         }
 
     async def find_records(self, layout, query=None, limit=100, offset=1, sort=None):
+        self.record_calls.append(layout)
         if layout == "@零件":
             assert query == [
                 {"part_number": "*CB007*"},
@@ -73,6 +81,39 @@ async def test_options_keep_filemaker_codes_and_descriptions() -> None:
     assert [item.code for item in response.manufactures] == ["LD", "YM"]
     assert [item.code for item in response.colors] == ["DBK"]
     assert [item.code for item in response.others] == ["PS"]
+
+
+@pytest.mark.asyncio
+async def test_options_are_cached_for_concurrent_and_repeated_reads() -> None:
+    filemaker = FakeFileMaker()
+
+    first, second = await asyncio.gather(
+        load_material_id_options(filemaker, cache_ttl_seconds=24 * 60 * 60),
+        load_material_id_options(filemaker, cache_ttl_seconds=24 * 60 * 60),
+    )
+    third = await load_material_id_options(
+        filemaker,
+        cache_ttl_seconds=24 * 60 * 60,
+    )
+
+    assert first == second == third
+    assert filemaker.metadata_calls == 1
+    assert filemaker.record_calls == [
+        "MaterialManufactor_EDIT",
+        "MaterialColor_EDIT",
+        "MaterialOther_EDIT",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_zero_ttl_bypasses_options_cache() -> None:
+    filemaker = FakeFileMaker()
+
+    await load_material_id_options(filemaker, cache_ttl_seconds=0)
+    await load_material_id_options(filemaker, cache_ttl_seconds=0)
+
+    assert filemaker.metadata_calls == 2
+    assert filemaker.record_calls.count("MaterialManufactor_EDIT") == 2
 
 
 @pytest.mark.asyncio

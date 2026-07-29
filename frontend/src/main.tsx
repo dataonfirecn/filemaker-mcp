@@ -1,15 +1,15 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-quartz.css";
-import App from "./App";
-import CustomerChatApp from "./components/CustomerChatApp";
-import MaterialIdWebViewerApp from "./components/MaterialIdWebViewerApp";
-import NewPartWebViewerApp from "./components/NewPartWebViewerApp";
 import "./styles.css";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+const App = lazy(() => import("./App"));
+const CustomerChatApp = lazy(() => import("./components/CustomerChatApp"));
+const MaterialIdWebViewerApp = lazy(
+  () => import("./components/MaterialIdWebViewerApp")
+);
+const NewPartWebViewerApp = lazy(
+  () => import("./components/NewPartWebViewerApp")
+);
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const requestedPage = new URLSearchParams(window.location.search).get("page");
@@ -24,6 +24,24 @@ const RootApp =
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <RootApp />
+    <Suspense
+      fallback={
+        <div
+          style={{
+            display: "grid",
+            minHeight: "100vh",
+            placeItems: "center",
+            color: "#48647a",
+            background: "#f4f8fb",
+            fontSize: 13,
+            fontWeight: 800
+          }}
+        >
+          正在载入页面…
+        </div>
+      }
+    >
+      <RootApp />
+    </Suspense>
   </React.StrictMode>
 );
