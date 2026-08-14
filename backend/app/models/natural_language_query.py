@@ -34,10 +34,36 @@ class NaturalLanguageQueryPlan(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class NaturalLanguageQueryLlmInfo(BaseModel):
+    provider: str
+    model: str
+    confidence: float = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class NaturalLanguageQueryResultField(BaseModel):
+    label: str
+    value: Any = None
+
+
+class NaturalLanguageQueryResultItem(BaseModel):
+    id: str
+    kind: str
+    title: str
+    subtitle: str = ""
+    fields: list[NaturalLanguageQueryResultField] = Field(default_factory=list)
+    target_type: str = Field(default="", alias="targetType")
+    target_identifier: str = Field(default="", alias="targetIdentifier")
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
+
+
 class NaturalLanguageQueryResponse(BaseModel):
     answer: str
     layout: str
     rows: list[BusinessProductRow] = Field(default_factory=list)
+    items: list[NaturalLanguageQueryResultItem] = Field(default_factory=list)
     found_count: int = Field(alias="foundCount")
     returned_count: int = Field(alias="returnedCount")
     plan: NaturalLanguageQueryPlan
@@ -46,5 +72,6 @@ class NaturalLanguageQueryResponse(BaseModel):
     requires_clarification: bool = Field(default=False, alias="requiresClarification")
     clarification_question: str | None = Field(default=None, alias="clarificationQuestion")
     clarification_options: list[str] = Field(default_factory=list, alias="clarificationOptions")
+    llm: NaturalLanguageQueryLlmInfo | None = None
 
     model_config = {"populate_by_name": True}

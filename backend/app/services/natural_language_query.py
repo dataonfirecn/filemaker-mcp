@@ -37,7 +37,24 @@ PART_SEARCH_FIELDS = [
 
 _EXACT_ID_FIELDS = {"product_sku", "系統產品編號", "part_number"}
 _CREATED_FIELD_HINTS = ("created", "creation", "create", "创建", "創建", "建立", "新增", "录入", "錄入")
-_CREATED_FIELD_EXCLUDES = ("updated", "modified", "修改", "更新", "異動", "变更", "變更")
+_CREATED_FIELD_EXCLUDES = (
+    "updated",
+    "modified",
+    "created by",
+    "created_by",
+    "creator",
+    "修改",
+    "更新",
+    "異動",
+    "变更",
+    "變更",
+    "创建人",
+    "創建人",
+    "建立人",
+    "新增人",
+    "录入人",
+    "錄入人",
+)
 _DATE_WORDS = (
     "今天",
     "今日",
@@ -145,6 +162,56 @@ _KEYWORD_NOISE_TERMS = (
     "created date",
     "creation date",
     "timestamp",
+)
+_TEMPORAL_LISTING_NOISE_TERMS = (
+    "按最新记录排序",
+    "按最新紀錄排序",
+    "按最新排序",
+    "具体时间戳",
+    "具體時間戳",
+    "最新创建",
+    "最新創建",
+    "最近创建",
+    "最近創建",
+    "最新新增",
+    "最近新增",
+    "包括",
+    "包含",
+    "展示",
+    "显示",
+    "顯示",
+    "返回",
+    "列出",
+    "详情",
+    "詳情",
+    "明细",
+    "明細",
+    "信息",
+    "資訊",
+    "状态",
+    "狀態",
+    "重量",
+    "创建",
+    "創建",
+    "新建",
+    "建立",
+    "新增",
+    "录入",
+    "錄入",
+    "最新",
+    "排序",
+    "以及",
+    "recently created",
+    "recently added",
+    "created",
+    "added",
+    "latest",
+    "include",
+    "including",
+    "status",
+    "weight",
+    "sort",
+    *_KEYWORD_NOISE_TERMS,
 )
 
 
@@ -308,6 +375,19 @@ def _now(settings: Settings) -> datetime:
     except ZoneInfoNotFoundError:
         tz = ZoneInfo("UTC")
     return datetime.now(tz)
+
+
+def parse_natural_date_range(
+    text: str,
+    *,
+    settings: Settings,
+    now: datetime | None = None,
+) -> ParsedDateRange | None:
+    """Expose the shared relative-date parser to other read-only query domains."""
+    normalized = _normalize_text(text)
+    if not normalized:
+        return None
+    return _parse_date_range(normalized, now or _now(settings))
 
 
 def _parse_date_range(text: str, now: datetime) -> ParsedDateRange | None:
@@ -707,6 +787,7 @@ def _is_meaningful_keyword(value: str) -> bool:
 
 
 def _strip_query_stopwords(text: str) -> str:
+    temporal_listing = _wants_created_records(text) or _wants_latest(text)
     cleaned = text
     for pattern in (
         r"\b(?:please\s+)?(?:show|find|search|list|give|get|display|tell)\s+(?:me\s+)?\b",
@@ -763,6 +844,20 @@ def _strip_query_stopwords(text: str) -> str:
     for word in _DATE_WORDS:
         cleaned = cleaned.replace(word, " ")
     cleaned = cleaned.replace("的", " ")
+    if temporal_listing:
+        # LLMs sometimes append a projection clause copied from layout metadata,
+        # for example "，返回零件编号、状态、替代编号". That clause is
+        # not a user search term and must not become a FileMaker find criterion.
+        cleaned = re.sub(
+            r"\s(?:包括|包含|返回|展示|显示|顯示|列出)\s*.*$",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        for term in sorted(_TEMPORAL_LISTING_NOISE_TERMS, key=len, reverse=True):
+            cleaned = re.sub(re.escape(term), " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"[()（）\[\]【】、]+", " ", cleaned)
+        cleaned = re.sub(r"(^|\s)(?:及|和|与|與|按)(?=\s|$)", r"\1", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
@@ -825,5 +920,5 @@ def _describe_plan(
         if filters.get(key):
             parts.append(f"{label}包含“{filters[key]}”")
     if wants_latest and not parsed_date:
-        parts.append("按最新记录排序")
+        parts.append("按最新记录排序" if created_field else "未找到创建日期字段，结果未按最新排序")
     return "；".join(parts) or f"{entity_label}资料列表"
