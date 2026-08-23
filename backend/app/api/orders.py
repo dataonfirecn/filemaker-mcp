@@ -1,6 +1,6 @@
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,6 +31,11 @@ from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 from app.services.filemaker_odata_client import (
     FileMakerODataClient,
     FileMakerODataError,
+)
+from app.services.filemaker_timestamps import (
+    FILEMAKER_TIMEZONE,
+    format_filemaker_timestamp,
+    parse_filemaker_timestamp,
 )
 from app.services.cos_storage import COSStorageError, COSStorageService
 from app.services.internal_order_merge import (
@@ -1043,61 +1048,68 @@ async def _order_receipt_catalog(
     for line_id, rows in zip(normalized_ids, rows_by_line):
         if not rows:
             continue
-        receipt = max(
+        sorted_receipts = sorted(
             rows,
             key=lambda row: _receipt_timestamp(row.get("创建时间戳")),
+            reverse=True,
         )
-        receipt_id = _text(receipt.get("ID"))
-        escaped_receipt_id = receipt_id.replace("'", "''")
-        inventory = await odata.records(
-            "產品庫存",
-            filter_expr=f"ID_出貨單資料入庫 eq '{escaped_receipt_id}'",
-            top=10,
-            count=False,
+        history = await asyncio.gather(
+            *(_receipt_history_item(odata, receipt) for receipt in sorted_receipts)
         )
-        inventory_rows = [
-            row for row in inventory.get("rows", []) if isinstance(row, dict)
-        ]
-        received_by = next(
-            (
-                _text(row.get("記錄人"))
-                for row in inventory_rows
-                if _text(row.get("記錄人"))
-            ),
-            "",
-        ) or _text(receipt.get("创建人"))
+        latest = history[0]
+        received_quantity = sum(_number(row.get("數量")) for row in rows)
         catalog[line_id] = {
-            "receiptId": receipt_id,
-            "quantity": _number(receipt.get("數量")),
-            "status": _text(receipt.get("狀態")),
-            "receivedAt": _text(receipt.get("创建时间戳")),
-            "receivedBy": received_by,
+            "receiptId": latest["receiptId"],
+            "quantity": received_quantity,
+            "status": latest["status"],
+            "receivedAt": latest["receivedAt"],
+            "receivedBy": latest["receivedBy"],
+            "history": history,
         }
     return catalog
 
 
+async def _receipt_history_item(
+    odata: FileMakerODataClient,
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    receipt_id = _text(receipt.get("ID"))
+    escaped_receipt_id = receipt_id.replace("'", "''")
+    inventory = await odata.records(
+        "產品庫存",
+        filter_expr=f"ID_出貨單資料入庫 eq '{escaped_receipt_id}'",
+        top=10,
+        count=False,
+    )
+    inventory_rows = [
+        row for row in inventory.get("rows", []) if isinstance(row, dict)
+    ]
+    inventory_row = next(
+        (
+            row
+            for row in inventory_rows
+            if _text(row.get("ID_出貨單資料入庫")) == receipt_id
+        ),
+        inventory_rows[0] if inventory_rows else {},
+    )
+    return {
+        "receiptId": receipt_id,
+        "quantity": _number(receipt.get("數量")),
+        "status": _text(receipt.get("狀態")),
+        "receivedAt": format_filemaker_timestamp(receipt.get("创建时间戳")),
+        "receivedBy": (
+            _text(inventory_row.get("記錄人"))
+            or _text(receipt.get("创建人"))
+        ),
+        "documentNumber": _text(inventory_row.get("批號")),
+        "remark": _text(inventory_row.get("描述")),
+    }
+
+
 def _receipt_timestamp(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    raw = _text(value)
-    if raw:
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            pass
-        for date_format in (
-            "%m/%d/%Y %H:%M:%S",
-            "%Y/%m/%d %H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-        ):
-            try:
-                return datetime.strptime(raw, date_format).replace(
-                    tzinfo=timezone.utc
-                )
-            except ValueError:
-                continue
-    return datetime.min.replace(tzinfo=timezone.utc)
+    return parse_filemaker_timestamp(value) or datetime.min.replace(
+        tzinfo=FILEMAKER_TIMEZONE
+    )
 
 
 async def _completed_receipt_rows(
@@ -1105,15 +1117,31 @@ async def _completed_receipt_rows(
     line_id: str,
 ) -> list[dict[str, Any]]:
     escaped_line_id = line_id.replace("'", "''")
-    result = await odata.records(
-        "出貨單資料入庫",
-        filter_expr=(
-            f"ID_出庫單資料 eq '{escaped_line_id}' and 狀態 eq '已入庫'"
-        ),
-        top=10,
-        count=False,
+    filter_expr = (
+        f"ID_出庫單資料 eq '{escaped_line_id}' and 狀態 eq '已入庫'"
     )
-    return [row for row in result.get("rows", []) if isinstance(row, dict)]
+    rows: list[dict[str, Any]] = []
+    skip = 0
+    while True:
+        result = await odata.records(
+            "出貨單資料入庫",
+            filter_expr=filter_expr,
+            top=10,
+            skip=skip,
+            count=True,
+        )
+        page = [
+            row for row in result.get("rows", []) if isinstance(row, dict)
+        ]
+        rows.extend(page)
+        found_count = int(result.get("foundCount") or 0)
+        if (
+            not page
+            or len(page) < 10
+            or (found_count > 0 and len(rows) >= found_count)
+        ):
+            return rows
+        skip += len(page)
 
 
 def _product_payload(

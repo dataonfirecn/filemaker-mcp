@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -128,3 +130,28 @@ class WebViewerSendAdminCredentialsRequest(BaseModel):
     recipient_email: str = Field(alias="recipientEmail", min_length=3, max_length=320)
 
     model_config = {"populate_by_name": True}
+
+
+class LlmProviderOption(BaseModel):
+    id: Literal["deepseek", "lm_studio"]
+    label: str
+    model: str
+    base_url: str = Field(alias="baseUrl")
+    configured: bool
+    active: bool
+
+    model_config = {"populate_by_name": True}
+
+
+class LlmProviderStatusResponse(BaseModel):
+    enabled: bool
+    active_provider: Literal["deepseek", "lm_studio"] = Field(alias="activeProvider")
+    updated_at: datetime | None = Field(alias="updatedAt")
+    updated_by: str = Field(alias="updatedBy")
+    providers: list[LlmProviderOption]
+
+    model_config = {"populate_by_name": True}
+
+
+class LlmProviderSwitchRequest(BaseModel):
+    provider: Literal["deepseek", "lm_studio"]

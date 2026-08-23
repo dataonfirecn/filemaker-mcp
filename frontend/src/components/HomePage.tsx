@@ -11,11 +11,13 @@ export type HomePageProps = {
   canViewPrice: boolean;
   onNaturalQueryPromptChange: (value: string) => void;
   onNaturalQuerySubmit: (prompt?: string) => void;
-  onOpenBusinessProduct: (row: BusinessProductRow) => void;
+  onOpenQueryResult: (row: BusinessProductRow, domain: string) => void;
+  onOpenQueryTarget: (targetType: string, targetIdentifier: string) => void;
   onOpenDashboard: () => void;
 };
 
 const queryExamples = [
+  "今天采购的零件有哪些",
   "昨天新增的零件，价格分别是多少",
   "今天新增的零件有哪些，库存还有多少",
   "近7天新增的零件",
@@ -138,11 +140,33 @@ function creatorMeta(row: BusinessProductRow): { label: string; value: string }[
   return [];
 }
 
+function llmLabel(provider?: string): string {
+  if (provider === "lm_studio") return "LM Studio";
+  if (provider === "deepseek") return "DeepSeek";
+  return provider || "未调用（本地规则）";
+}
+
+function dataSourceLabel(source?: string): string {
+  if (source === "odata-live") return "FileMaker OData";
+  if (source === "rag-cache") return "RAG 缓存";
+  if (source === "clarification") return "本地规则";
+  return "FileMaker";
+}
+
+function quantityLabel(value: number | string | null | undefined): string {
+  if (!hasValue(value)) return "0";
+  const numeric = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(numeric)
+    : String(value);
+}
+
 type QueryResponseMessageProps = {
   exchange: NaturalQueryExchange;
   loading?: boolean;
   onNaturalQuerySubmit: (prompt?: string) => void;
-  onOpenBusinessProduct: (row: BusinessProductRow) => void;
+  onOpenQueryResult: (row: BusinessProductRow, domain: string) => void;
+  onOpenQueryTarget: (targetType: string, targetIdentifier: string) => void;
   canViewPrice: boolean;
 };
 
@@ -150,15 +174,21 @@ function QueryResponseMessage({
   exchange,
   loading,
   onNaturalQuerySubmit,
-  onOpenBusinessProduct,
+  onOpenQueryResult,
+  onOpenQueryTarget,
   canViewPrice
 }: QueryResponseMessageProps) {
   const response = exchange.response;
   if (!response) return null;
 
   const rows = response.rows ?? [];
+  const items = response.items ?? [];
+  const isProductRanking = response.plan.intent === "rank_products_by_sold_total";
+  const visibleRows = isProductRanking ? rows : rows.slice(0, 10);
+  const visibleItems = items.slice(0, 10);
+  const visibleDetailCount = visibleRows.length + visibleItems.length;
   const clarificationOptions = response.clarificationOptions ?? [];
-  const canOpenRows = response.plan.domain !== "part";
+  const canOpenRows = response.plan.domain === "product" || response.plan.domain === "part";
   const shouldShowEmptyStock =
     response.plan.domain === "part" &&
     /库存|庫存|stock|current_stock|还有多少|還有多少|剩余|剩餘/i.test(exchange.prompt);
@@ -169,7 +199,6 @@ function QueryResponseMessage({
       <div className="home-chat-bubble">
         <div className="home-query-answer">
           <strong>{response.clarificationQuestion || response.answer}</strong>
-          {!response.requiresClarification && <span>{response.plan.description}</span>}
         </div>
         {response.requiresClarification && clarificationOptions.length > 0 && (
           <div className="home-clarification-options" aria-label="反问选项">
@@ -192,45 +221,95 @@ function QueryResponseMessage({
             ))}
           </div>
         )}
-        {rows.length > 0 && (
-          <div className="home-query-list">
-            {rows.slice(0, 10).map((row) => {
-              const meta = [
-                ...dateMeta(row),
-                ...stockMeta(row, shouldShowEmptyStock),
-                ...(canViewPrice ? priceMeta(row) : []),
-                ...creatorMeta(row)
-              ];
-              return (
-                <button
-                  key={row.recordId}
-                  className="home-query-row"
-                  type="button"
-                  onClick={() => {
-                    if (canOpenRows) onOpenBusinessProduct(row);
-                  }}
-                  disabled={!canOpenRows}
-                >
-                  <span>
-                    <strong>{row.productSku || row.systemProductSku || entityFallbackName}</strong>
-                    <em>{row.productNameCn || row.productName || row.modelName || "-"}</em>
-                    {meta.length > 0 && (
-                      <small className="home-query-meta">
-                        {meta.map((item) => (
-                          <span key={`${item.label}-${item.value}`}>{`${item.label}: ${item.value}`}</span>
-                        ))}
-                      </small>
-                    )}
-                  </span>
-                  {canOpenRows && <ExternalLink size={15} />}
-                </button>
-              );
-            })}
+        {(rows.length > 0 || items.length > 0) && (
+          <div className="home-query-details">
+            <div className="home-query-details-heading">
+              <strong>查询明细</strong>
+              <span>{`显示 ${visibleDetailCount} 条 / 共 ${response.foundCount} 条`}</span>
+            </div>
+            <div className={`home-query-list${isProductRanking ? " ranking" : ""}`}>
+              {visibleRows.map((row, index) => {
+                const meta = [
+                  ...dateMeta(row),
+                  ...stockMeta(row, shouldShowEmptyStock),
+                  ...(canViewPrice ? priceMeta(row) : []),
+                  ...creatorMeta(row)
+                ];
+                return (
+                  <button
+                    key={row.recordId}
+                    className="home-query-row"
+                    type="button"
+                    onClick={() => {
+                      if (canOpenRows) onOpenQueryResult(row, response.plan.domain);
+                    }}
+                    disabled={!canOpenRows}
+                  >
+                    <span>
+                      <strong>
+                        {isProductRanking && <b className="home-query-rank">#{index + 1}</b>}
+                        {row.productSku || row.systemProductSku || entityFallbackName}
+                      </strong>
+                      <em>{row.productNameCn || row.productName || row.modelName || "-"}</em>
+                      {isProductRanking && (
+                        <small className="home-query-sold-total">
+                          累计销量：{quantityLabel(row.soldTotal)}
+                        </small>
+                      )}
+                      {meta.length > 0 && (
+                        <small className="home-query-meta">
+                          {meta.map((item) => (
+                            <span key={`${item.label}-${item.value}`}>{`${item.label}: ${item.value}`}</span>
+                          ))}
+                        </small>
+                      )}
+                    </span>
+                    {canOpenRows && <ExternalLink size={15} />}
+                  </button>
+                );
+              })}
+              {visibleItems.map((item) => {
+                const canOpenItem = Boolean(item.targetType && item.targetIdentifier);
+                return (
+                  <button
+                    key={`${item.kind}-${item.id}`}
+                    className="home-query-row"
+                    type="button"
+                    onClick={() => {
+                      if (canOpenItem) {
+                        onOpenQueryTarget(item.targetType || "", item.targetIdentifier || "");
+                      }
+                    }}
+                    disabled={!canOpenItem}
+                  >
+                    <span>
+                      <strong>{item.title || "未命名记录"}</strong>
+                      <em>{item.subtitle || "-"}</em>
+                      {item.fields.length > 0 && (
+                        <small className="home-query-meta">
+                          {item.fields.map((field, fieldIndex) => (
+                            <span key={`${field.label}-${fieldIndex}`}>
+                              {`${field.label}: ${String(field.value ?? "未填")}`}
+                            </span>
+                          ))}
+                        </small>
+                      )}
+                    </span>
+                    {canOpenItem && <ExternalLink size={15} />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
         <div className="home-query-plan">
-          <span>布局</span>
-          <strong>{response.layout}</strong>
+          <span>数据来源</span>
+          <strong>{`${dataSourceLabel(response.source)} · ${response.layout || "无布局"}`}</strong>
+          <small className="home-query-llm">
+            {response.llm
+              ? `LLM：${response.llm.model} · ${llmLabel(response.llm.provider)}`
+              : `LLM：${llmLabel()}`}
+          </small>
         </div>
       </div>
     </article>
@@ -246,7 +325,8 @@ export default function HomePage({
   canViewPrice,
   onNaturalQueryPromptChange,
   onNaturalQuerySubmit,
-  onOpenBusinessProduct,
+  onOpenQueryResult,
+  onOpenQueryTarget,
   onOpenDashboard
 }: HomePageProps) {
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -275,7 +355,7 @@ export default function HomePage({
               <strong>FileMaker 问答</strong>
               <p className="home-chat-retention">
                 {canUseNaturalQuery
-                  ? `输入产品、零件、库存或日期等查询。${canViewPrice ? "本账号已获价格查看权限。" : "本账号的价格字段已由后台屏蔽。"}`
+                  ? `输入产品、零件、采购、库存或日期等查询。${canViewPrice ? "本账号已获价格查看权限。" : "本账号的价格字段已由后台屏蔽。"}`
                   : "当前 FileMaker 权限集未开放智能问答。"}
               </p>
               <div className="home-query-examples" aria-label="预设问题">
@@ -309,7 +389,8 @@ export default function HomePage({
                 exchange={exchange}
                 loading={naturalQueryLoading}
                 onNaturalQuerySubmit={onNaturalQuerySubmit}
-                onOpenBusinessProduct={onOpenBusinessProduct}
+                onOpenQueryResult={onOpenQueryResult}
+                onOpenQueryTarget={onOpenQueryTarget}
                 canViewPrice={canViewPrice}
               />
             </Fragment>

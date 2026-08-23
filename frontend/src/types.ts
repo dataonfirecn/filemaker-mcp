@@ -195,6 +195,88 @@ export type ProductBomResponse = {
 
 export type CalcStatus = "未计算" | "待确认" | "已确认";
 export type ThemeMode = "light" | "dark";
+export type ReportStatus = "success" | "warning" | "failed";
+
+export type ReportMetric = {
+  metricCode: string;
+  metricName: string;
+  metricValue: number | null;
+  displayValue: string;
+  previousValue: number | null;
+  targetValue: number | null;
+  unit: string;
+  severity: "info" | "warning" | "critical" | string;
+  department: string;
+  sortOrder: number;
+};
+
+export type ReportException = {
+  id: number;
+  category: string;
+  severity: "info" | "warning" | "critical" | string;
+  title: string;
+  description: string;
+  impact: string;
+  suggestedAction: string;
+  owner: string;
+  status: string;
+  reportType?: string | null;
+  reportTitle?: string | null;
+};
+
+export type ReportSummary = {
+  id: string;
+  reportDate: string;
+  reportType: string;
+  title: string;
+  status: ReportStatus;
+  summary: string;
+  keywords: string;
+  dataCompleteness: number;
+  startedAt: string;
+  completedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  metricCount: number;
+  exceptionCount: number;
+};
+
+export type ReportDetail = ReportSummary & {
+  metrics: ReportMetric[];
+  exceptions: ReportException[];
+};
+
+export type ReportListResponse = {
+  items: ReportSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  reportTypes: Array<{ value: string; count: number }>;
+};
+
+export type ReportDashboardResponse = {
+  hasReports: boolean;
+  latestDate: string;
+  overallStatus: ReportStatus;
+  reportCount: number;
+  successCount: number;
+  warningCount: number;
+  failedCount: number;
+  dataCompleteness: number;
+  latestReports: ReportSummary[];
+  metrics: Array<ReportMetric & { reportType: string; reportTitle: string }>;
+  exceptions: ReportException[];
+  trends: Array<{
+    reportDate: string;
+    reportCount: number;
+    successCount: number;
+    warningCount: number;
+    failedCount: number;
+    dataCompleteness: number;
+  }>;
+};
+
 // BOM 单页工作台内的阶段：选产品 → 读BOM → 计算数量 → 微调 → 确认
 export type BomStep = "select" | "bom" | "calc" | "done";
 export type Page =
@@ -214,7 +296,8 @@ export type Page =
   | "ragControl"
   | "accessAdmin"
   | "settings"
-  | "serviceDirectory";
+  | "serviceDirectory"
+  | "reports";
 
 export type InternalOrderRow = {
   orderId: string;
@@ -326,6 +409,7 @@ export type BusinessProductRow = {
   prepaidStockUsd: number | string | null;
   bomCount: number | string | null;
   orderQty: number | string | null;
+  soldTotal?: number | string | null;
   bomDate: string;
   vendor: string;
   client: string;
@@ -381,10 +465,22 @@ export type NaturalLanguageQueryPlan = {
   warnings: string[];
 };
 
+export type NaturalLanguageQueryResultItem = {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string;
+  fields: { label: string; value: unknown }[];
+  targetType?: string;
+  targetIdentifier?: string;
+  raw?: Record<string, unknown>;
+};
+
 export type NaturalLanguageQueryResponse = {
   answer: string;
   layout: string;
   rows: BusinessProductRow[];
+  items?: NaturalLanguageQueryResultItem[];
   foundCount: number;
   returnedCount: number;
   plan: NaturalLanguageQueryPlan;
@@ -392,6 +488,12 @@ export type NaturalLanguageQueryResponse = {
   requiresClarification?: boolean;
   clarificationQuestion?: string | null;
   clarificationOptions?: string[];
+  llm?: {
+    provider: string;
+    model: string;
+    confidence?: number;
+    warnings?: string[];
+  } | null;
   ragHits?: {
     layout: string;
     recordId: string;

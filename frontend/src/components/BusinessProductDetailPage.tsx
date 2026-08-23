@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { BusinessProductFieldGroup, BusinessProductPortalGroup, BusinessProductRow } from "../types";
 
 export type BusinessProductDetailPageProps = {
+  apiBase?: string;
+  token: string;
   product: BusinessProductRow | null;
   loading?: boolean;
   formatQty: (value: number | string | null | undefined) => string;
@@ -172,16 +174,51 @@ function PortalGroups({ portals }: { portals: BusinessProductPortalGroup[] }) {
 }
 
 export default function BusinessProductDetailPage({
+  apiBase = "",
+  token,
   product,
   loading,
   formatQty,
   onBack
 }: BusinessProductDetailPageProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("basic");
+  const [imageObjectUrl, setImageObjectUrl] = useState("");
 
   useEffect(() => {
     setActiveTab("basic");
   }, [product?.recordId]);
+
+  useEffect(() => {
+    setImageObjectUrl("");
+    if (!product?.imageUrl || !product.recordId || !token) return;
+
+    const controller = new AbortController();
+    let objectUrl = "";
+    void fetch(
+      `${apiBase}/api/business-products/${encodeURIComponent(product.recordId)}/image`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
+      }
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error("产品图片读取失败");
+        return response.blob();
+      })
+      .then((blob) => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setImageObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setImageObjectUrl("");
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [apiBase, product?.imageUrl, product?.recordId, token]);
 
   const coreItems: DetailItem[] = [
     { label: "产品编号", value: product?.productSku },
@@ -226,8 +263,8 @@ export default function BusinessProductDetailPage({
 
       <section className="product-detail-hero">
         <div className="product-detail-media">
-          {product?.imageUrl ? (
-            <img src={product.imageUrl} alt={product.productNameCn || product.productName || product.productSku} />
+          {imageObjectUrl ? (
+            <img src={imageObjectUrl} alt={product?.productNameCn || product?.productName || product?.productSku} />
           ) : (
             <div className="product-image-empty">
               <ImageIcon size={34} />

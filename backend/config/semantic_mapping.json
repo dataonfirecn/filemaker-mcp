@@ -394,7 +394,7 @@
       "name": "product",
       "label": "产品",
       "tables": ["產品"],
-      "ragLayouts": ["@products"],
+      "ragLayouts": ["@products", "@products_RAG"],
       "primaryKeys": ["product_sku", "系統產品編號"],
       "titleFields": ["product_sku", "產品名稱_中文", "product_name"],
       "cacheFields": [
@@ -496,64 +496,56 @@
       "name": "part",
       "label": "零件",
       "tables": ["零件", "Parts"],
-      "ragLayouts": ["@零件"],
+      "ragLayouts": ["@零件", "@零件_RAG"],
       "primaryKeys": ["part_number"],
-      "alternateKeys": ["零件ID"],
-      "titleFields": ["part_number", "part_name", "English Name"],
+      "alternateKeys": ["semi_finished_part_number", "customer_part_number"],
+      "titleFields": [
+        "part_number",
+        "part_name_internal",
+        "part_name_external",
+        "part_name_en"
+      ],
       "cacheFields": [
         "part_number",
-        "零件ID",
-        "part_name",
-        "English Name",
-        "part_name_對外",
-        "客戶編號",
-        "替代編號",
-        "Notes"
+        "part_name_internal",
+        "part_name_external",
+        "part_name_en",
+        "customer_part_number"
       ],
       "searchFields": [
         "part_number",
-        "零件ID",
-        "part_name",
-        "English Name",
-        "part_name_對外",
-        "客戶編號",
-        "替代編號",
-        "Notes"
+        "part_name_internal",
+        "part_name_external",
+        "part_name_en",
+        "customer_part_number",
+        "semi_finished_part_number",
+        "spare_parts",
+        "internal_notes",
+        "bom開發備註",
+        "purchasing_notes"
       ],
       "filterFields": [
-        "ID_客戶",
-        "專屬客戶",
+        "customer_id",
+        "exclusive_customer_name",
+        "ID_廠商",
+        "ID_詢價廠商",
         "status",
-        "狀態",
-        "零件性質",
-        "零件品種",
-        "部門",
-        "倉庫",
-        "位置",
-        "位置2"
+        "part_lifecycle_status",
+        "part_category",
+        "material_category",
+        "material_properties",
+        "material_spec"
       ],
       "displayFields": [
-        "current_stock",
-        "Safty Stock QTY",
-        "Turnover Time",
-        "單價",
-        "成本",
-        "重量",
-        "規格",
-        "材質",
-        "供應商",
-        "Date Created",
         "created_at",
         "created_by",
         "updated_at",
-        "updated_by",
-        "修改人",
-        "修改日期"
+        "updated_by"
       ],
       "excludeFields": ["影像 | 容器", "圖面 | 容器", "qrcode"],
       "dateFields": {
-        "createdAt": "Date Created",
-        "updatedAt": "修改日期"
+        "createdAt": "created_at",
+        "updatedAt": "updated_at"
       },
       "ragMaxRecords": 50000
     },

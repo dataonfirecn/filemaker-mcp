@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
@@ -12,6 +12,10 @@ from app.models.mobile_receipts import (
     AttachmentPresignRequest,
     AttachmentPresignResponse,
     AttachmentResponse,
+    ConfirmedReceiptDetail,
+    ConfirmedReceiptLine,
+    ConfirmedReceiptListResponse,
+    ConfirmedReceiptSummary,
     ReceiptSubmissionLine,
     ReceiptSubmissionLineResponse,
     ReceiptSubmissionRequest,
@@ -33,6 +37,15 @@ from app.services.filemaker_odata_client import (
     FileMakerODataClient,
     FileMakerODataError,
 )
+from app.services.filemaker_timestamps import parse_filemaker_timestamp
+from app.services.mobile_receipt_trace import (
+    TRACE_SCHEMA,
+    TRACE_SCHEMA_VERSION,
+    append_bound_attachment,
+    build_mobile_receipt_trace,
+    parse_mobile_receipt_trace,
+    serialize_mobile_receipt_trace,
+)
 from app.services.receipt_attachment_store import (
     ReceiptAttachmentRecord,
     ReceiptAttachmentStore,
@@ -41,6 +54,11 @@ from app.services.receipt_attachment_store import (
 
 router = APIRouter(prefix="/mobile/v1/receipts", tags=["mobile-receipts"])
 DraftID = Path(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9._-]+$")
+ReceiptDocumentID = Path(
+    min_length=1,
+    max_length=160,
+    pattern=r"^[A-Za-z0-9._-]+$",
+)
 ORDER_LAYOUT = "@出貨單"
 ORDER_ITEM_LAYOUT = "@出貨單資料"
 RECEIPT_TABLE = "出貨單資料入庫"
@@ -50,6 +68,52 @@ RECEIPT_COMPLETE_STATUS = "已入庫"
 RECEIPT_PENDING_STATUS = "未入庫"
 _receipt_line_locks: dict[str, asyncio.Lock] = {}
 _receipt_line_locks_guard = asyncio.Lock()
+
+
+@router.get(
+    "/confirmed",
+    response_model=ConfirmedReceiptListResponse,
+)
+async def list_confirmed_receipts(
+    limit: int = Query(default=5, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    search: str = "",
+    operator: OperatorContext = Depends(get_operator_context),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> ConfirmedReceiptListResponse:
+    rows, total = await audit_log.list_confirmed_mobile_receipts(
+        operator_account=operator.account,
+        limit=limit,
+        offset=offset,
+        search=search.strip()[:160],
+    )
+    return ConfirmedReceiptListResponse(
+        receipts=[_confirmed_receipt_summary(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/confirmed/{receipt_document_id}",
+    response_model=ConfirmedReceiptDetail,
+)
+async def get_confirmed_receipt(
+    receipt_document_id: str = ReceiptDocumentID,
+    operator: OperatorContext = Depends(get_operator_context),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> ConfirmedReceiptDetail:
+    row = await audit_log.get_confirmed_mobile_receipt(
+        request_id=receipt_document_id,
+        operator_account=operator.account,
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "找不到这张已确认验收单。"},
+        )
+    return _confirmed_receipt_detail(row)
 
 
 @router.post(
@@ -94,9 +158,9 @@ async def create_attachment_presign(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": (
-                    "每个产品最多上传 6 张收货图片。"
+                    "每个产品最多上传 6 张出货图片（选填）。"
                     if body.line_id
-                    else "每张入库记录最多上传 1 张出货照片。"
+                    else "每张入库记录最多上传 1 张出货照片（选填）。"
                 ),
                 "maximum": line_limit,
             },
@@ -106,7 +170,7 @@ async def create_attachment_presign(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "message": "当前到货单照片数量已达到上限。",
+                "message": "当前入库批次的出货图片数量已达到上限。",
                 "maximum": settings.cos_max_attachments_per_receipt,
             },
         )
@@ -190,6 +254,7 @@ async def complete_attachment_upload(
     storage: COSStorageService = Depends(get_cos_storage_service),
     attachment_store: ReceiptAttachmentStore = Depends(get_receipt_attachment_store),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
+    odata: FileMakerODataClient = Depends(get_filemaker_odata_client),
 ) -> AttachmentResponse:
     _require_cos(settings, storage)
     record = await _owned_record(
@@ -198,8 +263,19 @@ async def complete_attachment_upload(
         attachment_id=attachment_id,
         operator_account=operator.account,
     )
-    if record.status == "UPLOADED":
+    if record.status == "BOUND":
         return _response(record)
+    if record.status == "UPLOADED":
+        return _response(
+            await _bind_attachment_to_confirmed_receipt(
+                record,
+                operator=operator,
+                settings=settings,
+                odata=odata,
+                attachment_store=attachment_store,
+                audit_log=audit_log,
+            )
+        )
     if record.status != "PENDING":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -259,7 +335,16 @@ async def complete_attachment_upload(
             "etag": metadata.etag,
         },
     )
-    return _response(updated)
+    return _response(
+        await _bind_attachment_to_confirmed_receipt(
+            updated,
+            operator=operator,
+            settings=settings,
+            odata=odata,
+            attachment_store=attachment_store,
+            audit_log=audit_log,
+        )
+    )
 
 
 @router.get(
@@ -305,6 +390,7 @@ async def get_attachment_download_url(
 )
 async def submit_receipt_lines(
     body: ReceiptSubmissionRequest,
+    request: Request = None,
     draft_id: str = DraftID,
     operator: OperatorContext = Depends(get_operator_context),
     settings: Settings = Depends(get_settings),
@@ -328,45 +414,133 @@ async def submit_receipt_lines(
         filemaker,
         body,
     )
-    await _validate_submission_attachments(
+    attachment_records = await _validate_submission_attachments(
         attachment_store,
         body=body,
         draft_id=draft_id,
         operator=operator,
     )
+    client_trace = _client_trace(request)
 
-    line_results: list[ReceiptSubmissionLineResponse] = []
-    for line in body.lines:
-        lock = await _line_lock(line.line_id)
-        async with lock:
-            line_results.append(
-                await _write_or_repair_line_receipt(
-                    odata,
-                    line=line,
-                    source_record=source_records[line.line_id],
-                    body=body,
-                    operator=operator,
+    request_identity = _receipt_request_identity(body)
+    claim = await audit_log.claim_mobile_receipt_request(
+        request_id=draft_id,
+        shipment_id=body.shipment_id,
+        operator_account=operator.account,
+        operator_name=operator.name,
+        request_payload=request_identity,
+    )
+    claim_status = _text(claim.get("status"))
+    if claim_status == "duplicate":
+        duplicate_payload = dict(claim.get("result") or {})
+        duplicate_payload["lines"] = [
+            {
+                **line,
+                "receivedAt": _timestamp(line.get("receivedAt")),
+                "alreadyReceived": True,
+            }
+            for line in duplicate_payload.get("lines", [])
+            if isinstance(line, dict)
+        ]
+        return ReceiptSubmissionResponse.model_validate(duplicate_payload)
+    if claim_status == "conflict":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "同一批次编号已用于不同的入库内容，请重新扫码后提交。"},
+        )
+    if claim_status == "in_progress":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "同一批次正在处理中，请稍后重试。"},
+        )
+    if claim_status != "claimed":
+        raise RuntimeError(f"未知的成品入库幂等状态：{claim_status}")
+
+    claim_owned = True
+    wrote_completed_receipt = False
+    try:
+        line_results: list[ReceiptSubmissionLineResponse] = []
+        for line in body.lines:
+            lock = await _line_lock(line.line_id)
+            async with lock:
+                line_results.append(
+                    await _write_or_repair_line_receipt(
+                        odata,
+                        line=line,
+                        source_record=source_records[line.line_id],
+                        body=body,
+                        operator=operator,
+                        settings=settings,
+                        attachments=attachment_records,
+                        client_trace=client_trace,
+                        audit_log=audit_log,
+                    )
                 )
-            )
-        for attachment_id in line.attachment_ids:
+            wrote_completed_receipt = True
+            for attachment_id in line.attachment_ids:
+                await attachment_store.mark_bound(attachment_id)
+
+        for attachment_id in body.shipment_attachment_ids:
             await attachment_store.mark_bound(attachment_id)
 
-    for attachment_id in body.shipment_attachment_ids:
-        await attachment_store.mark_bound(attachment_id)
+        receipt_catalog = await _receipt_quantity_catalog(
+            odata,
+            [_field_data(record).get("ID", "") for record in all_source_records],
+        )
+        expected_by_line = {
+            _text(_field_data(record).get("ID")): _integer(
+                _field_data(record).get("數量")
+            )
+            for record in all_source_records
+            if _text(_field_data(record).get("ID"))
+        }
+        for line in body.lines:
+            if expected_by_line.get(line.line_id, 0) <= 0:
+                expected_by_line[line.line_id] = line.expected_quantity
+        total_line_count = len(all_source_records)
+        received_line_count = sum(
+            1
+            for line_id, expected_quantity in expected_by_line.items()
+            if (
+                receipt_catalog.get(line_id, 0) >= expected_quantity
+                if expected_quantity > 0
+                else receipt_catalog.get(line_id, 0) > 0
+            )
+        )
+        all_lines_received = (
+            total_line_count > 0
+            and received_line_count == total_line_count
+        )
+        completed_at = datetime.now(timezone.utc)
+        aggregate_receipt_id = (
+            line_results[0].receipt_id
+            if len(line_results) == 1
+            else f"receipt-{draft_id}"
+        )
+        response = ReceiptSubmissionResponse(
+            receiptId=aggregate_receipt_id,
+            status="sealed" if all_lines_received else "partial",
+            sealedAt=completed_at,
+            allLinesReceived=all_lines_received,
+            receivedLineCount=received_line_count,
+            totalLineCount=total_line_count,
+            lines=line_results,
+        )
 
-    receipt_catalog = await _receipt_catalog(
-        odata,
-        [_field_data(record).get("ID", "") for record in all_source_records],
-    )
-    total_line_count = len(all_source_records)
-    received_line_count = len(receipt_catalog)
-    all_lines_received = total_line_count > 0 and received_line_count == total_line_count
-    completed_at = datetime.now(timezone.utc)
-    aggregate_receipt_id = (
-        line_results[0].receipt_id
-        if len(line_results) == 1
-        else f"receipt-{draft_id}"
-    )
+        # FileMaker records already exist at this point. Keep the claim pending
+        # if this persistence step fails so a retry cannot create duplicates.
+        claim_owned = False
+        await audit_log.complete_mobile_receipt_request(
+            request_id=draft_id,
+            response_payload=response.model_dump(mode="json", by_alias=True),
+        )
+    except Exception as exc:
+        if claim_owned and not wrote_completed_receipt:
+            await audit_log.fail_mobile_receipt_request(
+                request_id=draft_id,
+                error_message=str(exc),
+            )
+        raise
 
     await audit_log.record(
         operator=operator,
@@ -387,21 +561,109 @@ async def submit_receipt_lines(
                 for line in body.lines
             ],
         },
-        response_payload={
-            "receiptIds": [line.receipt_id for line in line_results],
-            "receivedLineCount": received_line_count,
-            "totalLineCount": total_line_count,
-            "allLinesReceived": all_lines_received,
-        },
+        response_payload=response.model_dump(mode="json", by_alias=True),
     )
-    return ReceiptSubmissionResponse(
-        receiptId=aggregate_receipt_id,
-        status="sealed" if all_lines_received else "partial",
-        sealedAt=completed_at,
-        allLinesReceived=all_lines_received,
-        receivedLineCount=received_line_count,
-        totalLineCount=total_line_count,
-        lines=line_results,
+    return response
+
+
+def _receipt_request_identity(body: ReceiptSubmissionRequest) -> dict:
+    """Stable receipt content; retry timestamps and client audit entries are excluded."""
+    return {
+        "shipmentId": body.shipment_id,
+        "documentNumber": body.document_number,
+        "piNumber": body.pi_number,
+        "receiptRemark": body.receipt_remark,
+        "shipmentAttachmentIds": body.shipment_attachment_ids,
+        "lines": [
+            {
+                "lineId": line.line_id,
+                "recordId": line.record_id,
+                "sku": line.sku,
+                "receivedQuantity": line.received_quantity,
+                "expectedQuantity": line.expected_quantity,
+                "remark": line.remark,
+                "attachmentIds": line.attachment_ids,
+            }
+            for line in body.lines
+        ],
+    }
+
+
+def _client_trace(request: Request | None) -> dict[str, str]:
+    if request is None:
+        return {"channel": "ios-pda"}
+    return {
+        "channel": request.headers.get("X-Client-Channel", "") or "ios-pda",
+        "appVersion": request.headers.get("X-App-Version", ""),
+        "appBuild": request.headers.get("X-App-Build", ""),
+        "userAgent": request.headers.get("User-Agent", "")[:512],
+    }
+
+
+def _confirmed_receipt_summary(row: dict) -> ConfirmedReceiptSummary:
+    request_payload = dict(row.get("requestPayload") or {})
+    response_payload = dict(row.get("responsePayload") or {})
+    lines = [line for line in request_payload.get("lines", []) if isinstance(line, dict)]
+    return ConfirmedReceiptSummary(
+        receiptDocumentId=_text(row.get("requestId")),
+        shipmentId=_text(row.get("shipmentId")),
+        documentNumber=_text(request_payload.get("documentNumber")),
+        piNumber=_text(request_payload.get("piNumber")),
+        receiptId=_text(response_payload.get("receiptId")),
+        operatorAccount=_text(row.get("operatorAccount")),
+        operatorName=(
+            _text(row.get("operatorName")) or _text(row.get("operatorAccount"))
+        ),
+        confirmedAt=row.get("updatedAt"),
+        allLinesReceived=bool(response_payload.get("allLinesReceived")),
+        receivedLineCount=_integer(response_payload.get("receivedLineCount")),
+        totalLineCount=_integer(response_payload.get("totalLineCount")),
+        submittedLineCount=len(lines),
+        totalQuantity=sum(_integer(line.get("receivedQuantity")) for line in lines),
+        shipmentPhotoCount=len(request_payload.get("shipmentAttachmentIds") or []),
+    )
+
+
+def _confirmed_receipt_detail(row: dict) -> ConfirmedReceiptDetail:
+    summary = _confirmed_receipt_summary(row)
+    request_payload = dict(row.get("requestPayload") or {})
+    response_payload = dict(row.get("responsePayload") or {})
+    result_by_line = {
+        _text(line.get("lineId")): line
+        for line in response_payload.get("lines", [])
+        if isinstance(line, dict)
+    }
+    lines: list[ConfirmedReceiptLine] = []
+    for request_line in request_payload.get("lines", []):
+        if not isinstance(request_line, dict):
+            continue
+        line_id = _text(request_line.get("lineId"))
+        result_line = result_by_line.get(line_id, {})
+        lines.append(
+            ConfirmedReceiptLine(
+                lineId=line_id,
+                recordId=_text(request_line.get("recordId")),
+                sku=_text(request_line.get("sku")),
+                receivedQuantity=_integer(request_line.get("receivedQuantity")),
+                expectedQuantity=_integer(request_line.get("expectedQuantity")),
+                remark=_text(request_line.get("remark")),
+                attachmentCount=len(request_line.get("attachmentIds") or []),
+                receiptId=_text(result_line.get("receiptId")),
+                status=_text(result_line.get("status")),
+                receivedAt=(
+                    _timestamp(result_line.get("receivedAt"))
+                    if result_line.get("receivedAt")
+                    else summary.confirmed_at
+                ),
+                receivedBy=(
+                    _text(result_line.get("receivedBy")) or summary.operator_name
+                ),
+            )
+        )
+    return ConfirmedReceiptDetail(
+        **summary.model_dump(),
+        receiptRemark=_text(request_payload.get("receiptRemark")),
+        lines=lines,
     )
 
 
@@ -455,6 +717,227 @@ def _response(record: ReceiptAttachmentRecord) -> AttachmentResponse:
         createdAt=record.created_at,
         uploadedAt=record.uploaded_at,
     )
+
+
+async def _bind_attachment_to_confirmed_receipt(
+    record: ReceiptAttachmentRecord,
+    *,
+    operator: OperatorContext,
+    settings: Settings,
+    odata: FileMakerODataClient,
+    attachment_store: ReceiptAttachmentStore,
+    audit_log: AuditLogStore,
+) -> ReceiptAttachmentRecord:
+    confirmed = await audit_log.get_confirmed_mobile_receipt(
+        request_id=record.draft_id,
+        operator_account=operator.account,
+    )
+    if not confirmed:
+        return record
+
+    did_append = await audit_log.append_confirmed_mobile_receipt_attachment(
+        request_id=record.draft_id,
+        operator_account=operator.account,
+        line_id=record.line_id,
+        attachment_id=record.attachment_id,
+    )
+    if not did_append:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": (
+                    "图片已上传到 COS，但无法绑定到原验收单；"
+                    "请保留本机图片并联系管理员。"
+                )
+            },
+        )
+    bound = await attachment_store.mark_bound(record.attachment_id)
+    if not bound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "附件记录不存在。"},
+        )
+    trace_sync_count = 0
+    trace_sync_error = ""
+    try:
+        trace_sync_count = await _sync_bound_attachment_to_filemaker_trace(
+            record=bound,
+            confirmed=confirmed,
+            operator=operator,
+            settings=settings,
+            odata=odata,
+        )
+    except (FileMakerODataError, HTTPException, ValueError) as exc:
+        # The photo is already safely stored and bound in the Web database.
+        # A FileMaker trace synchronization issue must not make the iPad repeat
+        # the upload or block the operator from continuing.
+        trace_sync_error = str(exc)
+        await audit_log.record(
+            operator=operator,
+            action_type="RECEIPT_FILEMAKER_TRACE_SYNC",
+            status="error",
+            order_id=record.pi_number,
+            request_payload={
+                "draftId": record.draft_id,
+                "attachmentId": record.attachment_id,
+                "lineId": record.line_id,
+            },
+            error_message=trace_sync_error,
+        )
+    await audit_log.record(
+        operator=operator,
+        action_type="RECEIPT_ATTACHMENT_BOUND_AFTER_CONFIRMATION",
+        status="success",
+        order_id=record.pi_number,
+        request_payload={
+            "draftId": record.draft_id,
+            "attachmentId": record.attachment_id,
+            "lineId": record.line_id,
+        },
+        response_payload={
+            "objectKey": record.object_key,
+            "status": "BOUND",
+            "fileMakerTraceRecordsUpdated": trace_sync_count,
+            "fileMakerTraceSyncError": trace_sync_error or None,
+        },
+    )
+    return bound
+
+
+async def _sync_bound_attachment_to_filemaker_trace(
+    *,
+    record: ReceiptAttachmentRecord,
+    confirmed: dict,
+    operator: OperatorContext,
+    settings: Settings,
+    odata: FileMakerODataClient,
+) -> int:
+    log_field = settings.filemaker_mobile_receipt_log_field.strip()
+    if not log_field:
+        return 0
+    request_payload = dict(confirmed.get("requestPayload") or {})
+    response_payload = dict(confirmed.get("responsePayload") or {})
+    request_lines = [
+        item
+        for item in request_payload.get("lines", [])
+        if isinstance(item, dict)
+    ]
+    response_by_line = {
+        _text(item.get("lineId")): item
+        for item in response_payload.get("lines", [])
+        if isinstance(item, dict)
+    }
+    target_lines = (
+        [item for item in request_lines if _text(item.get("lineId")) == record.line_id]
+        if record.line_id
+        else request_lines
+    )
+    updated_count = 0
+    now = datetime.now(timezone.utc)
+    for request_line in target_lines:
+        line_id = _text(request_line.get("lineId"))
+        result_line = response_by_line.get(line_id, {})
+        receipt_id = _text(result_line.get("receiptId"))
+        if not receipt_id:
+            continue
+        current = await odata.get_record(RECEIPT_TABLE, receipt_id)
+        trace = parse_mobile_receipt_trace(current.get(log_field))
+        if trace is None:
+            trace = _stored_receipt_trace(
+                confirmed=confirmed,
+                request_line=request_line,
+                result_line=result_line,
+                operator=operator,
+                updated_at=now,
+            )
+        updated_trace = append_bound_attachment(
+            trace,
+            record=record,
+            operator=operator,
+            updated_at=now,
+        )
+        await odata.update_record(
+            RECEIPT_TABLE,
+            receipt_id,
+            {
+                log_field: serialize_mobile_receipt_trace(
+                    updated_trace,
+                    max_characters=(
+                        settings.filemaker_mobile_receipt_log_max_characters
+                    ),
+                )
+            },
+        )
+        updated_count += 1
+    return updated_count
+
+
+def _stored_receipt_trace(
+    *,
+    confirmed: dict,
+    request_line: dict,
+    result_line: dict,
+    operator: OperatorContext,
+    updated_at: datetime,
+) -> dict:
+    request_payload = dict(confirmed.get("requestPayload") or {})
+    return {
+        "schema": TRACE_SCHEMA,
+        "schemaVersion": TRACE_SCHEMA_VERSION,
+        "event": "finished_goods_receipt.confirmed",
+        "identifiers": {
+            "draftId": _text(confirmed.get("requestId")),
+            "receiptId": _text(result_line.get("receiptId")),
+            "shipmentId": _text(confirmed.get("shipmentId")),
+            "documentNumber": _text(request_payload.get("documentNumber")),
+            "piNumber": _text(request_payload.get("piNumber")),
+            "lineId": _text(request_line.get("lineId")),
+            "sourceRecordId": _text(request_line.get("recordId")),
+            "sku": _text(request_line.get("sku")),
+        },
+        "source": {
+            "channel": "ios-pda",
+            "application": "StarRC PDA",
+            "api": "mobile/v1/receipts",
+            "path": "iPad -> Web API -> FileMaker OData",
+        },
+        "operator": {
+            "account": _text(confirmed.get("operatorAccount")) or operator.account,
+            "name": _text(confirmed.get("operatorName")) or operator.name,
+            "privilege": operator.privilege,
+        },
+        "operation": {
+            "status": _text(result_line.get("status")) or RECEIPT_COMPLETE_STATUS,
+            "submittedAt": "",
+            "processedAt": updated_at.isoformat(),
+            "timeZone": "Asia/Shanghai",
+            "lineRemark": _text(request_line.get("remark")),
+            "receiptRemark": _text(request_payload.get("receiptRemark")),
+        },
+        "quantities": {
+            "expected": _integer(request_line.get("expectedQuantity")),
+            "thisReceipt": _integer(request_line.get("receivedQuantity")),
+        },
+        "attachments": {
+            "hasAny": False,
+            "totalCount": 0,
+            "linePhotoCount": 0,
+            "shipmentPhotoCount": 0,
+            "linePhotos": [],
+            "shipmentPhotos": [],
+        },
+        "clientAudit": {
+            "total": 0,
+            "relevant": 0,
+            "included": 0,
+            "truncated": False,
+            "eventCounts": {},
+            "entries": [],
+        },
+        "serverEvents": [],
+        "updatedAt": updated_at.isoformat(),
+        "reconstructed": True,
+    }
 
 
 async def _validated_source_records(
@@ -531,7 +1014,7 @@ async def _validate_submission_attachments(
     body: ReceiptSubmissionRequest,
     draft_id: str,
     operator: OperatorContext,
-) -> None:
+) -> dict[str, ReceiptAttachmentRecord]:
     expected_lines = {
         attachment_id: line.line_id
         for line in body.lines
@@ -540,6 +1023,7 @@ async def _validate_submission_attachments(
     expected_lines.update(
         {attachment_id: None for attachment_id in body.shipment_attachment_ids}
     )
+    records: dict[str, ReceiptAttachmentRecord] = {}
     for attachment_id, expected_line_id in expected_lines.items():
         record = await store.get(attachment_id)
         if (
@@ -554,6 +1038,8 @@ async def _validate_submission_attachments(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"message": f"附件尚未上传或不属于当前产品：{attachment_id}"},
             )
+        records[attachment_id] = record
+    return records
 
 
 async def _write_or_repair_line_receipt(
@@ -563,18 +1049,45 @@ async def _write_or_repair_line_receipt(
     source_record: dict,
     body: ReceiptSubmissionRequest,
     operator: OperatorContext,
+    settings: Settings,
+    attachments: dict[str, ReceiptAttachmentRecord],
+    client_trace: dict[str, str],
+    audit_log: AuditLogStore,
 ) -> ReceiptSubmissionLineResponse:
     existing_rows = await _line_receipts(odata, line.line_id)
-    completed = _latest_receipt(existing_rows, RECEIPT_COMPLETE_STATUS)
-    if completed:
-        return await _receipt_response(
-            odata,
-            completed,
-            line=line,
-            already_received=True,
+    pending = _latest_receipt(existing_rows, RECEIPT_PENDING_STATUS)
+    if pending:
+        pending_id = _text(pending.get("ID"))
+        try:
+            fresh_pending = await odata.get_record(RECEIPT_TABLE, pending_id)
+        except FileMakerODataError as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                fresh_pending = {}
+            else:
+                raise HTTPException(
+                    status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "message": "无法确认待处理入库记录的最新状态。",
+                        "payload": exc.payload,
+                    },
+                ) from exc
+        existing_rows = [
+            fresh_pending if _text(row.get("ID")) == pending_id else row
+            for row in existing_rows
+            if _text(row.get("ID")) != pending_id or fresh_pending
+        ]
+        pending = (
+            fresh_pending
+            if _text(fresh_pending.get("狀態")) == RECEIPT_PENDING_STATUS
+            else None
         )
 
-    pending = _latest_receipt(existing_rows, RECEIPT_PENDING_STATUS)
+    completed_quantity = sum(
+        _integer(row.get("數量"))
+        for row in existing_rows
+        if _text(row.get("狀態")) == RECEIPT_COMPLETE_STATUS
+    )
+
     receipt_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     if pending:
         receipt_id = _text(pending.get("ID"))
@@ -608,11 +1121,12 @@ async def _write_or_repair_line_receipt(
             )
 
     previous_quantity = _field_data(source_record).get("實際包裝數量")
+    cumulative_quantity = completed_quantity + line.received_quantity
     try:
         await odata.update_record(
             ORDER_ITEM_TABLE,
             line.line_id,
-            {"實際包裝數量": line.received_quantity},
+            {"實際包裝數量": cumulative_quantity},
         )
         inventory_rows = await _inventory_rows(odata, receipt_id)
         if not inventory_rows:
@@ -648,10 +1162,25 @@ async def _write_or_repair_line_receipt(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"message": f"{line.sku} 库存流水回读验证失败。"},
             )
+        completed_at = datetime.now(timezone.utc)
         await odata.update_record(
             RECEIPT_TABLE,
             receipt_id,
             {"狀態": RECEIPT_COMPLETE_STATUS},
+        )
+        trace_sync_status, trace_sync_error = await _sync_receipt_trace(
+            odata,
+            body=body,
+            line=line,
+            receipt_id=receipt_id,
+            operator=operator,
+            settings=settings,
+            attachments=attachments,
+            historical_quantity=completed_quantity,
+            receipt_date=receipt_date,
+            client_trace=client_trace,
+            completed_at=completed_at,
+            audit_log=audit_log,
         )
     except (FileMakerODataError, HTTPException) as exc:
         try:
@@ -689,22 +1218,120 @@ async def _write_or_repair_line_receipt(
         completed,
         line=line,
         already_received=False,
+        trace_sync_status=trace_sync_status,
+        trace_sync_error=trace_sync_error,
     )
 
 
-async def _receipt_catalog(
+async def _sync_receipt_trace(
+    odata: FileMakerODataClient,
+    *,
+    body: ReceiptSubmissionRequest,
+    line: ReceiptSubmissionLine,
+    receipt_id: str,
+    operator: OperatorContext,
+    settings: Settings,
+    attachments: dict[str, ReceiptAttachmentRecord],
+    historical_quantity: int,
+    receipt_date: str,
+    client_trace: dict[str, str],
+    completed_at: datetime,
+    audit_log: AuditLogStore,
+) -> tuple[str, str | None]:
+    """Write and verify the FileMaker JSON trace without duplicating intake.
+
+    FileMaker can accept a PATCH while omitting an unavailable/non-editable
+    field from the stored record. A successful HTTP response alone therefore
+    does not prove that the audit trace exists. Read the record back and retry
+    briefly before returning a visible per-line failure status to the client.
+    """
+    log_field = settings.filemaker_mobile_receipt_log_field.strip()
+    if not log_field:
+        return "disabled", "服务器未配置 FileMaker 追溯日志字段"
+
+    trace = build_mobile_receipt_trace(
+        body=body,
+        line=line,
+        receipt_id=receipt_id,
+        operator=operator,
+        attachments=attachments,
+        historical_quantity=historical_quantity,
+        receipt_date=receipt_date,
+        client=client_trace,
+        processed_at=completed_at,
+        max_audit_entries=settings.filemaker_mobile_receipt_log_audit_entries,
+    )
+    serialized_trace = serialize_mobile_receipt_trace(
+        trace,
+        max_characters=settings.filemaker_mobile_receipt_log_max_characters,
+    )
+    last_error = ""
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            await odata.update_record(
+                RECEIPT_TABLE,
+                receipt_id,
+                {log_field: serialized_trace},
+            )
+            stored = await odata.get_record(RECEIPT_TABLE, receipt_id)
+            stored_trace = parse_mobile_receipt_trace(stored.get(log_field))
+            stored_receipt_id = _text(
+                (stored_trace or {}).get("identifiers", {}).get("receiptId")
+            )
+            if stored_receipt_id != receipt_id:
+                raise ValueError(
+                    f"FileMaker 字段 {log_field} 写入后回读为空或内容不完整"
+                )
+            return "synced", None
+        except (FileMakerODataError, ValueError) as exc:
+            last_error = str(exc)
+            if attempt < attempts:
+                await asyncio.sleep(0.15 * attempt)
+
+    # The receipt and inventory movement have already completed. Keep that
+    # primary operation successful, but make the trace failure observable to
+    # both the Web audit database and the iPad response.
+    try:
+        await audit_log.record(
+            operator=operator,
+            action_type="MOBILE_RECEIPT_FILEMAKER_TRACE_SYNC",
+            status="error",
+            target_table=RECEIPT_TABLE,
+            target_record_id=receipt_id,
+            product_sku=line.sku,
+            order_id=body.shipment_id,
+            request_payload={
+                "draftId": body.draft_id,
+                "lineId": line.line_id,
+                "field": log_field,
+                "attempts": attempts,
+                "traceCharacters": len(serialized_trace),
+            },
+            error_message=last_error,
+        )
+    except Exception:
+        pass
+    return "failed", last_error or "FileMaker 追溯日志写入失败"
+
+
+async def _receipt_quantity_catalog(
     odata: FileMakerODataClient,
     line_ids: list[object],
-) -> dict[str, dict]:
+) -> dict[str, int]:
     normalized_ids = [_text(value) for value in line_ids if _text(value)]
     rows_by_line = await asyncio.gather(
         *(_line_receipts(odata, line_id) for line_id in normalized_ids)
     )
-    catalog: dict[str, dict] = {}
+    catalog: dict[str, int] = {}
     for line_id, rows in zip(normalized_ids, rows_by_line):
-        completed = _latest_receipt(rows, RECEIPT_COMPLETE_STATUS)
-        if completed:
-            catalog[line_id] = completed
+        completed_quantity = sum(
+            _integer(row.get("數量"))
+            for row in rows
+            if _text(row.get("狀態")) == RECEIPT_COMPLETE_STATUS
+        )
+        if completed_quantity > 0:
+            catalog[line_id] = completed_quantity
     return catalog
 
 
@@ -717,7 +1344,7 @@ async def _line_receipts(
         result = await odata.records(
             RECEIPT_TABLE,
             filter_expr=f"ID_出庫單資料 eq '{escaped}'",
-            top=10,
+            top=500,
             count=False,
         )
     except FileMakerODataError as exc:
@@ -748,6 +1375,8 @@ async def _receipt_response(
     *,
     line: ReceiptSubmissionLine,
     already_received: bool,
+    trace_sync_status: str = "synced",
+    trace_sync_error: str | None = None,
 ) -> ReceiptSubmissionLineResponse:
     receipt_id = _text(receipt.get("ID"))
     inventory_rows = await _inventory_rows(odata, receipt_id)
@@ -767,6 +1396,8 @@ async def _receipt_response(
         receivedAt=_timestamp(receipt.get("创建时间戳")),
         receivedBy=received_by,
         alreadyReceived=already_received,
+        traceSyncStatus=trace_sync_status,
+        traceSyncError=trace_sync_error,
     )
 
 
@@ -791,16 +1422,7 @@ def _latest_receipt(rows: list[dict], status_value: str) -> dict | None:
 
 
 def _timestamp(value: object) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    raw = _text(value)
-    if raw:
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            pass
-    return datetime.now(timezone.utc)
+    return parse_filemaker_timestamp(value) or datetime.now(timezone.utc)
 
 
 def _field_data(record: dict) -> dict:

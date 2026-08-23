@@ -8,6 +8,8 @@ from app.models.webviewer_admin import (
     WebViewerAccountAdminResponse,
     WebViewerAccountAdminUpdateRequest,
     WebViewerAccountRegisterRequest,
+    LlmProviderStatusResponse,
+    LlmProviderSwitchRequest,
     WebViewerPrivilegeSetAdminItem,
     WebViewerPrivilegeSetAdminUpdateRequest,
     WebViewerSendAdminCredentialsRequest,
@@ -28,6 +30,7 @@ from app.services.part_permission_catalog import permission_catalog
 from app.services.service_directory import api_service_directory
 from app.services.dependencies import (
     get_audit_log_store,
+    get_llm_provider_manager,
     get_operator_context,
     get_settings,
     get_webviewer_access,
@@ -35,6 +38,10 @@ from app.services.dependencies import (
     get_webviewer_session_context,
 )
 from app.services.webviewer_account_access import WebViewerAccountAccessStore
+from app.services.llm_provider_manager import (
+    LlmProviderConfigurationError,
+    LlmProviderManager,
+)
 from app.services.webviewer_session import (
     WebViewerSessionError,
     create_mock_context,
@@ -156,7 +163,7 @@ async def create_webviewer_session(
     if not account_state["enabled"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "此 StarRC 账号或其 FileMaker 权限集已停用。"},
+            detail={"message": "此 DMS 账号或其 FileMaker 权限集已停用。"},
         )
     if account_state["mobileOnly"] and not is_webviewer_mobile_request(
         client_channel=request.headers.get("X-Client-Channel", ""),
@@ -168,7 +175,17 @@ async def create_webviewer_session(
         )
     context["access"] = dict(account_state["permissions"])
     context["partPermissions"] = dict(account_state["partPermissions"])
-    token, session_payload = issue_session_token(context, settings)
+    client_channel = request.headers.get("X-Client-Channel", "").strip().lower()
+    session_ttl_seconds = (
+        settings.ios_pda_session_ttl_seconds
+        if client_channel == "ios-pda"
+        else settings.webviewer_session_ttl_seconds
+    )
+    token, session_payload = issue_session_token(
+        context,
+        settings,
+        ttl_seconds=session_ttl_seconds,
+    )
     session_id = session_payload["sessionId"]
     operator = session_payload.get("operator") or {}
     await audit_log.record(
@@ -187,6 +204,8 @@ async def create_webviewer_session(
             "mock": body.mock,
             "remoteLogin": bool(body.username),
             "hasSignedContext": bool(body.ctx and body.sig),
+            "clientChannel": client_channel or "web",
+            "sessionTtlSeconds": session_ttl_seconds,
         },
         response_payload={
             "sessionId": session_id,
@@ -258,6 +277,45 @@ async def get_service_directory(
     _access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict:
     return api_service_directory()
+
+
+@router.get(
+    "/admin/llm-provider",
+    response_model=LlmProviderStatusResponse,
+)
+async def get_llm_provider_status(
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+    manager: LlmProviderManager = Depends(get_llm_provider_manager),
+) -> LlmProviderStatusResponse:
+    return LlmProviderStatusResponse.model_validate(manager.status())
+
+
+@router.post(
+    "/admin/llm-provider/switch",
+    response_model=LlmProviderStatusResponse,
+)
+async def switch_llm_provider(
+    body: LlmProviderSwitchRequest,
+    operator: OperatorContext = Depends(get_operator_context),
+    manager: LlmProviderManager = Depends(get_llm_provider_manager),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> LlmProviderStatusResponse:
+    before = manager.status()
+    try:
+        after = await manager.switch(body.provider, updated_by=operator.account)
+    except LlmProviderConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(exc)},
+        ) from exc
+    await audit_log.record(
+        operator=operator,
+        action_type="LLM_PROVIDER_SWITCH",
+        status="success",
+        before_data={"activeProvider": before["activeProvider"]},
+        after_data={"activeProvider": after["activeProvider"]},
+    )
+    return LlmProviderStatusResponse.model_validate(after)
 
 
 @router.get(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -43,6 +45,18 @@ class ReceiptHistoryEntry(BaseModel):
     created_by: str = Field(alias="createdBy")
     modified_at: str = Field(alias="modifiedAt")
     modified_by: str = Field(alias="modifiedBy")
+    log_available: bool = Field(default=False, alias="logAvailable")
+    source_channel: str = Field(default="", alias="sourceChannel")
+    source_application: str = Field(default="", alias="sourceApplication")
+    app_version: str = Field(default="", alias="appVersion")
+    app_build: str = Field(default="", alias="appBuild")
+    draft_id: str = Field(default="", alias="draftId")
+    operator_account: str = Field(default="", alias="operatorAccount")
+    operator_name: str = Field(default="", alias="operatorName")
+    operator_privilege: str = Field(default="", alias="operatorPrivilege")
+    line_photo_count: int = Field(default=0, alias="linePhotoCount")
+    shipment_photo_count: int = Field(default=0, alias="shipmentPhotoCount")
+    trace_log: dict[str, Any] | None = Field(default=None, alias="traceLog")
     traceable: bool
     inventory_movements: list[ReceiptHistoryInventoryMovement] = Field(
         alias="inventoryMovements"

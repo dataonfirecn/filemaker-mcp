@@ -9,7 +9,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import { BookOpen, Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { BookOpen, Boxes, BrainCircuit, ClipboardList, Database, Eye, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -32,6 +32,7 @@ import InternalOrderMergePage from "./components/InternalOrderMergePage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
 import InternalSettingsPage from "./components/InternalSettingsPage";
 import InternalServiceDirectoryPage from "./components/InternalServiceDirectoryPage";
+import ReportsPage from "./components/ReportsPage";
 import InternalUserMenu from "./components/InternalUserMenu";
 import GenerateDialog from "./components/GenerateDialog";
 import PartSearchDialog from "./components/PartSearchDialog";
@@ -82,7 +83,7 @@ const emptyBusinessProductFilters: BusinessProductFilters = {
 
 const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   home: {
-    title: "Star-RC",
+    title: "DMS",
     subtitle: "企业运营导航中心"
   },
   chat: {
@@ -139,7 +140,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   accessAdmin: {
     title: "账号与权限",
-    subtitle: "将 FileMaker 权限集同步为 StarRC 功能授权，单独控制价格查看。"
+    subtitle: "将 FileMaker 权限集同步为 DMS 功能授权，单独控制价格查看。"
   },
   settings: {
     title: "个人设置",
@@ -148,6 +149,10 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   serviceDirectory: {
     title: "应用与接口目录",
     subtitle: "区分浏览器入口、FileMaker 内嵌页面与受控集成 API。"
+  },
+  reports: {
+    title: "报告中心",
+    subtitle: "查询夜间任务报告、管理指标与重要异常，安全预览归档HTML。"
   }
 };
 
@@ -199,6 +204,7 @@ function pageFromSearchParams(params: URLSearchParams): Page {
     case "settings":
     case "accessAdmin":
     case "serviceDirectory":
+    case "reports":
       return requestedPage;
     case "product":
       return "bom";
@@ -1027,11 +1033,11 @@ export default function App() {
     void loadBusinessProductDetail(row.recordId, row);
   }
 
-  function setPartPageUrl(nextPage: "parts" | "partDetail", part?: PartDirectoryRow) {
+  function setPartPageUrl(nextPage: "parts" | "partDetail", identifier?: string) {
     const url = new URL(window.location.href);
     url.searchParams.set("page", nextPage);
-    if (nextPage === "partDetail" && part) {
-      url.searchParams.set("partId", part.partId || part.partNumber);
+    if (nextPage === "partDetail" && identifier) {
+      url.searchParams.set("partId", identifier);
     } else {
       url.searchParams.delete("partId");
     }
@@ -1039,10 +1045,49 @@ export default function App() {
   }
 
   function openPartDetail(part: PartDirectoryRow) {
-    setSelectedPartIdentifier(part.partId || part.partNumber);
+    const identifier = part.partId || part.partNumber;
+    setSelectedPartIdentifier(identifier);
     setPage("partDetail");
     setError(null);
-    setPartPageUrl("partDetail", part);
+    setPartPageUrl("partDetail", identifier);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
+  function openNaturalQueryResult(row: BusinessProductRow, domain: string) {
+    if (domain !== "part") {
+      openBusinessProductDetail(row);
+      return;
+    }
+
+    const identifier = String(
+      row.raw.part_id
+        || row.raw.part_number
+        || row.productSku
+        || row.systemProductSku
+        || row.recordId
+        || ""
+    ).trim();
+    if (!identifier) {
+      setError("查询结果缺少零件编号，无法打开详情。");
+      return;
+    }
+    setSelectedPartIdentifier(identifier);
+    setPage("partDetail");
+    setError(null);
+    setPartPageUrl("partDetail", identifier);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
+  function openNaturalQueryTarget(targetType: string, targetIdentifier: string) {
+    const identifier = targetIdentifier.trim();
+    if (targetType !== "part" || !identifier) {
+      setError("该查询明细暂时没有可打开的目标资料。");
+      return;
+    }
+    setSelectedPartIdentifier(identifier);
+    setPage("partDetail");
+    setError(null);
+    setPartPageUrl("partDetail", identifier);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
@@ -1443,6 +1488,19 @@ export default function App() {
         ]
       },
       {
+        id: "reports-center",
+        label: "运营报告",
+        items: [
+          {
+            id: "reports",
+            label: "报告中心",
+            description: "查询夜间HTML报告、指标与重要异常",
+            Icon: FileBarChart,
+            badge: "每日更新"
+          }
+        ]
+      },
+      {
         id: "ai-search",
         label: "智能搜索",
         items: [
@@ -1495,7 +1553,7 @@ export default function App() {
               {
                 id: "accessAdmin" as Page,
                 label: "账号与权限",
-                description: "FileMaker 权限集与 StarRC 授权",
+                description: "FileMaker 权限集与 DMS 授权",
                 Icon: ShieldCheck,
                 badge: access.canViewPrice ? "可看价格" : "价格受限"
               }
@@ -1552,8 +1610,11 @@ export default function App() {
       <main className="remote-login-page">
         <section className="remote-login-card" aria-labelledby="remote-login-title">
           <div className="remote-login-brand">
-            <span>STAR RC</span>
-            <small>FileMaker Web 工作台</small>
+            <img className="remote-login-logo" src="/dms-mark.svg" alt="" />
+            <div className="remote-login-brand-copy">
+              <span>DMS</span>
+              <small>FileMaker Web 工作台</small>
+            </div>
           </div>
           <div className="remote-login-icon" aria-hidden="true"><KeyRound size={23} /></div>
           <h1 id="remote-login-title">内部员工登录</h1>
@@ -1637,7 +1698,8 @@ export default function App() {
           canViewPrice={session?.context.access.canViewPrice ?? false}
           onNaturalQueryPromptChange={setNaturalQueryPrompt}
           onNaturalQuerySubmit={(prompt) => void submitNaturalQuery(prompt)}
-          onOpenBusinessProduct={openBusinessProductDetail}
+          onOpenQueryResult={openNaturalQueryResult}
+          onOpenQueryTarget={openNaturalQueryTarget}
           onOpenDashboard={() => handleNavigate("home")}
         />
       ) : (
@@ -1682,6 +1744,8 @@ export default function App() {
                 operatorName={operatorName}
                 canViewPrice={session?.context.access.canViewPrice ?? false}
                 readOnly={session?.readOnly ?? true}
+                apiBase={apiBase}
+                token={session?.token ?? ""}
                 onNavigate={handleNavigate}
               />
             )}
@@ -1868,6 +1932,8 @@ export default function App() {
 
             {page === "businessProductDetail" && (
               <BusinessProductDetailPage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
                 product={businessProductDetail}
                 loading={businessProductDetailLoading}
                 formatQty={formatQty}
@@ -1927,6 +1993,8 @@ export default function App() {
 
             {page === "settings" && session && currentUser && (
               <InternalSettingsPage
+                apiBase={apiBase}
+                token={session.token}
                 user={currentUser}
                 permissions={session.context.access}
                 readOnly={session.readOnly}
@@ -1943,6 +2011,10 @@ export default function App() {
 
             {page === "serviceDirectory" && session?.context.access.canManageAccounts && (
               <InternalServiceDirectoryPage apiBase={apiBase} session={session} />
+            )}
+
+            {page === "reports" && session && (
+              <ReportsPage apiBase={apiBase} token={session.token} />
             )}
 
             <GenerateDialog

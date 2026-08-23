@@ -90,7 +90,7 @@ const permissionOptions: Array<{
   {
     key: "canManageAccounts",
     label: "账号管理",
-    description: "查看和修改 StarRC 账号与权限集"
+    description: "查看和修改 DMS 账号与权限集"
   },
   {
     key: "canViewProducts",
@@ -729,9 +729,9 @@ export default function InternalAccountAdminPage({
           <span className="internal-access-eyebrow">
             <ShieldCheck size={15} /> 管理员权限中心
           </span>
-          <h2>FileMaker 账号与 StarRC 细粒度权限</h2>
+          <h2>FileMaker 账号与 DMS 细粒度权限</h2>
           <p>
-            FileMaker 只负责账号认证与数据库基础权限；StarRC 管理网页功能、6
+            FileMaker 只负责账号认证与数据库基础权限；DMS 管理网页功能、6
             个业务权限组、模块和每个操作动作。所有变更在下一次接口请求生效。
           </p>
         </div>
@@ -868,7 +868,7 @@ export default function InternalAccountAdminPage({
           </div>
           <div className="internal-access-table-card">
             <div className="internal-access-table-head">
-              <div><UsersRound size={17} /><strong>StarRC 内部用户</strong></div>
+              <div><UsersRound size={17} /><strong>DMS 内部用户</strong></div>
               <small>列表只显示摘要；查看页与编辑页已分开</small>
             </div>
             <div className="internal-access-table-wrap">
@@ -1101,7 +1101,7 @@ export default function InternalAccountAdminPage({
           <section className="internal-access-section">
             <header>
               <div>
-                <h4>StarRC 基础功能</h4>
+                <h4>DMS 基础功能</h4>
                 <p>
                   {selectedAccount.inheritsPrivilegeSet
                     ? "完全继承 FileMaker 权限集默认值"
@@ -1160,7 +1160,7 @@ export default function InternalAccountAdminPage({
               <span>{screen === "accountCreate" ? "用户新增页" : "用户编辑页"}</span>
               <h3>
                 {screen === "accountCreate"
-                  ? "新增 StarRC 用户"
+                  ? "新增 DMS 用户"
                   : `编辑 ${accountDraft.displayName}`}
               </h3>
               <p>身份、状态、基础功能和 6 组业务权限在此统一配置。</p>
@@ -1239,7 +1239,23 @@ export default function InternalAccountAdminPage({
                     )
                   }
                 />
-                <span>允许登录 StarRC</span>
+                <span>允许登录 DMS</span>
+              </label>
+              <label className="internal-access-enabled form-switch">
+                <input
+                  type="checkbox"
+                  checked={accountDraft.mobileOnly}
+                  disabled={isSelf}
+                  onChange={(event) =>
+                    setAccountDraft((current) =>
+                      current
+                        ? { ...current, mobileOnly: event.target.checked }
+                        : current
+                    )
+                  }
+                />
+                <span>仅移动端登录</span>
+                <small>启用后禁止登录和访问后台 Web。</small>
               </label>
               <label className="internal-access-enabled form-switch">
                 <input
@@ -1263,7 +1279,7 @@ export default function InternalAccountAdminPage({
           <section className="internal-access-section">
             <header>
               <div>
-                <h4>StarRC 基础功能</h4>
+                <h4>DMS 基础功能</h4>
                 <p>控制价格、产品、订单、库存、BOM、问答和管理功能。</p>
               </div>
               <label className="internal-access-inherit-toggle">
@@ -1402,7 +1418,7 @@ export default function InternalAccountAdminPage({
               </header>
             </section>
             <section className="internal-access-section">
-              <header><div><h4>StarRC 基础功能默认值</h4><p>继承用户会实时获得这些权限。</p></div></header>
+              <header><div><h4>DMS 基础功能默认值</h4><p>继承用户会实时获得这些权限。</p></div></header>
               <PermissionGrid
                 permissions={privilegeDraft.permissions}
                 onChange={(key, value) =>
@@ -1459,7 +1475,7 @@ export default function InternalAccountAdminPage({
             <span className="internal-access-delete-icon"><Trash2 size={22} /></span>
             <h3 id="delete-account-title">删除 {deleteCandidate.displayName}？</h3>
             <p>
-              将删除该用户在 StarRC 中的权限配置。
+              将删除该用户在 DMS 中的权限配置。
               {deleteCandidate.origin === "filemaker" &&
                 " 此账号来自 FileMaker，下次登录时账号映射会重新同步。"}
             </p>

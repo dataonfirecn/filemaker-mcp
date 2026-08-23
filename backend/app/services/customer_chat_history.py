@@ -238,10 +238,13 @@ class CustomerChatHistoryStore:
         domain: str = "",
         status: str = "",
         query: str = "",
+        client_name: str = "",
         include_tests: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         if self.database_url.startswith("memory://"):
             rows = [row for row in self._memory_rows if include_tests or not row["isTest"]]
+            if client_name:
+                rows = [row for row in rows if row["clientName"] == client_name]
             if domain:
                 rows = [row for row in rows if row["domain"] == domain]
             if status:
@@ -265,11 +268,13 @@ class CustomerChatHistoryStore:
                   AND ($2 = '' OR status = $2)
                   AND ($3 = '' OR prompt ILIKE '%' || $3 || '%')
                   AND ($4 OR NOT is_test)
+                  AND ($5 = '' OR client_name = $5)
                 """,
                 domain,
                 status,
                 query,
                 include_tests,
+                client_name,
             )
             records = await conn.fetch(
                 """
@@ -283,13 +288,15 @@ class CustomerChatHistoryStore:
                   AND ($2 = '' OR status = $2)
                   AND ($3 = '' OR prompt ILIKE '%' || $3 || '%')
                   AND ($4 OR NOT is_test)
+                  AND ($5 = '' OR client_name = $5)
                 ORDER BY created_at DESC, id DESC
-                LIMIT $5 OFFSET $6
+                LIMIT $6 OFFSET $7
                 """,
                 domain,
                 status,
                 query,
                 include_tests,
+                client_name,
                 page_size,
                 (page - 1) * page_size,
             )
@@ -300,6 +307,7 @@ class CustomerChatHistoryStore:
         *,
         days: int = 30,
         limit: int = 50,
+        client_name: str = "",
         include_tests: bool = False,
     ) -> list[dict[str, Any]]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, days))
@@ -307,6 +315,8 @@ class CustomerChatHistoryStore:
             grouped: dict[tuple[str, str], dict[str, Any]] = {}
             for row in self._memory_rows:
                 if row["createdAt"] < cutoff or (row["isTest"] and not include_tests):
+                    continue
+                if client_name and row["clientName"] != client_name:
                     continue
                 key = (row["normalizedKey"], row["domain"])
                 item = grouped.setdefault(
@@ -361,12 +371,14 @@ class CustomerChatHistoryStore:
                 FROM customer_chat_history
                 WHERE created_at >= $1
                   AND ($2 OR NOT is_test)
+                  AND ($3 = '' OR client_name = $3)
                 GROUP BY normalized_key, domain
                 ORDER BY total_count DESC, last_asked_at DESC
-                LIMIT $3
+                LIMIT $4
                 """,
                 cutoff,
                 include_tests,
+                client_name,
                 limit,
             )
         return [_summary_record_to_dict(record) for record in records]

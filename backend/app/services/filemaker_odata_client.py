@@ -177,6 +177,16 @@ class FileMakerODataClient:
         payload = await self.request(f"/{self._encode_segment(table)}", params=params)
         return _normalize_record_response(table=table, payload=payload)
 
+    async def get_record(
+        self,
+        table: str,
+        key: str,
+    ) -> dict[str, Any]:
+        payload = await self.request(
+            f"/{self._encode_segment(table)}({odata_key_literal(key)})",
+        )
+        return payload if isinstance(payload, dict) else {}
+
     async def create_record(
         self,
         table: str,

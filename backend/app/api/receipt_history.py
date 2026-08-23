@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -36,6 +36,12 @@ from app.services.filemaker_odata_client import (
     FileMakerODataError,
     odata_key_literal,
 )
+from app.services.filemaker_timestamps import (
+    FILEMAKER_TIMEZONE,
+    format_filemaker_timestamp,
+    parse_filemaker_timestamp,
+)
+from app.services.mobile_receipt_trace import parse_mobile_receipt_trace
 from app.services.product_api import PRODUCT_LAYOUT, PRODUCT_STOCK_FIELD
 from app.services.receipt_attachment_store import (
     ReceiptAttachmentRecord,
@@ -343,23 +349,59 @@ def _receipt_payload(
     movements: list[ReceiptHistoryInventoryMovement],
 ) -> ReceiptHistoryEntry:
     received_by = next((item.operator for item in movements if item.operator), "")
+    trace = parse_mobile_receipt_trace(row.get("log") or row.get("Log"))
+    identifiers = (
+        trace.get("identifiers")
+        if trace and isinstance(trace.get("identifiers"), dict)
+        else {}
+    )
+    source = (
+        trace.get("source")
+        if trace and isinstance(trace.get("source"), dict)
+        else {}
+    )
+    trace_operator = (
+        trace.get("operator")
+        if trace and isinstance(trace.get("operator"), dict)
+        else {}
+    )
+    trace_attachments = (
+        trace.get("attachments")
+        if trace and isinstance(trace.get("attachments"), dict)
+        else {}
+    )
+    inventory_traceable = any(
+        item.receipt_id == _text(row.get("ID"))
+        and item.line_id == _text(row.get("ID_出庫單資料"))
+        for item in movements
+    )
     return ReceiptHistoryEntry(
         receiptId=_text(row.get("ID")),
         status=_text(row.get("狀態")),
         quantity=_number(row.get("數量")),
         receivedAt=(
-            _text(row.get("创建时间戳"))
+            format_filemaker_timestamp(row.get("创建时间戳"))
             or _text(row.get("日期"))
         ),
         receivedBy=received_by or _text(row.get("创建人")),
         createdBy=_text(row.get("创建人")),
-        modifiedAt=_text(row.get("修改时间戳")),
+        modifiedAt=format_filemaker_timestamp(row.get("修改时间戳")),
         modifiedBy=_text(row.get("修改人")),
-        traceable=any(
-            item.receipt_id == _text(row.get("ID"))
-            and item.line_id == _text(row.get("ID_出庫單資料"))
-            for item in movements
-        ),
+        logAvailable=trace is not None,
+        sourceChannel=_text(source.get("channel")),
+        sourceApplication=_text(source.get("application")),
+        appVersion=_text(source.get("appVersion")),
+        appBuild=_text(source.get("appBuild")),
+        draftId=_text(identifiers.get("draftId")),
+        operatorAccount=_text(trace_operator.get("account")),
+        operatorName=_text(trace_operator.get("name")),
+        operatorPrivilege=_text(trace_operator.get("privilege")),
+        linePhotoCount=int(_number(trace_attachments.get("linePhotoCount"))),
+        shipmentPhotoCount=int(_number(
+            trace_attachments.get("shipmentPhotoCount")
+        )),
+        traceLog=trace,
+        traceable=inventory_traceable and trace is not None,
         inventoryMovements=movements,
     )
 
@@ -385,26 +427,9 @@ def _odata_text(value: str) -> str:
 
 
 def _timestamp(value: str) -> datetime:
-    raw = _text(value)
-    if raw:
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            pass
-        for date_format in (
-            "%m/%d/%Y %H:%M:%S",
-            "%Y/%m/%d %H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d",
-        ):
-            try:
-                return datetime.strptime(raw, date_format).replace(
-                    tzinfo=timezone.utc
-                )
-            except ValueError:
-                continue
-    return datetime.min.replace(tzinfo=timezone.utc)
+    return parse_filemaker_timestamp(value) or datetime.min.replace(
+        tzinfo=FILEMAKER_TIMEZONE
+    )
 
 
 def _text(value: Any) -> str:

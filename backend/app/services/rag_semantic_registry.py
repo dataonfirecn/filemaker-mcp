@@ -38,6 +38,14 @@ def _unique(values: Iterable[str]) -> list[str]:
     return result
 
 
+def _semantic_layout_aliases(layout: str) -> tuple[str, ...]:
+    """Let a dedicated *_RAG layout inherit semantics from its source layout."""
+    normalized = str(layout or "").strip()
+    if normalized.endswith("_RAG"):
+        return normalized, normalized[:-4]
+    return (normalized,)
+
+
 @dataclass(frozen=True)
 class RagForeignKey:
     field: str
@@ -73,7 +81,11 @@ class RagFieldSemantic:
         )
 
     def applies_to_layout(self, layout: str) -> bool:
-        return not self.layouts or "*" in self.layouts or layout in self.layouts
+        return (
+            not self.layouts
+            or "*" in self.layouts
+            or any(alias in self.layouts for alias in _semantic_layout_aliases(layout))
+        )
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -277,10 +289,11 @@ class RagSemanticRegistry:
         if not matches:
             return None
         if layout:
+            layout_aliases = set(_semantic_layout_aliases(layout))
             exact_layout = [
                 item
                 for item in matches
-                if layout in item.layouts
+                if layout_aliases.intersection(item.layouts)
             ]
             if exact_layout:
                 matches = exact_layout

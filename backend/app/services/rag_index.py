@@ -19,6 +19,13 @@ from app.services.metadata_semantics import (
     semantic_priority_fields,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
+from app.services.rag_embeddings import (
+    RagEmbeddingClient,
+    RagEmbeddingError,
+    cosine_from_normalized,
+    embedding_content_hash,
+    pack_vector,
+)
 from app.services.rag_semantic_registry import RagEntity, RagSemanticRegistry
 
 logger = logging.getLogger(__name__)
@@ -92,9 +99,11 @@ class LayoutDateFields:
 
 
 class RagIndexStore:
-    def __init__(self, database_path: str):
+    def __init__(self, database_path: str, *, settings: Settings | None = None):
         self.database_path = database_path
         self.fts_enabled = False
+        self.settings = settings
+        self.embedding_client = RagEmbeddingClient(settings) if settings else None
 
     async def init(self) -> None:
         db_path = Path(self.database_path)
@@ -142,6 +151,7 @@ class RagIndexStore:
                     mod_id TEXT NOT NULL DEFAULT '',
                     title TEXT NOT NULL DEFAULT '',
                     content TEXT NOT NULL DEFAULT '',
+                    content_hash TEXT NOT NULL DEFAULT '',
                     field_data_json TEXT NOT NULL DEFAULT '{}',
                     updated_at TEXT NOT NULL,
                     run_id INTEGER NOT NULL,
@@ -161,6 +171,26 @@ class RagIndexStore:
                 ON rag_record_chunks(run_id)
                 """
             )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rag_record_embeddings (
+                    layout TEXT NOT NULL,
+                    record_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    dimensions INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (layout, record_id, model)
+                )
+                """
+            )
+            await db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_rag_record_embeddings_model
+                ON rag_record_embeddings(model, layout)
+                """
+            )
             try:
                 await db.execute(
                     """
@@ -173,6 +203,8 @@ class RagIndexStore:
                 self.fts_enabled = False
                 logger.exception("SQLite FTS5 is unavailable; RAG search will use LIKE fallback")
             await self._ensure_profile_columns(db)
+            await self._ensure_chunk_columns(db)
+            await self._backfill_content_hashes(db)
             await db.commit()
 
     async def _ensure_profile_columns(self, db: aiosqlite.Connection) -> None:
@@ -187,6 +219,29 @@ class RagIndexStore:
         for column, statement in migrations.items():
             if column not in columns:
                 await db.execute(statement)
+
+    async def _ensure_chunk_columns(self, db: aiosqlite.Connection) -> None:
+        cursor = await db.execute("PRAGMA table_info(rag_record_chunks)")
+        columns = {str(row[1]) for row in await cursor.fetchall()}
+        if "content_hash" not in columns:
+            await db.execute(
+                "ALTER TABLE rag_record_chunks "
+                "ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"
+            )
+
+    async def _backfill_content_hashes(self, db: aiosqlite.Connection) -> None:
+        cursor = await db.execute(
+            "SELECT id, content FROM rag_record_chunks WHERE content_hash = ''"
+        )
+        rows = await cursor.fetchall()
+        if rows:
+            await db.executemany(
+                "UPDATE rag_record_chunks SET content_hash = ? WHERE id = ?",
+                [
+                    (embedding_content_hash(str(content or "")), int(row_id))
+                    for row_id, content in rows
+                ],
+            )
 
     async def start_run(self, reason: str) -> int:
         async with aiosqlite.connect(self.database_path) as db:
@@ -243,6 +298,7 @@ class RagIndexStore:
         )
 
     async def status(self, *, enabled: bool, refresh_interval_seconds: int, running: bool) -> dict[str, Any]:
+        embedding_model = self.embedding_client.model if self.embedding_client else ""
         async with aiosqlite.connect(self.database_path) as db:
             db.row_factory = aiosqlite.Row
             layout_cursor = await db.execute("SELECT COUNT(*) AS count FROM rag_layout_profiles")
@@ -258,6 +314,31 @@ class RagIndexStore:
                 """
             )
             latest_row = await latest_cursor.fetchone()
+            embedding_count = 0
+            embedding_pending = 0
+            if embedding_model:
+                embedding_cursor = await db.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM rag_record_embeddings
+                    WHERE model = ?
+                    """,
+                    (embedding_model,),
+                )
+                embedding_count = int((await embedding_cursor.fetchone())["count"])
+                pending_cursor = await db.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM rag_record_chunks c
+                    LEFT JOIN rag_record_embeddings e
+                      ON e.layout = c.layout
+                     AND e.record_id = c.record_id
+                     AND e.model = ?
+                    WHERE e.record_id IS NULL OR e.content_hash != c.content_hash
+                    """,
+                    (embedding_model,),
+                )
+                embedding_pending = int((await pending_cursor.fetchone())["count"])
 
         return {
             "enabled": enabled,
@@ -269,6 +350,12 @@ class RagIndexStore:
             "latestRun": self._run_to_dict(latest_row) if latest_row else None,
             "running": running,
             "profiledLayouts": layout_count,
+            "embeddingEnabled": bool(
+                self.embedding_client and self.embedding_client.configured
+            ),
+            "embeddingModel": embedding_model,
+            "embeddingCount": embedding_count,
+            "embeddingPending": embedding_pending,
         }
 
     async def get_layout_profile(self, layout: str) -> dict[str, Any] | None:
@@ -422,13 +509,14 @@ class RagIndexStore:
                 """
                 INSERT INTO rag_record_chunks (
                     layout, record_id, mod_id, title, content,
-                    field_data_json, updated_at, run_id
+                    content_hash, field_data_json, updated_at, run_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(layout, record_id) DO UPDATE SET
                     mod_id = excluded.mod_id,
                     title = excluded.title,
                     content = excluded.content,
+                    content_hash = excluded.content_hash,
                     field_data_json = excluded.field_data_json,
                     updated_at = excluded.updated_at,
                     run_id = excluded.run_id
@@ -440,6 +528,7 @@ class RagIndexStore:
                         chunk.mod_id,
                         chunk.title,
                         chunk.content,
+                        embedding_content_hash(chunk.content),
                         json.dumps(chunk.fields, ensure_ascii=False),
                         updated_at,
                         run_id,
@@ -511,6 +600,18 @@ class RagIndexStore:
                     """,
                     (layout, run_id),
                 )
+            if stale_count:
+                await db.execute(
+                    """
+                    DELETE FROM rag_record_embeddings
+                    WHERE layout = ?
+                      AND record_id IN (
+                          SELECT record_id FROM rag_record_chunks
+                          WHERE layout = ? AND run_id != ?
+                      )
+                    """,
+                    (layout, layout, run_id),
+                )
             await db.execute(
                 """
                 DELETE FROM rag_record_chunks
@@ -549,6 +650,11 @@ class RagIndexStore:
                     """,
                     allowed,
                 )
+            if record_count:
+                await db.execute(
+                    f"DELETE FROM rag_record_embeddings WHERE layout NOT IN ({placeholders})",
+                    allowed,
+                )
             await db.execute(
                 f"DELETE FROM rag_record_chunks WHERE layout NOT IN ({placeholders})",
                 allowed,
@@ -580,10 +686,117 @@ class RagIndexStore:
         matched = _sort_chunks(matched, sort or [])
         return RagRecordResult(records=matched[:limit], found_count=len(matched))
 
+    async def sync_embeddings(self) -> dict[str, int | str]:
+        """Embed only new or content-changed chunks for the configured model."""
+        client = self.embedding_client
+        if not client or not client.configured:
+            return {"embedded": 0, "pending": 0, "model": ""}
+
+        max_records = max(1, self.settings.rag_embedding_max_records_per_run)  # type: ignore[union-attr]
+        batch_size = min(
+            max_records,
+            max(1, self.settings.rag_embedding_batch_size),  # type: ignore[union-attr]
+        )
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT c.*
+                FROM rag_record_chunks c
+                LEFT JOIN rag_record_embeddings e
+                  ON e.layout = c.layout
+                 AND e.record_id = c.record_id
+                 AND e.model = ?
+                WHERE e.record_id IS NULL OR e.content_hash != c.content_hash
+                ORDER BY c.updated_at ASC
+                LIMIT ?
+                """,
+                (client.model, max_records),
+            )
+            candidates = await cursor.fetchall()
+
+        embedded = 0
+        for start in range(0, len(candidates), batch_size):
+            batch = candidates[start : start + batch_size]
+            vectors = await client.embed_documents(
+                [str(row["content"] or "") for row in batch]
+            )
+            async with aiosqlite.connect(self.database_path) as db:
+                await db.executemany(
+                    """
+                    INSERT INTO rag_record_embeddings (
+                        layout, record_id, model, content_hash,
+                        dimensions, vector, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(layout, record_id, model) DO UPDATE SET
+                        content_hash = excluded.content_hash,
+                        dimensions = excluded.dimensions,
+                        vector = excluded.vector,
+                        updated_at = excluded.updated_at
+                    """,
+                    [
+                        (
+                            str(row["layout"]),
+                            str(row["record_id"]),
+                            client.model,
+                            str(row["content_hash"]),
+                            len(vector),
+                            pack_vector(vector),
+                            utc_iso(),
+                        )
+                        for row, vector in zip(batch, vectors, strict=True)
+                    ],
+                )
+                await db.commit()
+            embedded += len(batch)
+
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT COUNT(*)
+                FROM rag_record_chunks c
+                LEFT JOIN rag_record_embeddings e
+                  ON e.layout = c.layout
+                 AND e.record_id = c.record_id
+                 AND e.model = ?
+                WHERE e.record_id IS NULL OR e.content_hash != c.content_hash
+                """,
+                (client.model,),
+            )
+            pending = int((await cursor.fetchone())[0])
+        return {"embedded": embedded, "pending": pending, "model": client.model}
+
     async def search(self, query: str, *, limit: int, layout: str | None = None) -> list[RagRecordChunk]:
         normalized = query.strip()
         if not normalized:
             return []
+
+        lexical_task = asyncio.create_task(
+            self._lexical_search(normalized, limit=max(limit * 2, limit), layout=layout)
+        )
+        vector_task: asyncio.Task[list[RagRecordChunk]] | None = None
+        if (
+            self.embedding_client
+            and self.embedding_client.configured
+            and self.settings
+            and self.settings.rag_embedding_query_enabled
+        ):
+            vector_task = asyncio.create_task(
+                self._vector_search(normalized, limit=max(limit * 3, limit), layout=layout)
+            )
+        lexical_hits = await lexical_task
+        vector_hits = await vector_task if vector_task else []
+        return _merge_hybrid_hits(lexical_hits, vector_hits, limit=limit)
+
+    async def _lexical_search(
+        self,
+        query: str,
+        *,
+        limit: int,
+        layout: str | None,
+    ) -> list[RagRecordChunk]:
+        normalized = query.strip()
 
         hits: list[RagRecordChunk] = []
         seen: set[tuple[str, str]] = set()
@@ -605,6 +818,56 @@ class RagIndexStore:
             )
             hits.extend(fallback_hits)
         return hits[:limit]
+
+    async def _vector_search(
+        self,
+        query: str,
+        *,
+        limit: int,
+        layout: str | None,
+    ) -> list[RagRecordChunk]:
+        client = self.embedding_client
+        if not client:
+            return []
+        try:
+            query_vector = await client.embed_query(query)
+        except RagEmbeddingError as exc:
+            logger.warning("RAG query embedding unavailable; using lexical search: %s", exc)
+            return []
+
+        params: list[Any] = [client.model, len(query_vector)]
+        layout_filter = ""
+        if layout:
+            layout_filter = "AND c.layout = ?"
+            params.append(layout)
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"""
+                SELECT c.*, e.vector
+                FROM rag_record_embeddings e
+                JOIN rag_record_chunks c
+                  ON c.layout = e.layout AND c.record_id = e.record_id
+                WHERE e.model = ? AND e.dimensions = ?
+                {layout_filter}
+                """,
+                params,
+            )
+            rows = await cursor.fetchall()
+
+        scored = await asyncio.to_thread(_score_vector_rows, query_vector, rows)
+        hits: list[RagRecordChunk] = []
+        for score, row in scored[:limit]:
+            if score < 0.2:
+                continue
+            hits.append(
+                self._chunk_from_row(
+                    row,
+                    score=score,
+                    snippet=str(row["title"] or ""),
+                )
+            )
+        return hits
 
     async def _layout_chunks(self, layout: str) -> list[RagRecordChunk]:
         async with aiosqlite.connect(self.database_path) as db:
@@ -805,6 +1068,19 @@ class RagIndexWorker:
                     layouts_indexed=layouts_indexed,
                     records_indexed=records_indexed,
                 )
+                try:
+                    embedding_result = await self.store.sync_embeddings()
+                    if embedding_result["model"]:
+                        logger.info(
+                            "RAG embedding sync complete; model=%s embedded=%s pending=%s",
+                            embedding_result["model"],
+                            embedding_result["embedded"],
+                            embedding_result["pending"],
+                        )
+                except RagEmbeddingError:
+                    logger.exception(
+                        "RAG index refresh succeeded but incremental embedding sync failed"
+                    )
                 logger.info(
                     "RAG index refresh complete; layouts=%s records=%s",
                     layouts_indexed,
@@ -1081,6 +1357,52 @@ class RagIndexWorker:
         return [field for field in fields if isinstance(field, dict)]
 
 
+def _score_vector_rows(
+    query_vector: list[float],
+    rows: list[aiosqlite.Row],
+) -> list[tuple[float, aiosqlite.Row]]:
+    scored = [
+        (cosine_from_normalized(query_vector, bytes(row["vector"])), row)
+        for row in rows
+    ]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored
+
+
+def _merge_hybrid_hits(
+    lexical_hits: list[RagRecordChunk],
+    vector_hits: list[RagRecordChunk],
+    *,
+    limit: int,
+) -> list[RagRecordChunk]:
+    if not vector_hits:
+        return lexical_hits[:limit]
+    if not lexical_hits:
+        return vector_hits[:limit]
+
+    hits: dict[tuple[str, str], RagRecordChunk] = {}
+    scores: dict[tuple[str, str], float] = {}
+    for rank, hit in enumerate(lexical_hits):
+        key = (hit.layout, hit.record_id)
+        hits[key] = hit
+        scores[key] = scores.get(key, 0.0) + 2.0 / (60 + rank)
+    for rank, hit in enumerate(vector_hits):
+        key = (hit.layout, hit.record_id)
+        hits.setdefault(key, hit)
+        scores[key] = (
+            scores.get(key, 0.0)
+            + 1.0 / (60 + rank)
+            + max(0.0, hit.score) / 100.0
+        )
+    ordered = sorted(hits, key=lambda key: scores[key], reverse=True)
+    result: list[RagRecordChunk] = []
+    for key in ordered[:limit]:
+        hit = hits[key]
+        hit.score = scores[key]
+        result.append(hit)
+    return result
+
+
 def _record_to_chunk(
     *,
     layout: str,
@@ -1303,12 +1625,32 @@ def _sort_chunks(chunks: list[RagRecordChunk], sort: list[dict[str, str]]) -> li
 
 
 def _search_terms(value: str) -> list[str]:
-    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]*|[\u4e00-\u9fff]{2,}", value)
+    raw_terms = re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]*|[\u4e00-\u9fff]{2,}", value)
+    terms: list[str] = []
+    cjk_stop_terms = {"查询", "查找", "寻找", "资料", "信息", "产品", "產品", "零件"}
+    for term in raw_terms:
+        if not re.fullmatch(r"[\u4e00-\u9fff]+", term):
+            terms.append(term)
+            continue
+        if len(term) <= 4:
+            terms.append(term)
+            continue
+        terms.append(term)
+        terms.extend(
+            token
+            for token in (term[index : index + 2] for index in range(len(term) - 1))
+            if token not in cjk_stop_terms
+        )
+    return list(dict.fromkeys(terms))
 
 
 def _build_fts_query(value: str) -> str:
     terms = _search_terms(value)
-    quoted = [f'"{term.replace(chr(34), chr(34) + chr(34))}"' for term in terms[:8]]
+    quoted = [
+        f'"{term.replace(chr(34), chr(34) + chr(34))}"'
+        + ("*" if re.fullmatch(r"[\u4e00-\u9fff]+", term) else "")
+        for term in terms[:8]
+    ]
     return " OR ".join(quoted)
 
 

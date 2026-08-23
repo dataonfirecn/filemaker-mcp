@@ -5,9 +5,12 @@ import logging
 import re
 from typing import Any
 
-import httpx
-
 from app.core.config import Settings
+from app.services.llm_query_interpreter import (
+    LlmQueryInterpreterError,
+    openai_compatible_llm_configured,
+    request_llm_chat_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,57 +46,30 @@ async def build_layout_semantic_profile(
     if not _should_use_llm(layout, settings):
         return fallback
 
-    payload = {
-        "model": settings.llm_model,
-        "messages": [
-            {"role": "system", "content": _system_prompt()},
-            {
-                "role": "user",
-                "content": json.dumps(
-                        {
-                            "layout": layout,
-                            "fields": _compact_fields(fields),
-                            "sampleRecords": _compact_sample_records(sample_records or []),
-                            "concepts": list(SEMANTIC_CONCEPTS),
-                        },
-                    ensure_ascii=False,
-                ),
-            },
-        ],
-        "response_format": {"type": "json_object"},
-        "thinking": {"type": "disabled"},
-        "temperature": 0,
-        "max_tokens": max(
-            settings.rag_index_semantic_llm_max_output_tokens,
-            settings.llm_max_output_tokens,
-        ),
-        "stream": False,
-    }
     try:
-        async with httpx.AsyncClient(
-            timeout=max(settings.rag_index_semantic_llm_timeout_seconds, settings.llm_timeout_seconds),
-            verify=settings.llm_ssl_verify,
-        ) as client:
-            response = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.llm_api_key}",
-                    "Content-Type": "application/json",
+        content = await request_llm_chat_content(
+            settings,
+            system_prompt=_system_prompt(),
+            user_content=json.dumps(
+                {
+                    "layout": layout,
+                    "fields": _compact_fields(fields),
+                    "sampleRecords": _compact_sample_records(sample_records or []),
+                    "concepts": list(SEMANTIC_CONCEPTS),
                 },
-                json=payload,
-            )
-    except httpx.RequestError:
+                ensure_ascii=False,
+            ),
+            max_tokens=max(
+                settings.rag_index_semantic_llm_max_output_tokens,
+                settings.llm_max_output_tokens,
+            ),
+            timeout_seconds=max(
+                settings.rag_index_semantic_llm_timeout_seconds,
+                settings.llm_timeout_seconds,
+            ),
+        )
+    except LlmQueryInterpreterError:
         logger.exception("Unable to connect to LLM for FileMaker metadata semantics")
-        return fallback
-
-    if not response.is_success:
-        logger.warning("LLM metadata semantics returned HTTP %s", response.status_code)
-        return fallback
-
-    try:
-        content = response.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError, ValueError):
-        logger.warning("LLM metadata semantics response did not include message content")
         return fallback
 
     parsed = parse_layout_semantic_profile(
@@ -279,8 +255,7 @@ def _should_use_llm(layout: str, settings: Settings) -> bool:
     return (
         settings.rag_index_semantic_profile_enabled
         and settings.natural_query_llm_enabled
-        and settings.llm_provider.lower() == "deepseek"
-        and bool(settings.llm_api_key)
+        and openai_compatible_llm_configured(settings)
         and layout in enabled_layouts
     )
 

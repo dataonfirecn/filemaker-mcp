@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Database,
   ExternalLink,
+  FileBarChart,
   FileCode2,
   KeyRound,
   Layers3,
@@ -61,8 +62,15 @@ const browserPages: PageEntry[] = [
     name: "导航首页",
     description: "内部员工的业务入口与权限概览。",
     route: "/",
-    access: "StarRC 员工账号",
+    access: "DMS 员工账号",
     Icon: Monitor
+  },
+  {
+    name: "报告中心",
+    description: "查询夜间HTML报告、管理指标和重要异常。",
+    route: "/?page=reports",
+    access: "DMS 员工账号",
+    Icon: FileBarChart
   },
   {
     name: "智能对话",
@@ -151,8 +159,8 @@ const filemakerPages: PageEntry[] = [
     name: "员工智能对话",
     description: "FileMaker 内自动识别当前账号，无需再次登录。",
     route: "/?page=chat",
-    access: "StarRC｜员工对话",
-    note: "WebViewer：wv_starrc_employee_chat",
+    access: "DMS｜员工对话",
+    note: "WebViewer：员工智能对话",
     Icon: MessageCircle
   },
   {
@@ -196,6 +204,7 @@ const apiIcons: Record<string, LucideIcon> = {
   orders: ShoppingCart,
   code: FileCode2,
   package: PackagePlus,
+  report: FileBarChart,
   webhook: Webhook,
   qr: QrCode
 };
@@ -299,7 +308,7 @@ export default function InternalServiceDirectoryPage({
   function handlePreview(entry: PageEntry) {
     setPreviewError(null);
     if (!openPreviewWindow(entry.previewRoute ?? entry.route, session)) {
-      setPreviewError("浏览器阻止了新标签页。请允许 StarRC 打开弹出式窗口后重试。");
+      setPreviewError("浏览器阻止了新标签页。请允许 DMS 打开弹出式窗口后重试。");
     }
   }
 
@@ -308,7 +317,7 @@ export default function InternalServiceDirectoryPage({
       <div className="internal-directory-hero">
         <div>
           <span className="internal-directory-eyebrow">SYSTEM DIRECTORY</span>
-          <h2>StarRC 应用与接口目录</h2>
+          <h2>DMS 应用与接口目录</h2>
           <p>按实际打开方式和调用方向分类。浏览器页面使用员工账号登录；内嵌页面由 FileMaker 生成签名上下文。</p>
         </div>
         <div className="internal-directory-summary" aria-label="目录统计">
@@ -324,7 +333,7 @@ export default function InternalServiceDirectoryPage({
           <div>
             <span>CHANNEL 01</span>
             <h2>浏览器登录工作台</h2>
-            <p>直接打开 StarRC，由内部员工账号登录；功能仍按 FileMaker 权限集开放。</p>
+            <p>直接打开 DMS，由内部员工账号登录；功能仍按 FileMaker 权限集开放。</p>
           </div>
           <strong>{browserPages.length} 个入口</strong>
         </header>

@@ -26,6 +26,10 @@ class RagIndexStatusResponse(BaseModel):
     latest_run: RagIndexRun | None = Field(default=None, alias="latestRun")
     running: bool = False
     profiled_layouts: int = Field(default=0, alias="profiledLayouts")
+    embedding_enabled: bool = Field(default=False, alias="embeddingEnabled")
+    embedding_model: str = Field(default="", alias="embeddingModel")
+    embedding_count: int = Field(default=0, alias="embeddingCount")
+    embedding_pending: int = Field(default=0, alias="embeddingPending")
 
     model_config = {"populate_by_name": True}
 

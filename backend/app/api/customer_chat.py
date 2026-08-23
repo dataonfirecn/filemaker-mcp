@@ -1381,6 +1381,7 @@ async def get_customer_chat_history(
         domain=domain.strip(),
         status=status_value.strip(),
         query=query.strip(),
+        client_name=session.client_name,
         include_tests=include_tests,
     )
     return CustomerChatHistoryResponse(
@@ -1405,6 +1406,7 @@ async def get_customer_chat_question_summary(
     questions = await history_store.question_summary(
         days=days,
         limit=limit,
+        client_name=session.client_name,
         include_tests=include_tests,
     )
     return CustomerChatQuestionSummaryResponse(

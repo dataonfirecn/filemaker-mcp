@@ -141,6 +141,8 @@ class ReceiptSubmissionLineResponse(BaseModel):
     received_at: datetime = Field(alias="receivedAt")
     received_by: str = Field(alias="receivedBy")
     already_received: bool = Field(default=False, alias="alreadyReceived")
+    trace_sync_status: str = Field(default="synced", alias="traceSyncStatus")
+    trace_sync_error: str | None = Field(default=None, alias="traceSyncError")
 
     model_config = {"populate_by_name": True}
 
@@ -155,3 +157,50 @@ class ReceiptSubmissionResponse(BaseModel):
     lines: list[ReceiptSubmissionLineResponse]
 
     model_config = {"populate_by_name": True}
+
+
+class ConfirmedReceiptSummary(BaseModel):
+    receipt_document_id: str = Field(alias="receiptDocumentId")
+    shipment_id: str = Field(alias="shipmentId")
+    document_number: str = Field(alias="documentNumber")
+    pi_number: str = Field(alias="piNumber")
+    receipt_id: str = Field(alias="receiptId")
+    operator_account: str = Field(alias="operatorAccount")
+    operator_name: str = Field(alias="operatorName")
+    confirmed_at: datetime = Field(alias="confirmedAt")
+    all_lines_received: bool = Field(alias="allLinesReceived")
+    received_line_count: int = Field(alias="receivedLineCount")
+    total_line_count: int = Field(alias="totalLineCount")
+    submitted_line_count: int = Field(alias="submittedLineCount")
+    total_quantity: int = Field(alias="totalQuantity")
+    shipment_photo_count: int = Field(alias="shipmentPhotoCount")
+
+    model_config = {"populate_by_name": True}
+
+
+class ConfirmedReceiptLine(BaseModel):
+    line_id: str = Field(alias="lineId")
+    record_id: str = Field(alias="recordId")
+    sku: str
+    received_quantity: int = Field(alias="receivedQuantity")
+    expected_quantity: int = Field(alias="expectedQuantity")
+    remark: str = ""
+    attachment_count: int = Field(alias="attachmentCount")
+    receipt_id: str = Field(alias="receiptId")
+    status: str
+    received_at: datetime = Field(alias="receivedAt")
+    received_by: str = Field(alias="receivedBy")
+
+    model_config = {"populate_by_name": True}
+
+
+class ConfirmedReceiptDetail(ConfirmedReceiptSummary):
+    receipt_remark: str = Field(alias="receiptRemark")
+    lines: list[ConfirmedReceiptLine]
+
+
+class ConfirmedReceiptListResponse(BaseModel):
+    receipts: list[ConfirmedReceiptSummary]
+    total: int
+    limit: int
+    offset: int
