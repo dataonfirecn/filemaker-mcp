@@ -104,6 +104,26 @@ class COSStorageService:
             )
         )
 
+    def create_migrated_product_asset_object_key(
+        self,
+        *,
+        source_record_id: str,
+        asset_id: str,
+        mime_type: str,
+        original_filename: str = "",
+    ) -> str:
+        extension = _asset_extension(mime_type, original_filename)
+        return str(
+            PurePosixPath(
+                "starrc",
+                "products",
+                "original",
+                "migration",
+                _safe_segment(source_record_id),
+                f"{_safe_segment(asset_id)}.{extension}",
+            )
+        )
+
     def create_presigned_upload(
         self,
         *,
@@ -167,6 +187,35 @@ class COSStorageService:
         except Exception as exc:
             raise COSStorageError("Unable to upload COS object") from exc
         return str(response.get("ETag") or "").strip('"')
+
+    def get_object_bytes(
+        self,
+        object_key: str,
+        *,
+        max_bytes: int | None = None,
+    ) -> bytes:
+        client = self._require_client()
+        try:
+            response = client.get_object(
+                Bucket=self.settings.cos_bucket,
+                Key=object_key,
+            )
+            body = response.get("Body")
+            if hasattr(body, "get_raw_stream"):
+                content = body.get_raw_stream().read()
+            elif hasattr(body, "read"):
+                content = body.read()
+            elif isinstance(body, bytes):
+                content = body
+            else:
+                raise TypeError("COS response body is not readable")
+        except Exception as exc:
+            raise COSStorageError("Unable to download COS object") from exc
+        if not isinstance(content, bytes):
+            content = bytes(content)
+        if max_bytes is not None and len(content) > max_bytes:
+            raise COSStorageError("COS object exceeds the configured upload limit")
+        return content
 
     def create_presigned_download(self, object_key: str) -> tuple[str, datetime]:
         client = self._require_client()

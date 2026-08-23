@@ -37,12 +37,14 @@ class CustomerAccount:
     part_customer_id: str
     password_hash: str
     email: str = ""
+    company_name: str = ""
     shipment_company_id: str = ""
     can_view_price: bool = False
     is_admin: bool = False
     access_role: str = ""
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "company_name", self.company_name.strip() or self.client_name)
         role = normalize_customer_access_role(
             self.access_role,
             is_admin=self.is_admin,
@@ -69,12 +71,14 @@ class CustomerSession:
     product_privilege: str
     part_customer_id: str
     expires_at: int
+    company_name: str = ""
     shipment_company_id: str = ""
     can_view_price: bool = False
     is_admin: bool = False
     access_role: str = ""
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "company_name", self.company_name.strip() or self.client_name)
         role = normalize_customer_access_role(
             self.access_role,
             is_admin=self.is_admin,
@@ -109,6 +113,7 @@ def customer_account_from_admin_state(
     return CustomerAccount(
         username=str(state["username"]),
         display_name=str(state["displayName"]),
+        company_name=str(state.get("companyName") or state["clientName"]),
         client_name=str(state["clientName"]),
         product_privilege=str(state["productPrivilege"]),
         part_customer_id=str(state["partCustomerId"]),
@@ -194,6 +199,7 @@ def load_customer_accounts(settings: Settings) -> dict[str, CustomerAccount]:
         username = str(item.get("username") or "").strip()
         display_name = str(item.get("displayName") or username).strip()
         client_name = str(item.get("clientName") or item.get("client") or "").strip()
+        company_name = str(item.get("companyName") or client_name).strip()
         product_privilege = str(item.get("productPrivilege") or "").strip()
         part_customer_id = str(item.get("partCustomerId") or "").strip()
         shipment_company_id = str(item.get("shipmentCompanyId") or "").strip()
@@ -221,6 +227,7 @@ def load_customer_accounts(settings: Settings) -> dict[str, CustomerAccount]:
             part_customer_id=part_customer_id,
             password_hash=password_hash,
             email=email,
+            company_name=company_name,
             shipment_company_id=shipment_company_id,
             can_view_price=can_view_price,
             is_admin=is_admin,
@@ -274,6 +281,7 @@ def issue_customer_token(account: CustomerAccount, settings: Settings) -> tuple[
         "sessionId": str(uuid.uuid4()),
         "username": account.username,
         "displayName": account.display_name,
+        "companyName": account.company_name,
         "clientName": account.client_name,
         "productPrivilege": account.product_privilege,
         "partCustomerId": account.part_customer_id,
@@ -334,6 +342,7 @@ def verify_customer_token(
     if (
         not account
         or account.client_name != session.client_name
+        or account.company_name != session.company_name
         or account.product_privilege != session.product_privilege
         or account.part_customer_id != session.part_customer_id
         or account.shipment_company_id != session.shipment_company_id
@@ -412,6 +421,7 @@ def _session_from_payload(payload: dict[str, Any]) -> CustomerSession:
         session_id=str(payload.get("sessionId") or ""),
         username=str(payload.get("username") or ""),
         display_name=str(payload.get("displayName") or payload.get("username") or ""),
+        company_name=str(payload.get("companyName") or payload.get("clientName") or ""),
         client_name=str(payload.get("clientName") or ""),
         product_privilege=str(payload.get("productPrivilege") or ""),
         part_customer_id=str(payload.get("partCustomerId") or ""),

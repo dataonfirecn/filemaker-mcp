@@ -17,6 +17,8 @@ from app.api import (
     inventory,
     material_ids,
     mes_callbacks,
+    mobile_app,
+    mobile_products,
     mobile_receipts,
     natural_query_analytics,
     natural_language_query,
@@ -27,6 +29,8 @@ from app.api import (
     part_directory,
     qrcode,
     rag_index,
+    receipt_history,
+    reports,
     webviewer,
 )
 from app.core.config import get_settings
@@ -41,10 +45,15 @@ from app.services.customer_credential_store import CustomerCredentialStore
 from app.services.cos_storage import COSStorageService
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
+from app.services.llm_provider_manager import LlmProviderManager
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
+from app.services.nightly_maintenance import NightlyMaintenanceWorker
+from app.services.nightly_report_store import NightlyReportStore
+from app.services.mobile_app_version import IOSPDABuildGateMiddleware
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
+from app.services.product_photo_upload_store import ProductPhotoUploadStore
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_account_access import (
@@ -64,6 +73,11 @@ async def lifespan(app: FastAPI):
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     settings = get_settings()
+    llm_provider_manager = LlmProviderManager(
+        settings=settings,
+        database_path=settings.database_path,
+    )
+    await llm_provider_manager.init()
     settings.validate_production_security()
     filemaker_client = FileMakerClient(settings)
     filemaker_odata_client = FileMakerODataClient(settings)
@@ -77,6 +91,8 @@ async def lifespan(app: FastAPI):
     await receipt_attachment_store.init()
     part_asset_upload_store = PartAssetUploadStore(settings.database_path)
     await part_asset_upload_store.init()
+    product_photo_upload_store = ProductPhotoUploadStore(settings.database_path)
+    await product_photo_upload_store.init()
     part_creation_options_cache = PartCreationOptionsCache(
         database_path=settings.database_path,
         filemaker=filemaker_client,
@@ -112,7 +128,17 @@ async def lifespan(app: FastAPI):
         store=natural_query_conversation_store,
         settings=settings,
     )
-    rag_index_store = RagIndexStore(settings.rag_database_path)
+    nightly_maintenance_worker = NightlyMaintenanceWorker(
+        store=natural_query_conversation_store,
+        customer_history=customer_chat_history_store,
+        settings=settings,
+        reports=NightlyReportStore(
+            settings.database_path,
+            settings.nightly_reports_directory,
+        ),
+    )
+    await nightly_maintenance_worker.init()
+    rag_index_store = RagIndexStore(settings.rag_database_path, settings=settings)
     await rag_index_store.init()
     callback_worker = CallbackWorker(
         store=callback_store,
@@ -132,6 +158,7 @@ async def lifespan(app: FastAPI):
     app.state.bom_document_store = bom_document_store
     app.state.callback_store = callback_store
     app.state.callback_worker = callback_worker
+    app.state.llm_provider_manager = llm_provider_manager
     app.state.customer_login_rate_limiter = CustomerLoginRateLimiter()
     app.state.customer_credential_store = customer_credential_store
     app.state.customer_chat_history_store = customer_chat_history_store
@@ -139,10 +166,13 @@ async def lifespan(app: FastAPI):
     app.state.webviewer_account_access_store = webviewer_account_access_store
     app.state.receipt_attachment_store = receipt_attachment_store
     app.state.part_asset_upload_store = part_asset_upload_store
+    app.state.product_photo_upload_store = product_photo_upload_store
     app.state.part_creation_options_cache = part_creation_options_cache
     app.state.cos_storage_service = cos_storage_service
     app.state.natural_query_conversation_store = natural_query_conversation_store
     app.state.natural_query_analytics_worker = natural_query_analytics_worker
+    app.state.nightly_maintenance_worker = nightly_maintenance_worker
+    app.state.nightly_report_store = nightly_maintenance_worker.reports
     app.state.rag_index_store = rag_index_store
     app.state.rag_index_worker = rag_index_worker
     app.state.rag_semantic_registry = rag_index_worker.semantic_registry
@@ -150,11 +180,13 @@ async def lifespan(app: FastAPI):
     callback_worker.start()
     rag_index_worker.start()
     natural_query_analytics_worker.start()
+    nightly_maintenance_worker.start()
     part_creation_options_cache.start()
     try:
         yield
     finally:
         await part_creation_options_cache.stop()
+        await nightly_maintenance_worker.stop()
         await natural_query_analytics_worker.stop()
         await rag_index_worker.stop()
         await callback_worker.stop()
@@ -171,6 +203,14 @@ settings = get_settings()
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
+    IOSPDABuildGateMiddleware,
+    minimum_build=settings.ios_pda_minimum_build,
+    latest_build=settings.ios_pda_latest_build,
+    compatibility_path=(
+        f"{settings.api_prefix.rstrip('/')}/mobile/v1/app/compatibility"
+    ),
+)
+app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
@@ -181,9 +221,15 @@ app.add_middleware(
         "Accept",
         "X-Requested-With",
         "X-Client-Channel",
+        "X-App-Build",
+        "X-App-Version",
         "X-QA-Test",
     ],
-    expose_headers=["Content-Disposition"],
+    expose_headers=[
+        "Content-Disposition",
+        "X-Minimum-App-Build",
+        "X-Latest-App-Build",
+    ],
 )
 
 
@@ -252,10 +298,14 @@ app.include_router(natural_language_query.router, prefix=settings.api_prefix)
 app.include_router(natural_query_analytics.router, prefix=settings.api_prefix)
 app.include_router(odata.router, prefix=settings.api_prefix)
 app.include_router(orders.router, prefix=settings.api_prefix)
+app.include_router(receipt_history.router, prefix=settings.api_prefix)
+app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(rag_index.router, prefix=settings.api_prefix)
 app.include_router(mes_callbacks.router, prefix=settings.api_prefix)
 app.include_router(qrcode.router, prefix=settings.api_prefix)
+app.include_router(mobile_app.router, prefix=settings.api_prefix)
 app.include_router(mobile_receipts.router, prefix=settings.api_prefix)
+app.include_router(mobile_products.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

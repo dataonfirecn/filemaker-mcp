@@ -34,6 +34,13 @@ class NaturalLanguageQueryPlan(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class NaturalLanguageQueryLlmInfo(BaseModel):
+    provider: str
+    model: str
+    confidence: float = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class NaturalLanguageQueryResponse(BaseModel):
     answer: str
     layout: str
@@ -46,5 +53,6 @@ class NaturalLanguageQueryResponse(BaseModel):
     requires_clarification: bool = Field(default=False, alias="requiresClarification")
     clarification_question: str | None = Field(default=None, alias="clarificationQuestion")
     clarification_options: list[str] = Field(default_factory=list, alias="clarificationOptions")
+    llm: NaturalLanguageQueryLlmInfo | None = None
 
     model_config = {"populate_by_name": True}

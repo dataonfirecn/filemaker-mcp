@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 
 from app.models.customer_catalog import (
     CustomerBomLine,
@@ -49,7 +49,9 @@ PART_NAME_FIELD = "part_name_en"
 PART_STOCK_FIELD = "stock_on_hand_qty"
 PART_SAFETY_STOCK_FIELD = "safety_stock_qty"
 ORDER_LAYOUT = "@出貨單"
-ORDER_DETAIL_LAYOUT = "@mayako"
+# This is an external FileMaker layout identifier, not the portal brand. Keep it
+# until the FileMaker layout is migrated separately.
+LEGACY_ORDER_DETAIL_LAYOUT = "@mayako"
 ORDER_SCOPE_FIELD = "select_client_for_web_id"
 ORDER_ID_FIELD = "id"
 ORDER_INTERNAL_ID_FIELD = "internal_id"
@@ -195,7 +197,7 @@ async def export_customer_products(
     session: CustomerSession = Depends(get_customer_session),
     filemaker: FileMakerClient = Depends(get_filemaker_client),
 ) -> Response:
-    """Export every scoped product SKU and inventory value as a real Excel file."""
+    """Export every scoped product SKU, bilingual name, and inventory value."""
     normalized_query = q.strip()
     query = _scoped_query(
         normalized_query,
@@ -228,7 +230,7 @@ async def export_customer_products(
         raise _catalog_unavailable() from exc
 
     content = _product_inventory_workbook(records)
-    filename = f"mayako-products-inventory-{date.today().isoformat()}.xlsx"
+    filename = f"stock-check-products-inventory-{date.today().isoformat()}.xlsx"
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -325,7 +327,7 @@ async def export_customer_parts(
         raise _catalog_unavailable() from exc
 
     content = _part_inventory_workbook(records)
-    filename = f"mayako-parts-inventory-{date.today().isoformat()}.xlsx"
+    filename = f"stock-check-parts-inventory-{date.today().isoformat()}.xlsx"
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -429,7 +431,7 @@ async def find_customer_orders(
     )
     try:
         result = await filemaker.find_records(
-            ORDER_DETAIL_LAYOUT,
+            LEGACY_ORDER_DETAIL_LAYOUT,
             query=query,
             limit=page_size,
             offset=((page - 1) * page_size) + 1,
@@ -539,7 +541,7 @@ async def find_customer_orders_for_chat(
 
     try:
         result = await filemaker.find_records(
-            ORDER_DETAIL_LAYOUT,
+            LEGACY_ORDER_DETAIL_LAYOUT,
             query=query,
             limit=page_size,
             offset=((page - 1) * page_size) + 1,
@@ -764,7 +766,7 @@ async def _all_order_records(
     found_count: int | None = None
     while found_count is None or len(records) < found_count:
         result = await filemaker.find_records(
-            ORDER_DETAIL_LAYOUT,
+            LEGACY_ORDER_DETAIL_LAYOUT,
             query=query,
             limit=ORDER_SUMMARY_PAGE_SIZE,
             offset=len(records) + 1,
@@ -1027,7 +1029,7 @@ async def _order_details(
         return {}
 
     result = await filemaker.find_records(
-        ORDER_DETAIL_LAYOUT,
+        LEGACY_ORDER_DETAIL_LAYOUT,
         query=query,
         limit=min(MAX_CATALOG_PAGE_SIZE * 2, max(len(query) * 2, len(query))),
     )
@@ -1093,22 +1095,41 @@ def _product_inventory_workbook(records: list[dict[str, Any]]) -> bytes:
     sheet = workbook.active
     sheet.title = "Products"
     sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:B{max(1, len(records) + 1)}"
-    sheet.column_dimensions["A"].width = 28
-    sheet.column_dimensions["B"].width = 16
-    sheet.append(["SKU", "Inventory"])
-    header_fill = PatternFill(fill_type="solid", fgColor="1F4E78")
+    sheet.auto_filter.ref = f"A1:D{max(1, len(records) + 1)}"
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = 36
+    sheet.column_dimensions["C"].width = 42
+    sheet.column_dimensions["D"].width = 18
+    sheet.append([
+        "产品编号 / SKU",
+        "中文名称 / Chinese Name",
+        "英文名称 / English Name",
+        "库存 / Inventory",
+    ])
+    # Use opaque ARGB colors. Six-digit RGB values can be interpreted as
+    # transparent by some mobile Excel/WPS viewers, hiding the white titles.
+    header_fill = PatternFill(fill_type="solid", fgColor="FF1F4E78")
     for cell in sheet[1]:
-        cell.font = Font(color="FFFFFF", bold=True)
+        cell.font = Font(color="FFFFFFFF", bold=True)
         cell.fill = header_fill
+        cell.alignment = Alignment(vertical="center")
 
     for record in records:
         fields = _fields(record)
         row_number = sheet.max_row + 1
-        sku_cell = sheet.cell(row=row_number, column=1, value=_text(fields.get("product_sku")))
-        sku_cell.data_type = "s"
+        sheet.row_dimensions[row_number].height = 30
+        text_values = (
+            _text(fields.get("product_sku")),
+            _text(fields.get("產品名稱_中文")),
+            _english_text(fields.get("product_name")),
+        )
+        for column, value in enumerate(text_values, start=1):
+            cell = sheet.cell(row=row_number, column=column, value=value)
+            cell.data_type = "s"
+            if column in (2, 3):
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
         stock = _excel_number(fields.get(PRODUCT_STOCK_FIELD))
-        stock_cell = sheet.cell(row=row_number, column=2, value=stock)
+        stock_cell = sheet.cell(row=row_number, column=4, value=stock)
         if isinstance(stock, str):
             stock_cell.data_type = "s"
 
@@ -1143,9 +1164,9 @@ def _part_inventory_workbook(records: list[dict[str, Any]]) -> bytes:
         "Turnover",
         "Created",
     ])
-    header_fill = PatternFill(fill_type="solid", fgColor="1F4E78")
+    header_fill = PatternFill(fill_type="solid", fgColor="FF1F4E78")
     for cell in sheet[1]:
-        cell.font = Font(color="FFFFFF", bold=True)
+        cell.font = Font(color="FFFFFFFF", bold=True)
         cell.fill = header_fill
 
     for record in records:

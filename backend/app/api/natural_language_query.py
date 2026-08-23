@@ -2,13 +2,16 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime
+from collections.abc import Callable
+from datetime import date, datetime, time as datetime_time
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.business_products import _product_row
 from app.core.config import Settings
+from app.models.business_products import BusinessProductRow
 from app.models.natural_language_query import (
     NaturalLanguageDateRange,
     NaturalLanguageQueryPlan,
@@ -34,9 +37,9 @@ from app.services.filemaker_odata_client import (
     row_key_value,
 )
 from app.services.llm_query_interpreter import (
-    DeepSeekQueryInterpreter,
     LlmQueryInterpretation,
     LlmQueryInterpreterError,
+    OpenAICompatibleQueryInterpreter,
 )
 from app.services.metadata_semantics import (
     build_layout_semantic_profile,
@@ -48,9 +51,18 @@ from app.services.natural_query_conversation_store import NaturalQueryConversati
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.natural_language_query import (
     NaturalQueryError,
+    ProductNaturalQueryPlan,
     build_product_natural_query_plan,
 )
 from app.services.product_api import PRODUCT_STOCK_FIELD
+from app.services.product_ranking import (
+    PRODUCT_RANK_LAYOUT,
+    ProductRankLimitExceeded,
+    ProductRankPlan,
+    fetch_product_rankings,
+    parse_product_rank_plan,
+    product_rank_public_number,
+)
 from app.services.rag_index import RagIndexStore, RagRecordChunk
 
 router = APIRouter(prefix="/natural-query", tags=["natural-query"])
@@ -81,8 +93,11 @@ _CUSTOMER_INTERNAL_PRODUCT_TERMS = (
     "for purchase",
 )
 _CUSTOMER_PRODUCT_NAME_FIELDS = ("產品名稱_中文", "product_name")
+_PRODUCT_RAG_LAYOUT = "@products_RAG"
+_PART_RAG_LAYOUT = "@零件_RAG"
 _RAG_LAYOUT_BY_QUERY_LAYOUT = {
-    "Parts": "@零件",
+    "@products": _PRODUCT_RAG_LAYOUT,
+    "Parts": _PART_RAG_LAYOUT,
 }
 _ODATA_EXACT_QUERY = {
     "product": ("產品", ("product_sku", "系統產品編號")),
@@ -193,19 +208,15 @@ async def run_natural_language_query(
 ) -> NaturalLanguageQueryResponse:
     started_at = time.perf_counter()
     prompt = body.prompt.strip()
-    if (
-        not (enforced_product_client_id or enforced_part_customer_id)
-        and operator.permissions is not None
-        and not operator.permissions.get("canViewPrice", False)
-        and _wants_price_detail(prompt)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "message": "当前账号没有查看价格的权限。",
-                "permission": "canViewPrice",
-            },
-        )
+    internal_permissions = (
+        operator.permissions
+        if not (enforced_product_client_id or enforced_part_customer_id)
+        else None
+    )
+    _validate_internal_prompt_permissions(
+        prompt,
+        permissions=internal_permissions,
+    )
     prompt_for_plan = prompt
     parsed_plan = None
     source = "filemaker"
@@ -214,6 +225,9 @@ async def run_natural_language_query(
     semantic_profile: dict[str, object] = {}
     llm_interpretation: LlmQueryInterpretation | None = None
     customer_scoped = bool(enforced_product_client_id or enforced_part_customer_id)
+    product_rank_plan = (
+        None if customer_scoped else parse_product_rank_plan(prompt)
+    )
     result_limit = body.limit if customer_scoped else _effective_result_limit(settings, body.limit)
     try:
         internal_identifier = (
@@ -284,6 +298,32 @@ async def run_natural_language_query(
         )
         if llm_interpretation:
             prompt_for_plan = llm_interpretation.canonical_prompt
+            # Re-check the normalized request. This closes obfuscation paths such
+            # as split words, pinyin and euphemisms that the LLM restores to a
+            # protected price/inventory intent.
+            _validate_internal_prompt_permissions(
+                prompt_for_plan,
+                permissions=internal_permissions,
+            )
+
+        if not customer_scoped:
+            product_rank_plan = product_rank_plan or parse_product_rank_plan(prompt_for_plan)
+            if product_rank_plan is not None:
+                return await _run_internal_product_ranking(
+                    prompt=prompt,
+                    interpreted_prompt=(
+                        prompt_for_plan if prompt_for_plan != prompt else None
+                    ),
+                    rank_plan=product_rank_plan,
+                    llm_interpretation=llm_interpretation,
+                    filemaker=filemaker,
+                    audit_log=audit_log,
+                    conversation_store=conversation_store,
+                    analytics_worker=analytics_worker,
+                    operator=operator,
+                    permissions=internal_permissions,
+                    started_at=started_at,
+                )
 
         preliminary_plan = build_product_natural_query_plan(
             prompt_for_plan,
@@ -319,6 +359,21 @@ async def run_natural_language_query(
             layout_fields=layout_fields,
             settings=settings,
         )
+        parsed_plan, live_date_fields = await _verify_date_query_plan(
+            prompt_for_plan,
+            parsed_plan,
+            filemaker=filemaker,
+            settings=settings,
+        )
+        if live_date_fields is not None:
+            # Query criteria must be based on the live Data API layout. RAG
+            # layouts may intentionally expose a wider set of searchable fields.
+            layout_fields = live_date_fields
+        if not customer_scoped:
+            _validate_internal_query_permissions(
+                parsed_plan,
+                permissions=internal_permissions,
+            )
         if customer_scoped:
             _force_exact_customer_identifier(parsed_plan, prompt_for_plan)
             _validate_customer_scope(
@@ -367,6 +422,7 @@ async def run_natural_language_query(
                 requiresClarification=True,
                 clarificationQuestion=clarification["question"],
                 clarificationOptions=clarification["options"],
+                llm=_llm_record(llm_interpretation) or None,
             )
         if customer_scoped:
             _apply_customer_scope(
@@ -432,6 +488,9 @@ async def run_natural_language_query(
                 )
                 rag_hits = [_chunk_to_hit(chunk) for chunk in hits]
 
+        if not customer_scoped and internal_permissions is not None:
+            _apply_internal_row_permissions(rows, permissions=internal_permissions)
+
         coverage_warnings = _coverage_warnings_for_rows(
             parsed_plan.domain,
             parsed_plan.layout,
@@ -467,6 +526,32 @@ async def run_natural_language_query(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"message": str(exc)},
         ) from exc
+    except ProductRankLimitExceeded as exc:
+        error_message = (
+            f"产品数量为 {exc.found_count}，超过销量排行的安全上限 {exc.maximum}。"
+            "为避免返回不完整排行，本次未生成结果。"
+        )
+        await _record_conversation_safe(
+            conversation_store,
+            operator=operator,
+            prompt=prompt,
+            interpreted_prompt=interpreted_prompt,
+            llm_interpretation=llm_interpretation,
+            parsed_plan=parsed_plan,
+            semantic_profile={},
+            source="filemaker",
+            found_count=0,
+            returned_count=0,
+            rag_hit_count=0,
+            duration_ms=_duration_ms(started_at),
+            status="error",
+            error_message=str(exc),
+            analytics_worker=analytics_worker,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"message": error_message},
+        ) from exc
     except FileMakerAPIError as exc:
         error_message = str(exc)
         await _record_conversation_safe(
@@ -491,9 +576,10 @@ async def run_natural_language_query(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
-                    "message": (
-                        f"FileMaker 日期查询字段“{field_name}”不可用。"
-                        "请把 NATURAL_QUERY_PRODUCT_CREATED_FIELDS 配置成产品资料布局里的真实新增/创建日期字段。"
+                    "message": _date_query_error_message(
+                        exc,
+                        field_name=field_name,
+                        layout=parsed_plan.layout,
                     ),
                     "payload": exc.payload,
                 },
@@ -575,6 +661,151 @@ async def run_natural_language_query(
         plan=plan,
         source=source,
         ragHits=rag_hits,
+        llm=_llm_record(llm_interpretation) or None,
+    )
+
+
+async def _run_internal_product_ranking(
+    *,
+    prompt: str,
+    interpreted_prompt: str | None,
+    rank_plan: ProductRankPlan,
+    llm_interpretation: LlmQueryInterpretation | None,
+    filemaker: FileMakerClient,
+    audit_log: AuditLogStore,
+    conversation_store: NaturalQueryConversationStore,
+    analytics_worker: NaturalQueryAnalyticsWorker,
+    operator: OperatorContext,
+    permissions: dict[str, bool] | None,
+    started_at: float,
+) -> NaturalLanguageQueryResponse:
+    _validate_internal_rank_permissions(permissions=permissions)
+    is_most = rank_plan.direction == "most"
+    description = (
+        f"累计销量最高的前 {rank_plan.limit} 个 SKU"
+        if is_most
+        else f"非零累计销量最低的前 {rank_plan.limit} 个 SKU"
+    )
+    parsed_plan = ProductNaturalQueryPlan(
+        domain="product",
+        intent="rank_products_by_sold_total",
+        layout=PRODUCT_RANK_LAYOUT,
+        description=description,
+        query=[],
+        sort=[{
+            "fieldName": "產品庫存::出庫數量總合",
+            "sortOrder": "descend" if is_most else "ascend",
+        }],
+        filters={
+            "rankDirection": rank_plan.direction,
+            "limit": str(rank_plan.limit),
+        },
+    )
+    try:
+        ranking = await fetch_product_rankings(filemaker, rank_plan)
+    except FileMakerAPIError as exc:
+        error_message = "FileMaker 销量排行暂时不可用，请稍后重试。"
+        await _record_conversation_safe(
+            conversation_store,
+            operator=operator,
+            prompt=prompt,
+            interpreted_prompt=interpreted_prompt,
+            llm_interpretation=llm_interpretation,
+            parsed_plan=parsed_plan,
+            semantic_profile={},
+            source="filemaker",
+            found_count=0,
+            returned_count=0,
+            rag_hit_count=0,
+            duration_ms=_duration_ms(started_at),
+            status="error",
+            error_message=str(exc),
+            analytics_worker=analytics_worker,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": error_message, "payload": exc.payload},
+        ) from exc
+
+    if ranking.truncated:
+        parsed_plan.warnings.append(
+            f"产品数量超过安全扫描上限，本次只扫描前 {ranking.scanned_count} 条记录。"
+        )
+    rows = [
+        BusinessProductRow(
+            recordId=item.record_id,
+            productSku=item.product_sku,
+            productName=item.product_name,
+            soldTotal=product_rank_public_number(item.sold_total),
+            raw={
+                "product_sku": item.product_sku,
+                "product_name": item.product_name,
+                "產品庫存::出庫數量總合": product_rank_public_number(item.sold_total),
+            },
+        )
+        for item in ranking.rows
+    ]
+    if rows:
+        order_label = "累计销量从高到低" if is_most else "非零累计销量从低到高"
+        answer = (
+            f"已按{order_label}列出 {len(rows)} 个 SKU；"
+            f"可参与排行的产品共 {ranking.eligible_count} 个。"
+        )
+    else:
+        answer = "没有找到可用于销量排行的产品记录。"
+
+    if audit_log is not None:
+        await audit_log.record(
+            operator=operator,
+            action_type="NATURAL_LANGUAGE_QUERY",
+            status="success",
+            target_layout=PRODUCT_RANK_LAYOUT,
+            product_sku=rows[0].product_sku if rows else None,
+            request_payload={
+                "prompt": prompt,
+                "interpretedPrompt": interpreted_prompt,
+                "plan": {
+                    "intent": parsed_plan.intent,
+                    "sort": parsed_plan.sort,
+                    "filters": parsed_plan.filters,
+                    "source": "filemaker",
+                    "llm": _llm_record(llm_interpretation) or None,
+                },
+            },
+            response_payload={
+                "foundCount": ranking.eligible_count,
+                "returnedCount": len(rows),
+                "scannedCount": ranking.scanned_count,
+            },
+        )
+    await _record_conversation_safe(
+        conversation_store,
+        operator=operator,
+        prompt=prompt,
+        interpreted_prompt=interpreted_prompt,
+        llm_interpretation=llm_interpretation,
+        parsed_plan=parsed_plan,
+        semantic_profile={},
+        source="filemaker",
+        warnings=parsed_plan.warnings,
+        answer=answer,
+        found_count=ranking.eligible_count,
+        returned_count=len(rows),
+        rag_hit_count=0,
+        duration_ms=_duration_ms(started_at),
+        status="success" if rows else "no_result",
+        analytics_worker=analytics_worker,
+    )
+    return NaturalLanguageQueryResponse(
+        answer=answer,
+        layout=PRODUCT_RANK_LAYOUT,
+        rows=rows,
+        foundCount=ranking.eligible_count,
+        returnedCount=len(rows),
+        plan=_response_plan(parsed_plan),
+        source="filemaker",
+        ragHits=[],
+        llm=_llm_record(llm_interpretation) or None,
     )
 
 
@@ -651,6 +882,209 @@ def _apply_customer_scope(
         parsed_plan.query = [{scope_field: scope_criteria}]
     if not getattr(parsed_plan, "sort", None):
         parsed_plan.sort = [{"fieldName": sort_field, "sortOrder": "ascend"}]
+
+
+def _raise_internal_query_permission_denied(*, permission: str, message: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"message": message, "permission": permission},
+    )
+
+
+def _validate_internal_prompt_permissions(
+    prompt: str,
+    *,
+    permissions: dict[str, bool] | None,
+) -> None:
+    if permissions is None:
+        return
+    if not permissions.get("canViewPrice", False) and _wants_price_detail(prompt):
+        _raise_internal_query_permission_denied(
+            permission="canViewPrice",
+            message="当前账号没有查看价格的权限。",
+        )
+    if not permissions.get("canViewInventory", False) and _wants_stock_detail(prompt):
+        _raise_internal_query_permission_denied(
+            permission="canViewInventory",
+            message="当前账号没有查看库存的权限。",
+        )
+
+
+def _validate_internal_query_permissions(
+    parsed_plan,
+    *,
+    permissions: dict[str, bool] | None,
+) -> None:
+    if permissions is None:
+        return
+
+    if parsed_plan.domain == "product" and not permissions.get("canViewProducts", False):
+        _raise_internal_query_permission_denied(
+            permission="canViewProducts",
+            message="当前账号没有查看产品资料的权限。",
+        )
+    if parsed_plan.domain == "part" and not permissions.get("canViewBom", False):
+        _raise_internal_query_permission_denied(
+            permission="canViewBom",
+            message="当前账号没有查看零件或 BOM 资料的权限。",
+        )
+    if (
+        not permissions.get("canViewInventory", False)
+        and (
+            str(parsed_plan.intent or "").casefold() == "inventory"
+            or _wants_stock_detail(str(parsed_plan.description or ""))
+        )
+    ):
+        _raise_internal_query_permission_denied(
+            permission="canViewInventory",
+            message="当前账号没有查看库存的权限。",
+        )
+
+
+def _validate_internal_rank_permissions(
+    *,
+    permissions: dict[str, bool] | None,
+) -> None:
+    if permissions is None:
+        return
+    if not permissions.get("canViewProducts", False):
+        _raise_internal_query_permission_denied(
+            permission="canViewProducts",
+            message="当前账号没有查看产品资料的权限。",
+        )
+    if not permissions.get("canViewOrders", False):
+        _raise_internal_query_permission_denied(
+            permission="canViewOrders",
+            message="当前账号没有查看订单销量排行的权限。",
+        )
+
+
+def _apply_internal_row_permissions(
+    rows: list[BusinessProductRow],
+    *,
+    permissions: dict[str, bool],
+) -> None:
+    block_inventory = not permissions.get("canViewInventory", False)
+    block_bom = not permissions.get("canViewBom", False)
+    block_orders = not permissions.get("canViewOrders", False)
+    if not (block_inventory or block_bom or block_orders):
+        return
+
+    predicates = []
+    if block_inventory:
+        predicates.append(_is_inventory_field)
+    if block_bom:
+        predicates.append(_is_bom_field)
+    if block_orders:
+        predicates.append(_is_order_field)
+
+    def blocked(field_name: object) -> bool:
+        return any(predicate(field_name) for predicate in predicates)
+
+    for row in rows:
+        if block_inventory:
+            row.stock = None
+            row.stock_usd = None
+            row.prepaid_stock_usd = None
+        if block_bom:
+            row.bom_count = None
+            row.bom_date = ""
+            row.vendor = ""
+        if block_orders:
+            row.order_qty = None
+            row.sold_total = None
+
+        row.raw = _filter_permission_fields(row.raw, blocked)
+        row.main_fields = _filter_permission_fields(row.main_fields, blocked)
+        row.related_field_groups = [
+            group.model_copy(
+                update={"fields": _filter_permission_fields(group.fields, blocked)}
+            )
+            for group in row.related_field_groups
+            if not blocked(group.name)
+        ]
+        row.related_field_groups = [
+            group for group in row.related_field_groups if group.fields
+        ]
+        row.portals = [
+            group.model_copy(
+                update={
+                    "rows": [
+                        _filter_permission_fields(portal_row, blocked)
+                        for portal_row in group.rows
+                    ]
+                }
+            )
+            for group in row.portals
+            if not blocked(group.name)
+        ]
+        row.portals = [
+            group
+            for group in row.portals
+            if any(portal_row for portal_row in group.rows)
+        ]
+
+
+def _filter_permission_fields(
+    value: Any,
+    blocked: Callable[[object], bool],
+) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _filter_permission_fields(item, blocked)
+            for key, item in value.items()
+            if not blocked(key)
+        }
+    if isinstance(value, list):
+        return [_filter_permission_fields(item, blocked) for item in value]
+    return value
+
+
+def _permission_field_key(value: object) -> tuple[str, str]:
+    lowered = str(value or "").strip().casefold()
+    collapsed = "".join(character for character in lowered if character.isalnum())
+    return lowered, collapsed
+
+
+def _is_inventory_field(value: object) -> bool:
+    lowered, collapsed = _permission_field_key(value)
+    return (
+        any(term in lowered for term in ("库存", "庫存", "存货", "存貨"))
+        or any(
+            term in collapsed
+            for term in (
+                "stock",
+                "inventory",
+                "onhand",
+                "availableqty",
+                "currentqty",
+            )
+        )
+    )
+
+
+def _is_bom_field(value: object) -> bool:
+    lowered, collapsed = _permission_field_key(value)
+    return (
+        "bom" in collapsed
+        or "物料清单" in lowered
+        or "物料清單" in lowered
+        or "廠商" in lowered
+        or "厂商" in lowered
+        or "vendor" in collapsed
+    )
+
+
+def _is_order_field(value: object) -> bool:
+    lowered, collapsed = _permission_field_key(value)
+    return (
+        "订单" in lowered
+        or "訂單" in lowered
+        or "下单" in lowered
+        or "下單" in lowered
+        or "orderqty" in collapsed
+        or "orderquantity" in collapsed
+    )
 
 
 def _force_exact_customer_identifier(parsed_plan, prompt: str) -> None:
@@ -897,6 +1331,95 @@ async def _layout_fields_for_query(
     return [field for field in fields if isinstance(field, dict)]
 
 
+async def _verify_date_query_plan(
+    prompt: str,
+    parsed_plan: ProductNaturalQueryPlan,
+    *,
+    filemaker: FileMakerClient,
+    settings: Settings,
+) -> tuple[ProductNaturalQueryPlan, list[dict[str, object]] | None]:
+    """Rebuild temporal criteria from the live query layout when available."""
+    if not parsed_plan.date_range:
+        return parsed_plan, None
+
+    try:
+        fields = await asyncio.wait_for(
+            filemaker.get_layout_fields(parsed_plan.layout),
+            timeout=max(1.0, settings.rag_index_layout_fields_timeout_seconds),
+        )
+    except (asyncio.TimeoutError, FileMakerAPIError):
+        # Preserve the existing RAG-metadata fallback when live metadata is
+        # temporarily unavailable. The actual find request still reports a
+        # precise FileMaker error if the cached field is stale.
+        return parsed_plan, None
+
+    live_fields = [field for field in fields if isinstance(field, dict)]
+    if not live_fields:
+        return parsed_plan, None
+    # Preserve the temporal reference resolved by the first pass. Rebuilding
+    # from live metadata must not move a "today"/"last N days" query if the
+    # clock crosses midnight between metadata reads (and keeps tests stable).
+    reference_now: datetime | None = None
+    try:
+        end_date = date.fromisoformat(str(parsed_plan.date_range.get("end") or ""))
+        reference_now = datetime.combine(
+            end_date,
+            datetime_time(hour=12),
+            tzinfo=ZoneInfo(settings.natural_query_timezone),
+        )
+    except (AttributeError, TypeError, ValueError, ZoneInfoNotFoundError):
+        reference_now = None
+    return (
+        build_product_natural_query_plan(
+            prompt,
+            layout_fields=live_fields,
+            settings=settings,
+            now=reference_now,
+        ),
+        live_fields,
+    )
+
+
+def _date_query_error_message(
+    exc: FileMakerAPIError,
+    *,
+    field_name: str,
+    layout: str,
+) -> str:
+    messages = _filemaker_error_messages(exc.payload)
+    normalized = " ".join(messages).casefold()
+    if "date value does not meet validation entry options" in normalized:
+        return (
+            "FileMaker 拒绝了日期查询值：日期格式不符合字段验证规则。"
+            "请检查 NATURAL_QUERY_FILEMAKER_DATE_FORMAT 和 "
+            "NATURAL_QUERY_FILEMAKER_TIMESTAMP_FORMAT。"
+        )
+    if any(
+        term in normalized
+        for term in ("field is missing", "field not found", "unknown field")
+    ):
+        return (
+            f"FileMaker 日期查询字段“{field_name}”在“{layout}”布局中不可用。"
+            "请确认 RAG 布局与实时查询布局的字段映射。"
+        )
+    if messages:
+        return f"FileMaker 日期查询失败：{messages[0]}"
+    return f"FileMaker 日期查询失败（布局“{layout}”，字段“{field_name}”）。"
+
+
+def _filemaker_error_messages(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    return [
+        str(item.get("message") or "").strip()
+        for item in messages
+        if isinstance(item, dict) and str(item.get("message") or "").strip()
+    ]
+
+
 async def _semantic_profile_for_query(
     layout: str,
     layout_fields: list[dict[str, object]],
@@ -938,7 +1461,7 @@ async def _interpret_prompt_with_llm(
     rag_store: RagIndexStore,
     settings: Settings,
 ) -> LlmQueryInterpretation | None:
-    interpreter = DeepSeekQueryInterpreter(settings)
+    interpreter = OpenAICompatibleQueryInterpreter(settings)
     if not interpreter.enabled:
         return None
 
@@ -956,8 +1479,8 @@ async def _interpret_prompt_with_llm(
 async def _layout_context_for_llm(rag_store: RagIndexStore) -> list[dict[str, object]]:
     context: list[dict[str, object]] = []
     layouts = (
-        ("@products", "@products"),
-        ("@零件", "Parts"),
+        (_PRODUCT_RAG_LAYOUT, "@products"),
+        (_PART_RAG_LAYOUT, "Parts"),
     )
     for index_layout, query_layout in layouts:
         profile = await rag_store.get_layout_profile(index_layout)
@@ -1476,7 +1999,11 @@ def _wants_stock_detail(text: str) -> bool:
         for term in (
             "库存",
             "庫存",
+            "现货",
+            "現貨",
             "stock",
+            "inventory",
+            "on hand",
             "stock_on_hand_qty",
             "current_stock",
             "还有多少",
@@ -1489,8 +2016,23 @@ def _wants_stock_detail(text: str) -> bool:
 
 def _wants_price_detail(text: str) -> bool:
     lower = text.lower()
+    collapsed = re.sub(r"[\s\W_]+", "", lower, flags=re.UNICODE)
+    indirect_terms = (
+        "jiage",
+        "chengben",
+        "baojia",
+        "每件卖多少",
+        "每件賣多少",
+        "人民币有关的数字",
+        "人民幣有關的數字",
+        "隐藏财务字段",
+        "隱藏財務字段",
+        "财务字段",
+        "財務字段",
+    )
     return (
-        any(term in lower for term in _PRICE_QUERY_TERMS_CJK)
+        any(term in collapsed for term in _PRICE_QUERY_TERMS_CJK)
+        or any(term in collapsed for term in indirect_terms)
         or any(
             re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", lower)
             for term in _PRICE_QUERY_TERMS_ENGLISH

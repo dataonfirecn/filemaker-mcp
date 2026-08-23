@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stock-check-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${STOCK_CHECK_POSTGRES_DB:-stock_check}
+      POSTGRES_USER: ${STOCK_CHECK_POSTGRES_USER:-stock_check}
+      POSTGRES_PASSWORD: ${STOCK_CHECK_POSTGRES_PASSWORD}
+    volumes:
+      - stock_check_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${STOCK_CHECK_BACKEND_IMAGE}
+    container_name: stock-check-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    # mail.stockcheck.net currently shares the web apex DNS record. Pin the
+    # original GreenGeeks mail endpoint while preserving the TLS hostname.
+    extra_hosts:
+      - "mail.stockcheck.net=${CUSTOMER_SMTP_HOST_IP:-23.106.55.197}"
+    environment:
+      APP_ENV: prod
+      DATABASE_PATH: /data/app.db
+      AUDIT_DATABASE_URL: postgresql://${STOCK_CHECK_POSTGRES_USER:-stock_check}:${STOCK_CHECK_POSTGRES_PASSWORD}@postgres:5432/${STOCK_CHECK_POSTGRES_DB:-stock_check}
+      FILEMAKER_READ_ONLY: "true"
+      NATURAL_QUERY_FILEMAKER_DATE_FORMAT: ${NATURAL_QUERY_FILEMAKER_DATE_FORMAT:-%m/%d/%Y}
+      NATURAL_QUERY_FILEMAKER_TIMESTAMP_FORMAT: ${NATURAL_QUERY_FILEMAKER_TIMESTAMP_FORMAT:-%m/%d/%Y %H:%M:%S}
+      NATURAL_QUERY_LLM_ENABLED: "false"
+      NATURAL_QUERY_ANALYTICS_LLM_ENABLED: "false"
+      NATURAL_QUERY_USE_RAG: "false"
+      RAG_INDEX_ENABLED: "false"
+      RAG_INDEX_REFRESH_ON_STARTUP: "false"
+      RAG_DATABASE_PATH: /data/rag_index.db
+      NIGHTLY_MAINTENANCE_ENABLED: ${NIGHTLY_MAINTENANCE_ENABLED:-true}
+      NIGHTLY_MAINTENANCE_TIMEZONE: ${NIGHTLY_MAINTENANCE_TIMEZONE:-Asia/Shanghai}
+      NIGHTLY_REPORTS_DIRECTORY: /data/nightly-reports
+      NIGHTLY_CUSTOMER_CHAT_REPORT_ENABLED: ${NIGHTLY_CUSTOMER_CHAT_REPORT_ENABLED:-true}
+      NIGHTLY_CUSTOMER_CHAT_REPORT_SCHEDULE_TIME: ${NIGHTLY_CUSTOMER_CHAT_REPORT_SCHEDULE_TIME:-00:20}
+      NIGHTLY_CUSTOMER_CHAT_REPORT_ISSUE_LIMIT: ${NIGHTLY_CUSTOMER_CHAT_REPORT_ISSUE_LIMIT:-50}
+      NIGHTLY_CUSTOMER_CHAT_REPORT_SLOW_MS: ${NIGHTLY_CUSTOMER_CHAT_REPORT_SLOW_MS:-10000}
+      NIGHTLY_QUERY_ANALYTICS_ENABLED: ${NIGHTLY_QUERY_ANALYTICS_ENABLED:-false}
+      NIGHTLY_SECURITY_RED_TEAM_ENABLED: ${NIGHTLY_SECURITY_RED_TEAM_ENABLED:-false}
+      NIGHTLY_REPORT_EMAIL_ENABLED: ${NIGHTLY_REPORT_EMAIL_ENABLED:-false}
+      NIGHTLY_REPORT_EMAIL_RECIPIENTS: ${NIGHTLY_REPORT_EMAIL_RECIPIENTS:-}
+      NIGHTLY_REPORT_EMAIL_PUBLIC_URL: ${NIGHTLY_REPORT_EMAIL_PUBLIC_URL:-}
+      WEBVIEWER_ALLOW_MOCK_CONTEXT: "false"
+      CUSTOMER_CHAT_ENABLED: "true"
+      CORS_ORIGINS: https://stockcheck.net,http://stockcheck.net
+      QR_BASE_URL: https://stockcheck.net/q
+    volumes:
+      - stock_check_backend_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).read()"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: ${STOCK_CHECK_FRONTEND_IMAGE}
+    container_name: stock-check-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8999:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  stock_check_postgres_data:
+    name: ${STOCK_CHECK_POSTGRES_VOLUME:-stock-check-postgres-data}
+  stock_check_backend_data:
+    name: ${STOCK_CHECK_BACKEND_VOLUME:-stock-check-backend-data}

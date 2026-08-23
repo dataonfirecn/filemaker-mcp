@@ -16,6 +16,7 @@ class WebViewerSessionRequest(BaseModel):
     operator: MockOperator | None = None
     product_sku: str = Field(default="", alias="productSku")
     order_id: str = Field(default="", alias="orderId")
+    line_id: str = Field(default="", alias="lineId")
     bom_calc_id: str = Field(default="", alias="bomCalcId")
     customer_id: str = Field(default="", alias="customerId")
     customer_name: str = Field(default="", alias="customerName")
@@ -32,5 +33,25 @@ class WebViewerSessionResponse(BaseModel):
     context: dict[str, Any]
     read_only: bool = Field(alias="readOnly")
     bom_write_enabled: bool = Field(default=False, alias="bomWriteEnabled")
+
+    model_config = {"populate_by_name": True}
+
+
+class WebViewerCurrentUser(BaseModel):
+    username: str
+    display_name: str = Field(alias="displayName")
+    filemaker_privilege_set: str = Field(alias="filemakerPrivilegeSet")
+
+    model_config = {"populate_by_name": True}
+
+
+class WebViewerCurrentSessionResponse(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    user: WebViewerCurrentUser
+    permissions: dict[str, bool]
+    part_permissions: dict[str, bool] = Field(
+        default_factory=dict,
+        alias="partPermissions",
+    )
 
     model_config = {"populate_by_name": True}

@@ -16,10 +16,13 @@ from app.services.customer_credential_store import CustomerCredentialStore
 from app.services.cos_storage import COSStorageService
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
+from app.services.llm_provider_manager import LlmProviderManager
 from app.services.natural_query_conversation_store import NaturalQueryConversationStore
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
+from app.services.nightly_report_store import NightlyReportStore
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
+from app.services.product_photo_upload_store import ProductPhotoUploadStore
 from app.services.part_permission_catalog import PART_PERMISSION_KEY_SET
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
@@ -29,6 +32,7 @@ from app.services.webviewer_session import (
     verify_session_token,
 )
 from app.services.webviewer_account_access import WebViewerAccountAccessStore
+from app.services.webviewer_remote_auth import is_webviewer_mobile_request
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -51,6 +55,10 @@ def get_callback_store(request: Request) -> CallbackStore:
     return request.app.state.callback_store
 
 
+def get_llm_provider_manager(request: Request) -> LlmProviderManager:
+    return request.app.state.llm_provider_manager
+
+
 def get_audit_log_store(request: Request) -> AuditLogStore:
     return request.app.state.audit_log_store
 
@@ -69,6 +77,10 @@ def get_natural_query_conversation_store(request: Request) -> NaturalQueryConver
 
 def get_natural_query_analytics_worker(request: Request) -> NaturalQueryAnalyticsWorker:
     return request.app.state.natural_query_analytics_worker
+
+
+def get_nightly_report_store(request: Request) -> NightlyReportStore:
+    return request.app.state.nightly_report_store
 
 
 def get_customer_login_rate_limiter(request: Request) -> CustomerLoginRateLimiter:
@@ -107,6 +119,10 @@ def get_part_creation_options_cache(request: Request) -> PartCreationOptionsCach
     return request.app.state.part_creation_options_cache
 
 
+def get_product_photo_upload_store(request: Request) -> ProductPhotoUploadStore:
+    return request.app.state.product_photo_upload_store
+
+
 def get_rag_index_worker(request: Request) -> RagIndexWorker | None:
     return getattr(request.app.state, "rag_index_worker", None)
 
@@ -137,7 +153,15 @@ async def get_webviewer_session_context(request: Request) -> dict:
     if not account["enabled"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "此 StarRC 账号或其 FileMaker 权限集已停用。"},
+            detail={"message": "此 DMS 账号或其 FileMaker 权限集已停用。"},
+        )
+    if account["mobileOnly"] and not is_webviewer_mobile_request(
+        client_channel=request.headers.get("X-Client-Channel", ""),
+        user_agent=request.headers.get("User-Agent", ""),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "此账号仅允许通过移动端访问。"},
         )
 
     access = dict(account["permissions"])
@@ -249,6 +273,8 @@ def _permission_for_request(request: Request) -> str | None:
             return "canMergeOrders"
         return "canViewOrders"
     if path.startswith("/api/mobile/v1/receipts"):
+        return "canViewOrders"
+    if path.startswith("/api/mobile/v1/products"):
         return "canViewOrders"
     if path.startswith("/api/natural-query/analytics"):
         return "canManageRag"

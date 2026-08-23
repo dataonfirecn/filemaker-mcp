@@ -40,6 +40,7 @@ class BusinessProductRow(BaseModel):
     prepaid_stock_usd: float | int | str | None = Field(default=None, alias="prepaidStockUsd")
     bom_count: float | int | str | None = Field(default=None, alias="bomCount")
     order_qty: float | int | str | None = Field(default=None, alias="orderQty")
+    sold_total: float | int | str | None = Field(default=None, alias="soldTotal")
     bom_date: str = Field(default="", alias="bomDate")
     vendor: str = ""
     client: str = ""

@@ -1,7 +1,9 @@
 from math import ceil
 from typing import Any
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.models.business_products import (
     BusinessProductDetailResponse,
@@ -17,7 +19,7 @@ from app.services.dependencies import (
     get_filemaker_client,
     get_operator_context,
 )
-from app.services.filemaker_client import FileMakerClient
+from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 from app.services.product_api import (
     PRODUCT_LAYOUT as PRODUCT_API_LAYOUT,
     PRODUCT_STOCK_FIELD,
@@ -26,7 +28,16 @@ from app.services.product_api import (
 
 router = APIRouter(prefix="/business-products", tags=["business-products"])
 
-PRODUCT_PAGE_SIZE = 50
+DEFAULT_PRODUCT_PAGE_SIZE = 50
+MAX_PRODUCT_PAGE_SIZE = 200
+MAX_PRODUCT_IMAGE_BYTES = 12 * 1024 * 1024
+PRODUCT_IMAGE_MEDIA_TYPES = {
+    "image/bmp",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 SEARCH_FIELDS = [
     "product_sku",
     "系統產品編號",
@@ -42,6 +53,12 @@ SEARCH_FIELDS = [
 async def list_business_products(
     q: str = Query(default="", max_length=80),
     page: int = Query(default=1, ge=1),
+    page_size: int = Query(
+        default=DEFAULT_PRODUCT_PAGE_SIZE,
+        alias="pageSize",
+        ge=1,
+        le=MAX_PRODUCT_PAGE_SIZE,
+    ),
     category: str = Query(default="", max_length=80),
     model: str = Query(default="", max_length=80),
     audit: str = Query(default="", max_length=80),
@@ -57,16 +74,16 @@ async def list_business_products(
         audit=audit.strip(),
         client=client_name.strip(),
     )
-    offset = ((page - 1) * PRODUCT_PAGE_SIZE) + 1
+    offset = ((page - 1) * page_size) + 1
     query = _build_query(normalized_query, filters)
     result = await filemaker.find_records(
         PRODUCT_API_LAYOUT,
         query=query,
-        limit=PRODUCT_PAGE_SIZE,
+        limit=page_size,
         offset=offset,
     )
     found_count = int(result["foundCount"] or 0)
-    total_pages = max(1, ceil(found_count / PRODUCT_PAGE_SIZE))
+    total_pages = max(1, ceil(found_count / page_size))
     rows = [_product_row(record) for record in result["data"]]
     await audit_log.record(
         operator=operator,
@@ -77,7 +94,7 @@ async def list_business_products(
         request_payload={
             "q": normalized_query,
             "page": page,
-            "pageSize": PRODUCT_PAGE_SIZE,
+            "pageSize": page_size,
             "filters": filters.model_dump(),
         },
         response_payload={
@@ -92,7 +109,7 @@ async def list_business_products(
         foundCount=found_count,
         returnedCount=result["returnedCount"],
         page=page,
-        pageSize=PRODUCT_PAGE_SIZE,
+        pageSize=page_size,
         totalPages=total_pages,
         query=normalized_query,
         filters=filters,
@@ -106,8 +123,13 @@ async def get_business_product(
     audit_log: AuditLogStore = Depends(get_audit_log_store),
     operator: OperatorContext = Depends(get_operator_context),
 ) -> BusinessProductDetailResponse:
-    data = await filemaker.get_record(PRODUCT_API_LAYOUT, record_id)
-    record = _first_record(data)
+    try:
+        record = await _resolve_product_detail_record(filemaker, record_id)
+    except FileMakerAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "FileMaker 产品详情读取失败，请稍后重试。"},
+        ) from exc
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -130,6 +152,131 @@ async def get_business_product(
         layout=PRODUCT_API_LAYOUT,
         product=product,
     )
+
+
+@router.get("/{record_id}/image")
+async def get_business_product_image(
+    record_id: str,
+    filemaker: FileMakerClient = Depends(get_filemaker_client),
+    _: OperatorContext = Depends(get_operator_context),
+) -> Response:
+    try:
+        record = await _resolve_product_detail_record(filemaker, record_id)
+    except FileMakerAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "FileMaker 产品图片读取失败，请稍后重试。"},
+        ) from exc
+    fields = record.get("fieldData", {}) if isinstance(record, dict) else {}
+    image_url = str(fields.get("檔案 1 | 容器") or "").strip()
+    if not image_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "产品没有可显示的主图。"},
+        )
+
+    content, content_type = await _download_product_image(filemaker, image_url)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+async def _resolve_product_detail_record(
+    filemaker: FileMakerClient,
+    identifier: str,
+) -> dict[str, Any] | None:
+    """Resolve either a Data API record id or an OData-backed product code.
+
+    Exact natural-language lookups can be served by OData. Those rows have a
+    stable product code but no FileMaker Data API record id, so the detail URL
+    carries the product code. Resolve it against the live product layout before
+    loading the complete field and portal payload.
+    """
+    normalized = identifier.strip()
+    if not normalized:
+        return None
+
+    if normalized.isdigit():
+        try:
+            record = _first_record(
+                await filemaker.get_record(PRODUCT_API_LAYOUT, normalized)
+            )
+            if record:
+                return record
+        except FileMakerAPIError:
+            # Numeric product codes are valid, and stale record ids should
+            # still get an exact product-code lookup before returning 404.
+            pass
+
+    result = await filemaker.find_records(
+        PRODUCT_API_LAYOUT,
+        query=[
+            {"product_sku": f"=={normalized}"},
+            {"系統產品編號": f"=={normalized}"},
+        ],
+        limit=2,
+    )
+    records = result.get("data") if isinstance(result, dict) else []
+    return (
+        records[0]
+        if isinstance(records, list) and records and isinstance(records[0], dict)
+        else None
+    )
+
+
+async def _download_product_image(
+    filemaker: FileMakerClient,
+    image_url: str,
+) -> tuple[bytes, str]:
+    source_host = urlparse(filemaker.settings.filemaker_host).hostname
+    target = urlparse(image_url)
+    if (
+        not source_host
+        or target.scheme != "https"
+        or target.hostname != source_host
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "产品图片地址无效。"},
+        )
+
+    token = await filemaker.get_token()
+    try:
+        async with httpx.AsyncClient(
+            timeout=filemaker.settings.filemaker_timeout_seconds,
+            verify=filemaker.settings.filemaker_ssl_verify,
+            follow_redirects=True,
+        ) as image_client:
+            response = await image_client.get(
+                image_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "产品图片暂时无法读取。"},
+        ) from exc
+
+    if not response.is_success:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "产品图片暂时无法读取。"},
+        )
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if (
+        content_type not in PRODUCT_IMAGE_MEDIA_TYPES
+        or len(response.content) > MAX_PRODUCT_IMAGE_BYTES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={"message": "产品图片格式或大小不受支持。"},
+        )
+    return response.content, content_type
 
 
 def _build_query(
@@ -200,6 +347,7 @@ def _product_row(record: dict[str, Any]) -> BusinessProductRow:
         prepaidStockUsd=fields.get("PrePaid_stock_USD"),
         bomCount=fields.get("BOM計數"),
         orderQty=fields.get("下單數量"),
+        soldTotal=fields.get("產品庫存::出庫數量總合"),
         bomDate=_text(fields.get("產品 BOM::日期")),
         vendor=_text(fields.get("產品 BOM::廠商")),
         client=_text(fields.get("Client")),

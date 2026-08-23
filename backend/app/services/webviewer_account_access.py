@@ -19,6 +19,7 @@ PERMISSION_KEYS = (
     "canManageAccounts",
     "canViewProducts",
     "canViewOrders",
+    "canAddCompletedReceipts",
     "canViewInventory",
     "canViewBom",
     "canUseNaturalQuery",
@@ -31,6 +32,7 @@ STANDARD_PERMISSIONS = {
     "canManageAccounts": False,
     "canViewProducts": True,
     "canViewOrders": True,
+    "canAddCompletedReceipts": False,
     "canViewInventory": True,
     "canViewBom": True,
     "canUseNaturalQuery": True,
@@ -269,6 +271,7 @@ class WebViewerAccountAccessStore:
                     filemaker_privilege_set TEXT NOT NULL DEFAULT '',
                     privilege_set_key TEXT NOT NULL DEFAULT '',
                     enabled_override BOOLEAN,
+                    mobile_only BOOLEAN NOT NULL DEFAULT FALSE,
                     permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
                     part_permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
                     origin TEXT NOT NULL DEFAULT 'filemaker',
@@ -288,6 +291,9 @@ class WebViewerAccountAccessStore:
                 ALTER TABLE webviewer_account_control
                     ADD COLUMN IF NOT EXISTS part_permission_overrides JSONB
                     NOT NULL DEFAULT '{}'::jsonb;
+                ALTER TABLE webviewer_account_control
+                    ADD COLUMN IF NOT EXISTS mobile_only BOOLEAN
+                    NOT NULL DEFAULT FALSE;
                 """
             )
             empty_part_policy_rows = await conn.fetch(
@@ -366,6 +372,7 @@ class WebViewerAccountAccessStore:
             existing = self._memory_accounts.get(username_key)
             if existing:
                 existing.setdefault("partPermissionOverrides", {})
+                existing.setdefault("mobileOnly", False)
                 existing.update(
                     username=normalized_username,
                     displayName=display_name.strip() or normalized_username,
@@ -383,6 +390,7 @@ class WebViewerAccountAccessStore:
                     "filemakerPrivilegeSet": normalized_privilege,
                     "privilegeSetKey": privilege_key,
                     "enabledOverride": None,
+                    "mobileOnly": False,
                     "permissionOverrides": {},
                     "partPermissionOverrides": {},
                     "origin": origin,
@@ -518,6 +526,7 @@ class WebViewerAccountAccessStore:
         inherit_part_permissions: bool = False,
         display_name: str | None = None,
         privilege_set: str | None = None,
+        mobile_only: bool | None = None,
     ) -> dict[str, Any] | None:
         key = username.strip().casefold()
         normalized_permissions = normalize_permissions(permissions)
@@ -538,6 +547,11 @@ class WebViewerAccountAccessStore:
             privilege_set.strip()
             if privilege_set is not None and privilege_set.strip()
             else current["filemakerPrivilegeSet"]
+        )
+        target_mobile_only = (
+            bool(mobile_only)
+            if mobile_only is not None
+            else bool(current.get("mobileOnly", False))
         )
         target_privilege_key = target_privilege_set.casefold()
         await self._ensure_privilege_set(target_privilege_set, updated_by=updated_by)
@@ -578,6 +592,7 @@ class WebViewerAccountAccessStore:
             row["filemakerPrivilegeSet"] = target_privilege_set
             row["privilegeSetKey"] = target_privilege_key
             row["enabledOverride"] = enabled_override
+            row["mobileOnly"] = target_mobile_only
             row["permissionOverrides"] = permission_overrides
             row["partPermissionOverrides"] = part_permission_overrides
             row["updatedAt"] = datetime.now(timezone.utc)
@@ -631,10 +646,11 @@ class WebViewerAccountAccessStore:
                     filemaker_privilege_set = $3,
                     privilege_set_key = $4,
                     enabled_override = $5,
-                    permission_overrides = $6::jsonb,
-                    part_permission_overrides = $7::jsonb,
+                    mobile_only = $6,
+                    permission_overrides = $7::jsonb,
+                    part_permission_overrides = $8::jsonb,
                     updated_at = now(),
-                    updated_by = $8
+                    updated_by = $9
                 WHERE username_key = $1
                 """,
                 key,
@@ -642,6 +658,7 @@ class WebViewerAccountAccessStore:
                 target_privilege_set,
                 target_privilege_key,
                 enabled_override,
+                target_mobile_only,
                 json.dumps(permission_overrides),
                 json.dumps(part_permission_overrides),
                 updated_by,
@@ -857,6 +874,7 @@ class WebViewerAccountAccessStore:
             "displayName": row["displayName"],
             "filemakerPrivilegeSet": row["filemakerPrivilegeSet"],
             "enabled": bool(privilege["enabled"]) and enabled_override is not False,
+            "mobileOnly": bool(row.get("mobileOnly", False)),
             "permissions": effective,
             "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,
@@ -892,6 +910,7 @@ class WebViewerAccountAccessStore:
             "displayName": str(row["display_name"]),
             "filemakerPrivilegeSet": str(row["filemaker_privilege_set"]),
             "enabled": bool(row["privilege_enabled"]) and enabled_override is not False,
+            "mobileOnly": bool(row["mobile_only"]),
             "permissions": effective,
             "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,

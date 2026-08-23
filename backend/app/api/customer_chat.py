@@ -14,7 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
-from app.api.customer_catalog import find_customer_orders_for_chat
+from app.api.customer_catalog import (
+    LEGACY_ORDER_DETAIL_LAYOUT,
+    find_customer_orders_for_chat,
+)
 from app.api.natural_language_query import run_natural_language_query
 from app.core.config import Settings
 from app.models.customer_chat import (
@@ -39,6 +42,8 @@ from app.models.customer_chat_admin import (
     CustomerAccountAdminUpdateRequest,
     CustomerCredentialsEmailLogItem,
     CustomerCredentialsEmailLogResponse,
+    CustomerPortalConfig,
+    CustomerPortalConfigUpdateRequest,
     CustomerChatHistoryItem,
     CustomerChatHistoryResponse,
     CustomerChatQuestionSummaryItem,
@@ -96,6 +101,15 @@ from app.services.product_api import (
     find_product_price,
     price_value,
 )
+from app.services.product_ranking import (
+    PRODUCT_RANK_CUSTOMER_PAGE_SIZE,
+    PRODUCT_RANK_LAYOUT,
+    ProductRankLimitExceeded,
+    ProductRankPlan,
+    fetch_product_rankings,
+    parse_product_rank_plan,
+    product_rank_public_number,
+)
 from app.services.part_assets import (
     asset_fields as part_asset_fields,
     find_primary_part_asset,
@@ -106,6 +120,7 @@ from app.services.rag_index import RagIndexStore
 router = APIRouter(prefix="/customer-chat", tags=["customer-chat"])
 logger = logging.getLogger(__name__)
 PART_LAYOUT = "Parts"
+CUSTOMER_PRODUCT_RANK_LAYOUT = PRODUCT_RANK_LAYOUT
 MAX_CUSTOMER_ATTACHMENT_BYTES = 12 * 1024 * 1024
 CUSTOMER_CREDENTIALS_EMAIL_COOLDOWN_SECONDS = 60
 CUSTOMER_ATTACHMENT_MEDIA_TYPES = {
@@ -208,6 +223,22 @@ _BASIC_LIST_PROMPTS = {
     "產品庫存清單",
     "所有产品库存",
     "所有產品庫存",
+    "现货",
+    "現貨",
+    "查看现货",
+    "查看現貨",
+    "查询现货",
+    "查詢現貨",
+    "现货清单",
+    "現貨清單",
+    "产品现货",
+    "產品現貨",
+    "产品现货清单",
+    "產品現貨清單",
+    "哪些产品有现货",
+    "哪些產品有現貨",
+    "有现货的产品",
+    "有現貨的產品",
     "products",
     "productlist",
     "viewproductlist",
@@ -221,6 +252,33 @@ _BASIC_LIST_PROMPTS = {
     "showinventory",
     "inventorylist",
     "productinventory",
+    "instock",
+    "availablestock",
+    "stockavailability",
+    "showinstockproducts",
+    "whichproductsareinstock",
+}
+_IN_STOCK_PRODUCT_PROMPTS = {
+    "现货",
+    "現貨",
+    "查看现货",
+    "查看現貨",
+    "查询现货",
+    "查詢現貨",
+    "现货清单",
+    "現貨清單",
+    "产品现货",
+    "產品現貨",
+    "产品现货清单",
+    "產品現貨清單",
+    "哪些产品有现货",
+    "哪些產品有現貨",
+    "有现货的产品",
+    "有現貨的產品",
+    "instock",
+    "availablestock",
+    "showinstockproducts",
+    "whichproductsareinstock",
 }
 _BASIC_PART_LIST_PROMPTS = {
     "零件",
@@ -299,6 +357,9 @@ class CustomerOrderQueryPlan:
             f"{self.start_date.month}/{self.start_date.day}/{self.start_date.year}..."
             f"{self.end_date.month}/{self.end_date.day}/{self.end_date.year}"
         )
+
+
+CustomerProductRankPlan = ProductRankPlan
 
 
 @router.post("/login", response_model=CustomerLoginResponse)
@@ -631,6 +692,80 @@ async def query_customer_products(
         )
         return response
 
+    product_rank_plan = _customer_product_rank_plan(body.prompt)
+    if product_rank_plan is not None:
+        try:
+            response = await _query_customer_product_ranking(
+                plan=product_rank_plan,
+                session=session,
+                filemaker=filemaker,
+            )
+        except HTTPException as exc:
+            await _record_customer_query_safe(
+                history_store,
+                session=session,
+                body=body,
+                started_at=started_at,
+                status_value="blocked",
+                http_status=exc.status_code,
+                answer=_http_exception_message(exc),
+                blocked_reason=_http_exception_code(exc),
+                domain="product",
+                intent="rank_products_by_sold_total",
+                result_type="product",
+                source_layout=CUSTOMER_PRODUCT_RANK_LAYOUT,
+                channel=channel,
+                is_test=is_test,
+            )
+            raise
+        except (FileMakerAPIError, ProductRankLimitExceeded) as exc:
+            mapped = HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "The sales ranking is temporarily unavailable. Please try again later.",
+                    "code": "query_service_unavailable",
+                },
+            )
+            await _record_customer_query_safe(
+                history_store,
+                session=session,
+                body=body,
+                started_at=started_at,
+                status_value="error",
+                http_status=mapped.status_code,
+                answer=_http_exception_message(mapped),
+                blocked_reason=_http_exception_code(mapped),
+                domain="product",
+                intent="rank_products_by_sold_total",
+                result_type="product",
+                source_layout=CUSTOMER_PRODUCT_RANK_LAYOUT,
+                channel=channel,
+                is_test=is_test,
+            )
+            raise mapped from exc
+        response.history_id = await _record_customer_query_safe(
+            history_store,
+            session=session,
+            body=body,
+            started_at=started_at,
+            status_value="success" if response.returned_count > 0 else "no_result",
+            http_status=200,
+            answer=response.answer,
+            domain="product",
+            intent="rank_products_by_sold_total",
+            result_type="product",
+            found_count=response.found_count,
+            returned_count=response.returned_count,
+            source_layout=CUSTOMER_PRODUCT_RANK_LAYOUT,
+            response_meta={
+                "direction": product_rank_plan.direction,
+                "requestedLimit": product_rank_plan.limit,
+            },
+            channel=channel,
+            is_test=is_test,
+        )
+        return response
+
     order_plan = _customer_order_query_plan(
         body.prompt,
         today=_customer_query_today(settings.natural_query_timezone if settings else "Asia/Shanghai"),
@@ -649,13 +784,13 @@ async def query_customer_products(
                 session=session,
                 body=body,
                 started_at=started_at,
-                status_value="error",
+                status_value="blocked" if exc.status_code == 403 else "error",
                 http_status=exc.status_code,
                 answer=_http_exception_message(exc),
                 blocked_reason=_http_exception_code(exc),
                 domain="order",
                 result_type="order",
-                source_layout="@mayako",
+                source_layout=LEGACY_ORDER_DETAIL_LAYOUT,
                 channel=channel,
                 is_test=is_test,
             )
@@ -672,7 +807,7 @@ async def query_customer_products(
             result_type="order",
             found_count=response.found_count,
             returned_count=response.returned_count,
-            source_layout="@mayako",
+            source_layout=LEGACY_ORDER_DETAIL_LAYOUT,
             channel=channel,
             is_test=is_test,
         )
@@ -951,6 +1086,43 @@ async def get_customer_accounts_admin(
     )
 
 
+@router.get("/admin/config", response_model=CustomerPortalConfig)
+async def get_customer_portal_config_admin(
+    session: CustomerSession = Depends(get_customer_session),
+    account_admin_store: CustomerAccountAdminStore = Depends(get_customer_account_admin_store),
+) -> CustomerPortalConfig:
+    _require_customer_admin(session)
+    return CustomerPortalConfig(**await account_admin_store.get_portal_config())
+
+
+@router.patch("/admin/config", response_model=CustomerPortalConfig)
+async def update_customer_portal_config_admin(
+    body: CustomerPortalConfigUpdateRequest,
+    session: CustomerSession = Depends(get_customer_session),
+    account_admin_store: CustomerAccountAdminStore = Depends(get_customer_account_admin_store),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> CustomerPortalConfig:
+    _require_customer_admin(session)
+    before = await account_admin_store.get_portal_config()
+    updated = await account_admin_store.update_portal_config(
+        client_name=body.client_name,
+        catalog_customer_id=body.catalog_customer_id,
+        web_customer_code=body.web_customer_code,
+        shipment_company_group_id=body.shipment_company_group_id,
+        updated_by=session.username,
+    )
+    await audit_log.record(
+        operator=session.operator,
+        action_type="CUSTOMER_PORTAL_CONFIG_UPDATE",
+        target_table="customer_portal_config",
+        target_record_id="default",
+        before_data=before,
+        after_data=updated,
+        status="success",
+    )
+    return CustomerPortalConfig(**updated)
+
+
 @router.get(
     "/admin/accounts/email-logs",
     response_model=CustomerCredentialsEmailLogResponse,
@@ -995,6 +1167,7 @@ async def create_customer_account_admin(
         username=body.username,
         display_name=body.display_name,
         email=body.email,
+        company_name=body.company_name or "",
         enabled=body.enabled,
         can_view_price=body.can_view_price is True,
         access_role=access_role,
@@ -1251,6 +1424,7 @@ async def update_customer_account_admin(
             enabled=next_enabled,
             display_name=body.display_name,
             email=body.email,
+            company_name=body.company_name,
             can_view_price=body.can_view_price,
             access_role=access_role,
             updated_by=session.username,
@@ -1381,6 +1555,7 @@ async def get_customer_chat_history(
         domain=domain.strip(),
         status=status_value.strip(),
         query=query.strip(),
+        client_name=session.client_name,
         include_tests=include_tests,
     )
     return CustomerChatHistoryResponse(
@@ -1405,6 +1580,7 @@ async def get_customer_chat_question_summary(
     questions = await history_store.question_summary(
         days=days,
         limit=limit,
+        client_name=session.client_name,
         include_tests=include_tests,
     )
     return CustomerChatQuestionSummaryResponse(
@@ -1481,6 +1657,53 @@ async def _query_customer_orders(
         totalPages=catalog.total_pages,
         hasPrevious=body.page > 1,
         hasNext=body.page < catalog.total_pages,
+        requiresClarification=False,
+        clarificationQuestion=None,
+        clarificationOptions=[],
+    )
+
+
+async def _query_customer_product_ranking(
+    *,
+    plan: CustomerProductRankPlan,
+    session: CustomerSession,
+    filemaker: FileMakerClient,
+) -> CustomerQueryResponse:
+    _require_customer_detail_access(session)
+    ranking = await fetch_product_rankings(
+        filemaker,
+        plan,
+        client_id=session.part_customer_id,
+        page_size=PRODUCT_RANK_CUSTOMER_PAGE_SIZE,
+    )
+    label = "highest" if plan.direction == "most" else "lowest non-zero"
+    rows = [
+        CustomerProductResult(
+            entityType="product",
+            productRef=item.record_id,
+            productSku=item.product_sku,
+            productName=_customer_english_text(item.product_name),
+            soldTotal=product_rank_public_number(item.sold_total),
+            hasImage=False,
+        )
+        for item in ranking.rows
+    ]
+    answer = (
+        f"Showing the {len(rows)} products with the {label} cumulative sold quantity."
+        if rows
+        else "No products with recorded sold quantity were found in your available catalog."
+    )
+    return CustomerQueryResponse(
+        resultType="product",
+        answer=answer,
+        rows=rows,
+        foundCount=len(rows),
+        returnedCount=len(rows),
+        page=1,
+        pageSize=plan.limit,
+        totalPages=1,
+        hasPrevious=False,
+        hasNext=False,
         requiresClarification=False,
         clarificationQuestion=None,
         clarificationOptions=[],
@@ -1712,6 +1935,7 @@ def _profile(session: CustomerSession) -> CustomerProfile:
     return CustomerProfile(
         username=session.username,
         displayName=session.display_name,
+        companyName=session.company_name,
         clientName=session.client_name,
         accessRole=session.access_role,
         canViewPrice=session.can_view_price,
@@ -1736,6 +1960,7 @@ def _customer_account_admin_item(
         username=str(state["username"]),
         displayName=str(state["displayName"]),
         email=str(state.get("email") or ""),
+        companyName=str(state.get("companyName") or state["clientName"]),
         clientName=str(state["clientName"]),
         productPrivilege=str(state["productPrivilege"]),
         partCustomerId=str(state["partCustomerId"]),
@@ -1770,6 +1995,7 @@ def _customer_account_audit_data(state: dict[str, object]) -> dict[str, object]:
         "username": str(state["username"]),
         "displayName": str(state["displayName"]),
         "email": str(state.get("email") or ""),
+        "companyName": str(state.get("companyName") or state["clientName"]),
         "clientName": str(state["clientName"]),
         "productPrivilege": str(state["productPrivilege"]),
         "partCustomerId": str(state["partCustomerId"]),
@@ -1947,7 +2173,10 @@ def _customer_identifier_clarification(
             f"What is the unit price for product {identifier}?",
             f"What is the unit price for part {identifier}?",
         ]
-    elif any(term in body.prompt.casefold() for term in ("库存", "庫存", "inventory", "stock")):
+    elif any(
+        term in body.prompt.casefold()
+        for term in ("库存", "庫存", "现货", "現貨", "inventory", "stock")
+    ):
         options = [
             f"Check product inventory for {identifier}",
             f"Check part inventory for {identifier}",
@@ -2066,6 +2295,10 @@ def _customer_order_search(prompt: str) -> str | None:
     """Compatibility wrapper used by focused prompt-normalization tests."""
     plan = _customer_order_query_plan(prompt)
     return None if plan is None else plan.search
+
+
+def _customer_product_rank_plan(prompt: str) -> CustomerProductRankPlan | None:
+    return parse_product_rank_plan(prompt)
 
 
 def _customer_order_query_plan(
@@ -2265,6 +2498,8 @@ def _normalize_customer_prompt(prompt: str) -> str:
     )
     if inventory_match:
         return f"查询 {inventory_match.group(1).upper()} 库存"
+    if compact in _IN_STOCK_PRODUCT_PROMPTS:
+        return "现货产品"
     if compact in _BASIC_PART_LIST_PROMPTS:
         return "零件"
     return "产品" if compact in _BASIC_LIST_PROMPTS else prompt.strip()

@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -8,6 +10,7 @@ class WebViewerPermissions(BaseModel):
     can_manage_accounts: bool = Field(alias="canManageAccounts")
     can_view_products: bool = Field(alias="canViewProducts")
     can_view_orders: bool = Field(alias="canViewOrders")
+    can_add_completed_receipts: bool = Field(alias="canAddCompletedReceipts")
     can_view_inventory: bool = Field(alias="canViewInventory")
     can_view_bom: bool = Field(alias="canViewBom")
     can_use_natural_query: bool = Field(alias="canUseNaturalQuery")
@@ -22,6 +25,7 @@ class WebViewerAccountAdminItem(BaseModel):
     display_name: str = Field(alias="displayName")
     filemaker_privilege_set: str = Field(alias="filemakerPrivilegeSet")
     enabled: bool
+    mobile_only: bool = Field(default=False, alias="mobileOnly")
     permissions: WebViewerPermissions
     part_permissions: dict[str, bool] = Field(
         default_factory=dict,
@@ -68,6 +72,7 @@ class WebViewerAccountRegisterRequest(BaseModel):
         max_length=160,
     )
     enabled: bool = True
+    mobile_only: bool = Field(default=False, alias="mobileOnly")
     permissions: WebViewerPermissions | None = None
     part_permissions: dict[str, bool] | None = Field(
         default=None,
@@ -96,6 +101,7 @@ class WebViewerAccountAdminUpdateRequest(BaseModel):
         max_length=160,
     )
     enabled: bool
+    mobile_only: bool | None = Field(default=None, alias="mobileOnly")
     permissions: WebViewerPermissions
     part_permissions: dict[str, bool] | None = Field(
         default=None,
@@ -125,3 +131,28 @@ class WebViewerSendAdminCredentialsRequest(BaseModel):
     recipient_email: str = Field(alias="recipientEmail", min_length=3, max_length=320)
 
     model_config = {"populate_by_name": True}
+
+
+class LlmProviderOption(BaseModel):
+    id: Literal["deepseek", "lm_studio"]
+    label: str
+    model: str
+    base_url: str = Field(alias="baseUrl")
+    configured: bool
+    active: bool
+
+    model_config = {"populate_by_name": True}
+
+
+class LlmProviderStatusResponse(BaseModel):
+    enabled: bool
+    active_provider: Literal["deepseek", "lm_studio"] = Field(alias="activeProvider")
+    updated_at: datetime | None = Field(alias="updatedAt")
+    updated_by: str = Field(alias="updatedBy")
+    providers: list[LlmProviderOption]
+
+    model_config = {"populate_by_name": True}
+
+
+class LlmProviderSwitchRequest(BaseModel):
+    provider: Literal["deepseek", "lm_studio"]

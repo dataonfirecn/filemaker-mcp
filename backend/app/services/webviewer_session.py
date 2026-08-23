@@ -21,6 +21,7 @@ def create_mock_context(
     operator_privilege: str = "mock",
     product_sku: str = "",
     order_id: str = "",
+    line_id: str = "",
     bom_calc_id: str = "",
     customer_id: str = "",
     customer_name: str = "",
@@ -36,6 +37,7 @@ def create_mock_context(
         },
         "productSku": product_sku,
         "orderId": order_id,
+        "lineId": line_id,
         "bomCalcId": bom_calc_id,
         "customerId": customer_id,
         "customerName": customer_name,
@@ -55,8 +57,18 @@ def verify_external_context(ctx: str, sig: str, settings: Settings) -> dict[str,
     return payload
 
 
-def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[str, dict[str, Any]]:
+def issue_session_token(
+    context: dict[str, Any],
+    settings: Settings,
+    *,
+    ttl_seconds: int | None = None,
+) -> tuple[str, dict[str, Any]]:
     now = int(time.time())
+    effective_ttl_seconds = (
+        ttl_seconds
+        if ttl_seconds is not None
+        else settings.webviewer_session_ttl_seconds
+    )
     session_payload = {
         "sessionId": str(uuid.uuid4()),
         "operator": context.get("operator") or {},
@@ -65,6 +77,7 @@ def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[st
         # "id". Keep the public WebViewer contract as "orderId", while
         # accepting signed contexts produced with the renamed field key.
         "orderId": context.get("orderId") or context.get("id") or "",
+        "lineId": context.get("lineId") or "",
         "bomCalcId": context.get("bomCalcId") or "",
         "customerId": context.get("customerId") or "",
         "customerName": context.get("customerName") or "",
@@ -72,13 +85,29 @@ def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[st
         "access": context.get("access") or {},
         "partPermissions": context.get("partPermissions") or {},
         "iat": now,
-        "exp": now + settings.webviewer_session_ttl_seconds,
+        "exp": now + effective_ttl_seconds,
     }
     encoded = _b64encode(json.dumps(session_payload, ensure_ascii=False).encode("utf-8"))
     return f"{encoded}.{_sign(encoded, settings.webviewer_context_secret)}", session_payload
 
 
 def verify_session_token(token: str, settings: Settings) -> dict[str, Any]:
+    payload = verify_session_token_signature(token, settings)
+    if int(payload.get("exp") or 0) < int(time.time()):
+        raise WebViewerSessionError("WebViewer session expired")
+    return payload
+
+
+def verify_session_token_signature(
+    token: str,
+    settings: Settings,
+) -> dict[str, Any]:
+    """Verify a session's authenticity without granting normal API access.
+
+    Diagnostic delivery uses this to accept a recently expired, but genuinely
+    server-issued, iPad token. The diagnostic endpoint remains the only caller
+    that may apply a bounded expiry grace period.
+    """
     try:
         encoded, sig = token.split(".", 1)
     except ValueError as exc:
@@ -91,8 +120,20 @@ def verify_session_token(token: str, settings: Settings) -> dict[str, Any]:
         payload = json.loads(_b64decode(encoded).decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as exc:
         raise WebViewerSessionError("Invalid WebViewer session payload") from exc
-    if int(payload.get("exp") or 0) < int(time.time()):
-        raise WebViewerSessionError("WebViewer session expired")
+    return payload
+
+
+def verify_session_token_for_diagnostics(
+    token: str,
+    settings: Settings,
+    *,
+    expired_grace_seconds: int,
+) -> dict[str, Any]:
+    payload = verify_session_token_signature(token, settings)
+    expires_at = int(payload.get("exp") or 0)
+    now = int(time.time())
+    if expires_at <= 0 or expires_at < now - max(expired_grace_seconds, 0):
+        raise WebViewerSessionError("WebViewer diagnostic session expired")
     return payload
 
 

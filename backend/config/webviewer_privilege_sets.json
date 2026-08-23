@@ -9,6 +9,7 @@
       "canManageAccounts": true,
       "canViewProducts": true,
       "canViewOrders": true,
+      "canAddCompletedReceipts": true,
       "canViewInventory": true,
       "canViewBom": true,
       "canUseNaturalQuery": true,

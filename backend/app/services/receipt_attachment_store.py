@@ -96,6 +96,56 @@ class ReceiptAttachmentStore:
             row = await cursor.fetchone()
         return _from_row(dict(row)) if row else None
 
+    async def list_for_history(
+        self,
+        *,
+        line_id: str,
+        shipment_id: str = "",
+        limit: int = 100,
+    ) -> list[ReceiptAttachmentRecord]:
+        active_statuses = {"UPLOADED", "BOUND"}
+        safe_limit = max(1, min(int(limit), 500))
+        if self._is_memory:
+            rows = [
+                row
+                for row in self._memory_rows.values()
+                if row.status in active_statuses
+                and (
+                    row.line_id == line_id
+                    or (
+                        shipment_id
+                        and row.line_id is None
+                        and row.shipment_id == shipment_id
+                    )
+                )
+            ]
+            return sorted(
+                rows,
+                key=lambda row: row.uploaded_at or row.created_at,
+                reverse=True,
+            )[:safe_limit]
+
+        clauses = ["line_id = ?"]
+        parameters: list[object] = [line_id]
+        if shipment_id:
+            clauses.append("(line_id IS NULL AND shipment_id = ?)")
+            parameters.append(shipment_id)
+        parameters.append(safe_limit)
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"""
+                SELECT * FROM receipt_attachments
+                WHERE status IN ('UPLOADED', 'BOUND')
+                  AND ({' OR '.join(clauses)})
+                ORDER BY COALESCE(uploaded_at, created_at) DESC
+                LIMIT ?
+                """,
+                tuple(parameters),
+            )
+            rows = await cursor.fetchall()
+        return [_from_row(dict(row)) for row in rows]
+
     async def count_active(self, draft_id: str, operator_account: str) -> int:
         active_statuses = {"PENDING", "UPLOADED", "BOUND"}
         if self._is_memory:
@@ -114,6 +164,41 @@ class ReceiptAttachmentStore:
                   AND status IN ('PENDING', 'UPLOADED', 'BOUND')
                 """,
                 (draft_id, operator_account),
+            )
+            row = await cursor.fetchone()
+        return int(row[0] if row else 0)
+
+    async def count_active_for_line(
+        self,
+        draft_id: str,
+        operator_account: str,
+        line_id: str | None,
+    ) -> int:
+        active_statuses = {"PENDING", "UPLOADED", "BOUND"}
+        if self._is_memory:
+            return sum(
+                1
+                for row in self._memory_rows.values()
+                if row.draft_id == draft_id
+                and row.operator_account == operator_account
+                and row.line_id == line_id
+                and row.status in active_statuses
+            )
+        line_predicate = "line_id IS NULL" if line_id is None else "line_id = ?"
+        parameters: tuple[str, ...] = (
+            (draft_id, operator_account)
+            if line_id is None
+            else (draft_id, operator_account, line_id)
+        )
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                f"""
+                SELECT COUNT(*) FROM receipt_attachments
+                WHERE draft_id = ? AND operator_account = ?
+                  AND {line_predicate}
+                  AND status IN ('PENDING', 'UPLOADED', 'BOUND')
+                """,
+                parameters,
             )
             row = await cursor.fetchone()
         return int(row[0] if row else 0)
@@ -147,6 +232,31 @@ class ReceiptAttachmentStore:
                 WHERE attachment_id = ?
                 """,
                 (updated.etag, updated.uploaded_at.isoformat(), attachment_id),
+            )
+            await db.commit()
+        return updated
+
+    async def mark_bound(self, attachment_id: str) -> ReceiptAttachmentRecord | None:
+        existing = await self.get(attachment_id)
+        if not existing:
+            return None
+        updated = ReceiptAttachmentRecord(
+            **{
+                **asdict(existing),
+                "status": "BOUND",
+            }
+        )
+        if self._is_memory:
+            self._memory_rows[attachment_id] = updated
+            return updated
+        async with aiosqlite.connect(self.database_path) as db:
+            await db.execute(
+                """
+                UPDATE receipt_attachments
+                SET status = 'BOUND'
+                WHERE attachment_id = ?
+                """,
+                (attachment_id,),
             )
             await db.commit()
         return updated

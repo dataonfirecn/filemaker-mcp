@@ -334,6 +334,116 @@ class NaturalQueryConversationStore:
             rows = await cursor.fetchall()
         return [self._row_to_top_question(row) for row in rows]
 
+    async def quality_summary(
+        self,
+        *,
+        start_at: str,
+        end_at: str,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Return read-only failure, warning and alias statistics for a time window."""
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT id, prompt, interpreted_prompt, layout, domain, intent,
+                       status, found_count, returned_count, rag_hit_count,
+                       duration_ms, warnings_json, error_message, created_at
+                FROM natural_query_conversations
+                WHERE created_at >= ? AND created_at < ?
+                ORDER BY created_at DESC
+                """,
+                (start_at, end_at),
+            )
+            conversations = await cursor.fetchall()
+            alias_cursor = await db.execute(
+                """
+                SELECT a.normalized_key,
+                       MIN(a.canonical_question) AS canonical_question,
+                       COUNT(*) AS count,
+                       COUNT(DISTINCT a.prompt) AS variants,
+                       GROUP_CONCAT(DISTINCT a.prompt) AS prompts
+                FROM natural_query_question_analytics a
+                WHERE a.is_meaningful = 1
+                  AND a.created_at >= ? AND a.created_at < ?
+                GROUP BY a.normalized_key
+                HAVING COUNT(DISTINCT a.prompt) > 1
+                ORDER BY variants DESC, count DESC
+                LIMIT ?
+                """,
+                (start_at, end_at, max(1, limit)),
+            )
+            alias_rows = await alias_cursor.fetchall()
+
+        statuses: dict[str, int] = {}
+        errors: dict[str, int] = {}
+        warnings: dict[str, int] = {}
+        failed_examples: list[dict[str, Any]] = []
+        zero_result_examples: list[dict[str, Any]] = []
+        total_duration = 0
+        for row in conversations:
+            status = str(row["status"] or "unknown")
+            statuses[status] = statuses.get(status, 0) + 1
+            total_duration += int(row["duration_ms"] or 0)
+            error = str(row["error_message"] or "").strip()
+            if error:
+                errors[error] = errors.get(error, 0) + 1
+            row_warnings = self._json_list(row["warnings_json"])
+            for warning in row_warnings:
+                warnings[warning] = warnings.get(warning, 0) + 1
+            if status in {"error", "failed", "clarification"} and len(failed_examples) < limit:
+                failed_examples.append(
+                    {
+                        "prompt": str(row["prompt"] or ""),
+                        "interpretedPrompt": str(row["interpreted_prompt"] or ""),
+                        "status": status,
+                        "error": error,
+                        "createdAt": str(row["created_at"] or ""),
+                    }
+                )
+            if (
+                status == "success"
+                and int(row["found_count"] or 0) == 0
+                and len(zero_result_examples) < limit
+            ):
+                zero_result_examples.append(
+                    {
+                        "prompt": str(row["prompt"] or ""),
+                        "interpretedPrompt": str(row["interpreted_prompt"] or ""),
+                        "domain": str(row["domain"] or ""),
+                        "layout": str(row["layout"] or ""),
+                    }
+                )
+
+        aliases = []
+        for row in alias_rows:
+            prompts = [
+                value.strip()
+                for value in str(row["prompts"] or "").split(",")
+                if value.strip()
+            ]
+            aliases.append(
+                {
+                    "canonicalQuestion": str(row["canonical_question"] or ""),
+                    "normalizedKey": str(row["normalized_key"] or ""),
+                    "count": int(row["count"] or 0),
+                    "variants": int(row["variants"] or 0),
+                    "prompts": prompts[:5],
+                }
+            )
+        return {
+            "total": len(conversations),
+            "averageDurationMs": round(total_duration / len(conversations))
+            if conversations
+            else 0,
+            "statuses": statuses,
+            "errors": sorted(errors.items(), key=lambda item: (-item[1], item[0]))[:limit],
+            "warnings": sorted(warnings.items(), key=lambda item: (-item[1], item[0]))[:limit],
+            "failedExamples": failed_examples,
+            "zeroResultExamples": zero_result_examples,
+            "aliases": aliases,
+        }
+
     async def _execute(self, statement: str, params: tuple[Any, ...]) -> None:
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute(statement, params)

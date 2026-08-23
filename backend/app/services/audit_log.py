@@ -26,6 +26,8 @@ class AuditLogStore:
         self._memory_next_id = 1
         self._memory_web_merge_requests: dict[str, dict[str, Any]] = {}
         self._web_merge_lock = asyncio.Lock()
+        self._memory_mobile_receipt_requests: dict[str, dict[str, Any]] = {}
+        self._mobile_receipt_lock = asyncio.Lock()
 
     async def init(self) -> None:
         if self.database_url.startswith("memory://"):
@@ -79,6 +81,23 @@ class AuditLogStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_web_merge_request_updated_at
                     ON web_merge_request (updated_at DESC);
+
+                CREATE TABLE IF NOT EXISTS mobile_receipt_request (
+                    request_id TEXT PRIMARY KEY,
+                    shipment_id TEXT NOT NULL,
+                    operator_account TEXT NOT NULL,
+                    operator_name TEXT NOT NULL DEFAULT '',
+                    request_payload JSONB NOT NULL,
+                    status TEXT NOT NULL,
+                    response_payload JSONB,
+                    error_message TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS idx_mobile_receipt_request_updated_at
+                    ON mobile_receipt_request (updated_at DESC);
+                ALTER TABLE mobile_receipt_request
+                    ADD COLUMN IF NOT EXISTS operator_name TEXT NOT NULL DEFAULT '';
                 """
             )
 
@@ -323,6 +342,422 @@ class AuditLogStore:
                 request_id,
                 error_message,
             )
+
+    async def claim_mobile_receipt_request(
+        self,
+        *,
+        request_id: str,
+        shipment_id: str,
+        operator_account: str,
+        operator_name: str,
+        request_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Atomically reserve one PDA receipt batch idempotency key."""
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_receipt_lock:
+                existing = self._memory_mobile_receipt_requests.get(request_id)
+                if not existing:
+                    self._memory_mobile_receipt_requests[request_id] = {
+                        "shipmentId": shipment_id,
+                        "operatorAccount": operator_account,
+                        "operatorName": operator_name,
+                        "requestPayload": request_payload,
+                        "status": "pending",
+                        "responsePayload": None,
+                        "errorMessage": None,
+                        "createdAt": datetime.now(timezone.utc),
+                        "updatedAt": datetime.now(timezone.utc),
+                    }
+                    return {"status": "claimed"}
+                return self._resolve_mobile_receipt_claim(
+                    existing=existing,
+                    shipment_id=shipment_id,
+                    operator_account=operator_account,
+                    request_payload=request_payload,
+                    retry_failed=True,
+                )
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+
+        request_payload_json = self._json_or_none(request_payload)
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                inserted = await conn.fetchrow(
+                    """
+                    INSERT INTO mobile_receipt_request (
+                        request_id, shipment_id, operator_account, operator_name,
+                        request_payload, status
+                    )
+                    VALUES ($1, $2, $3, $4, $5::jsonb, 'pending')
+                    ON CONFLICT (request_id) DO NOTHING
+                    RETURNING request_id
+                    """,
+                    request_id,
+                    shipment_id,
+                    operator_account,
+                    operator_name,
+                    request_payload_json,
+                )
+                if inserted:
+                    return {"status": "claimed"}
+
+                row = await conn.fetchrow(
+                    """
+                    SELECT shipment_id, operator_account, operator_name,
+                           request_payload, status, response_payload, error_message
+                    FROM mobile_receipt_request
+                    WHERE request_id = $1
+                    FOR UPDATE
+                    """,
+                    request_id,
+                )
+                existing = {
+                    "shipmentId": row["shipment_id"],
+                    "operatorAccount": row["operator_account"],
+                    "operatorName": row["operator_name"],
+                    "requestPayload": self._decoded_json(row["request_payload"]),
+                    "status": row["status"],
+                    "responsePayload": self._decoded_json(row["response_payload"]),
+                    "errorMessage": row["error_message"],
+                }
+                resolution = self._resolve_mobile_receipt_claim(
+                    existing=existing,
+                    shipment_id=shipment_id,
+                    operator_account=operator_account,
+                    request_payload=request_payload,
+                    retry_failed=False,
+                )
+                if resolution["status"] == "retry":
+                    await conn.execute(
+                        """
+                        UPDATE mobile_receipt_request
+                        SET status = 'pending', response_payload = NULL,
+                            error_message = NULL, updated_at = now()
+                        WHERE request_id = $1
+                        """,
+                        request_id,
+                    )
+                    return {"status": "claimed"}
+                return resolution
+
+    async def complete_mobile_receipt_request(
+        self,
+        *,
+        request_id: str,
+        response_payload: dict[str, Any],
+    ) -> None:
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_receipt_lock:
+                existing = self._memory_mobile_receipt_requests.get(request_id)
+                if not existing:
+                    raise RuntimeError(
+                        f"Mobile receipt request was not claimed: {request_id}"
+                    )
+                existing.update(
+                    status="success",
+                    responsePayload=response_payload,
+                    errorMessage=None,
+                    updatedAt=datetime.now(timezone.utc),
+                )
+                return
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE mobile_receipt_request
+                SET status = 'success', response_payload = $2::jsonb,
+                    error_message = NULL, updated_at = now()
+                WHERE request_id = $1 AND status = 'pending'
+                """,
+                request_id,
+                self._json_or_none(response_payload),
+            )
+        if result != "UPDATE 1":
+            raise RuntimeError(f"Mobile receipt request was not pending: {request_id}")
+
+    async def append_confirmed_mobile_receipt_attachment(
+        self,
+        *,
+        request_id: str,
+        operator_account: str,
+        line_id: str | None,
+        attachment_id: str,
+    ) -> bool:
+        """Bind a late optional photo to an already confirmed PDA receipt."""
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_receipt_lock:
+                existing = self._memory_mobile_receipt_requests.get(request_id)
+                if (
+                    not existing
+                    or existing["status"] != "success"
+                    or existing["operatorAccount"] != operator_account
+                ):
+                    return False
+                updated_payload = self._with_mobile_receipt_attachment(
+                    existing["requestPayload"],
+                    line_id=line_id,
+                    attachment_id=attachment_id,
+                )
+                if updated_payload is None:
+                    return False
+                existing["requestPayload"] = updated_payload
+                return True
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    SELECT request_payload
+                    FROM mobile_receipt_request
+                    WHERE request_id = $1 AND status = 'success'
+                      AND operator_account = $2
+                    FOR UPDATE
+                    """,
+                    request_id,
+                    operator_account,
+                )
+                if not row:
+                    return False
+                updated_payload = self._with_mobile_receipt_attachment(
+                    self._decoded_json(row["request_payload"]),
+                    line_id=line_id,
+                    attachment_id=attachment_id,
+                )
+                if updated_payload is None:
+                    return False
+                await conn.execute(
+                    """
+                    UPDATE mobile_receipt_request
+                    SET request_payload = $3::jsonb
+                    WHERE request_id = $1 AND operator_account = $2
+                    """,
+                    request_id,
+                    operator_account,
+                    self._json_or_none(updated_payload),
+                )
+                return True
+
+    async def fail_mobile_receipt_request(
+        self,
+        *,
+        request_id: str,
+        error_message: str,
+    ) -> None:
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_receipt_lock:
+                existing = self._memory_mobile_receipt_requests.get(request_id)
+                if existing and existing["status"] == "pending":
+                    existing.update(
+                        status="failed",
+                        errorMessage=error_message,
+                        updatedAt=datetime.now(timezone.utc),
+                    )
+                return
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE mobile_receipt_request
+                SET status = 'failed', error_message = $2, updated_at = now()
+                WHERE request_id = $1 AND status = 'pending'
+                """,
+                request_id,
+                error_message,
+            )
+
+    async def list_confirmed_mobile_receipts(
+        self,
+        *,
+        operator_account: str,
+        limit: int,
+        offset: int,
+        search: str = "",
+    ) -> tuple[list[dict[str, Any]], int]:
+        normalized_search = search.strip()
+        if self.database_url.startswith("memory://"):
+            rows = [
+                {"requestId": request_id, **row}
+                for request_id, row in self._memory_mobile_receipt_requests.items()
+                if row["status"] == "success"
+                and row["operatorAccount"] == operator_account
+            ]
+            if normalized_search:
+                folded_search = normalized_search.casefold()
+                rows = [
+                    row
+                    for row in rows
+                    if folded_search
+                    in "\n".join(
+                        (
+                            str(row.get("requestId") or ""),
+                            str(row.get("shipmentId") or ""),
+                            str(row.get("operatorName") or ""),
+                            str((row.get("requestPayload") or {}).get("documentNumber") or ""),
+                            str((row.get("requestPayload") or {}).get("piNumber") or ""),
+                            str((row.get("responsePayload") or {}).get("receiptId") or ""),
+                        )
+                    ).casefold()
+                ]
+            rows.sort(key=lambda row: row["updatedAt"], reverse=True)
+            return rows[offset : offset + limit], len(rows)
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            total = await conn.fetchval(
+                """
+                SELECT count(*)
+                FROM mobile_receipt_request
+                WHERE status = 'success' AND operator_account = $1
+                  AND (
+                      $2 = ''
+                      OR request_id ILIKE '%' || $2 || '%'
+                      OR shipment_id ILIKE '%' || $2 || '%'
+                      OR operator_name ILIKE '%' || $2 || '%'
+                      OR COALESCE(request_payload->>'documentNumber', '')
+                         ILIKE '%' || $2 || '%'
+                      OR COALESCE(request_payload->>'piNumber', '')
+                         ILIKE '%' || $2 || '%'
+                      OR COALESCE(response_payload->>'receiptId', '')
+                         ILIKE '%' || $2 || '%'
+                  )
+                """,
+                operator_account,
+                normalized_search,
+            )
+            records = await conn.fetch(
+                """
+                SELECT request_id, shipment_id, operator_account, operator_name,
+                       request_payload, response_payload, created_at, updated_at
+                FROM mobile_receipt_request
+                WHERE status = 'success' AND operator_account = $1
+                  AND (
+                      $2 = ''
+                      OR request_id ILIKE '%' || $2 || '%'
+                      OR shipment_id ILIKE '%' || $2 || '%'
+                      OR operator_name ILIKE '%' || $2 || '%'
+                      OR COALESCE(request_payload->>'documentNumber', '')
+                         ILIKE '%' || $2 || '%'
+                      OR COALESCE(request_payload->>'piNumber', '')
+                         ILIKE '%' || $2 || '%'
+                      OR COALESCE(response_payload->>'receiptId', '')
+                         ILIKE '%' || $2 || '%'
+                  )
+                ORDER BY updated_at DESC
+                LIMIT $3 OFFSET $4
+                """,
+                operator_account,
+                normalized_search,
+                limit,
+                offset,
+            )
+        return [self._mobile_receipt_record(row) for row in records], int(total or 0)
+
+    async def get_confirmed_mobile_receipt(
+        self,
+        *,
+        request_id: str,
+        operator_account: str,
+    ) -> dict[str, Any] | None:
+        if self.database_url.startswith("memory://"):
+            row = self._memory_mobile_receipt_requests.get(request_id)
+            if (
+                not row
+                or row["status"] != "success"
+                or row["operatorAccount"] != operator_account
+            ):
+                return None
+            return {"requestId": request_id, **row}
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT request_id, shipment_id, operator_account, operator_name,
+                       request_payload, response_payload, created_at, updated_at
+                FROM mobile_receipt_request
+                WHERE request_id = $1 AND status = 'success'
+                  AND operator_account = $2
+                """,
+                request_id,
+                operator_account,
+            )
+        return self._mobile_receipt_record(row) if row else None
+
+    def _mobile_receipt_record(self, row: Any) -> dict[str, Any]:
+        return {
+            "requestId": row["request_id"],
+            "shipmentId": row["shipment_id"],
+            "operatorAccount": row["operator_account"],
+            "operatorName": row["operator_name"],
+            "requestPayload": self._decoded_json(row["request_payload"]),
+            "responsePayload": self._decoded_json(row["response_payload"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def _resolve_mobile_receipt_claim(
+        self,
+        *,
+        existing: dict[str, Any],
+        shipment_id: str,
+        operator_account: str,
+        request_payload: dict[str, Any],
+        retry_failed: bool,
+    ) -> dict[str, Any]:
+        if (
+            existing["shipmentId"] != shipment_id
+            or existing["operatorAccount"] != operator_account
+            or existing["requestPayload"] != request_payload
+        ):
+            return {"status": "conflict"}
+        if existing["status"] == "success":
+            return {"status": "duplicate", "result": existing["responsePayload"]}
+        if existing["status"] == "pending":
+            return {"status": "in_progress"}
+        if retry_failed:
+            existing.update(status="pending", responsePayload=None, errorMessage=None)
+            return {"status": "claimed"}
+        return {"status": "retry"}
+
+    @staticmethod
+    def _with_mobile_receipt_attachment(
+        request_payload: dict[str, Any],
+        *,
+        line_id: str | None,
+        attachment_id: str,
+    ) -> dict[str, Any] | None:
+        payload = dict(request_payload or {})
+        if line_id is None:
+            attachment_ids = list(payload.get("shipmentAttachmentIds") or [])
+            if attachment_id not in attachment_ids:
+                if len(attachment_ids) >= 1:
+                    return None
+                attachment_ids.append(attachment_id)
+            payload["shipmentAttachmentIds"] = attachment_ids
+            return payload
+
+        updated_lines: list[dict[str, Any]] = []
+        found_line = False
+        for value in payload.get("lines") or []:
+            if not isinstance(value, dict):
+                continue
+            line = dict(value)
+            if str(line.get("lineId") or "") == line_id:
+                found_line = True
+                attachment_ids = list(line.get("attachmentIds") or [])
+                if attachment_id not in attachment_ids:
+                    if len(attachment_ids) >= 6:
+                        return None
+                    attachment_ids.append(attachment_id)
+                line["attachmentIds"] = attachment_ids
+            updated_lines.append(line)
+        if not found_line:
+            return None
+        payload["lines"] = updated_lines
+        return payload
 
     def _resolve_web_merge_claim(
         self,

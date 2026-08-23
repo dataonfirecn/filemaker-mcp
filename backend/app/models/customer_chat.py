@@ -11,6 +11,7 @@ class CustomerLoginRequest(BaseModel):
 class CustomerProfile(BaseModel):
     username: str
     display_name: str = Field(alias="displayName")
+    company_name: str = Field(alias="companyName")
     client_name: str = Field(alias="clientName")
     access_role: Literal["admin", "manager", "team", "agent"] = Field(alias="accessRole")
     can_view_price: bool = Field(default=False, alias="canViewPrice")
@@ -66,6 +67,7 @@ class CustomerProductResult(BaseModel):
     scale: str = ""
     category: str = ""
     stock: float | int | str | None = None
+    sold_total: float | int | str | None = Field(default=None, alias="soldTotal")
     has_image: bool = Field(default=False, alias="hasImage")
     price: float | int | str | None = None
 

@@ -6,9 +6,12 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
 from app.core.config import Settings
+from app.services.llm_query_interpreter import (
+    LlmQueryInterpreterError,
+    openai_compatible_llm_configured,
+    request_llm_chat_content,
+)
 from app.services.natural_query_conversation_store import (
     NaturalQueryConversationStore,
     NaturalQueryQuestionCandidate,
@@ -78,56 +81,25 @@ async def analyze_question(candidate: NaturalQueryQuestionCandidate, *, settings
     if not _llm_enabled(settings):
         return heuristic
 
-    payload = {
-        "model": settings.llm_model,
-        "messages": [
-            {"role": "system", "content": _system_prompt()},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "prompt": candidate.prompt,
-                        "interpretedPrompt": candidate.interpreted_prompt,
-                        "domain": candidate.domain,
-                        "intent": candidate.intent,
-                        "layout": candidate.layout,
-                        "status": candidate.status,
-                    },
-                    ensure_ascii=False,
-                ),
-            },
-        ],
-        "response_format": {"type": "json_object"},
-        "thinking": {"type": "disabled"},
-        "temperature": 0,
-        "max_tokens": 260,
-        "stream": False,
-    }
     try:
-        async with httpx.AsyncClient(
-            timeout=settings.llm_timeout_seconds,
-            verify=settings.llm_ssl_verify,
-        ) as client:
-            response = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.llm_api_key}",
-                    "Content-Type": "application/json",
+        content = await request_llm_chat_content(
+            settings,
+            system_prompt=_system_prompt(),
+            user_content=json.dumps(
+                {
+                    "prompt": candidate.prompt,
+                    "interpretedPrompt": candidate.interpreted_prompt,
+                    "domain": candidate.domain,
+                    "intent": candidate.intent,
+                    "layout": candidate.layout,
+                    "status": candidate.status,
                 },
-                json=payload,
-            )
-    except httpx.RequestError:
+                ensure_ascii=False,
+            ),
+            max_tokens=260,
+        )
+    except LlmQueryInterpreterError:
         logger.exception("Unable to connect to LLM for natural query analytics")
-        return heuristic
-
-    if not response.is_success:
-        logger.warning("LLM natural query analytics returned HTTP %s", response.status_code)
-        return heuristic
-
-    try:
-        content = response.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError, ValueError):
-        logger.warning("LLM natural query analytics response did not include message content")
         return heuristic
 
     parsed = _parse_llm_analysis(content, fallback=heuristic, settings=settings)
@@ -163,8 +135,7 @@ def _llm_enabled(settings: Settings) -> bool:
     return (
         settings.natural_query_analytics_llm_enabled
         and settings.natural_query_llm_enabled
-        and settings.llm_provider.lower() == "deepseek"
-        and bool(settings.llm_api_key)
+        and openai_compatible_llm_configured(settings)
     )
 
 

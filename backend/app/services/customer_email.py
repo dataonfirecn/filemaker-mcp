@@ -24,10 +24,10 @@ def send_customer_credentials_email(
         raise CustomerEmailError("SMTP is not configured.")
 
     message = EmailMessage()
-    message["Subject"] = "Your MayakoFM customer portal login"
+    message["Subject"] = "Your Stock Check login"
     message["From"] = formataddr(
         (
-            settings.customer_smtp_from_name.strip() or "MayakoFM Customer Portal",
+            settings.customer_smtp_from_name.strip() or "Stock Check",
             settings.customer_smtp_from_email.strip(),
         )
     )
@@ -39,7 +39,7 @@ def send_customer_credentials_email(
             [
                 f"Hello {greeting},",
                 "",
-                "Your MayakoFM customer portal account is ready.",
+                "Your Stock Check account is ready.",
                 "",
                 f"Portal: {portal_url}",
                 f"Username: {username}",
@@ -47,12 +47,12 @@ def send_customer_credentials_email(
                 "",
                 "Please sign in and change your password after your first login.",
                 "",
-                "MayakoFM Customer Portal",
+                "Stock Check",
             ]
         )
     )
 
-    _deliver(settings, message)
+    deliver_email_message(settings, message)
 
 
 def send_admin_credentials_email(
@@ -62,7 +62,7 @@ def send_admin_credentials_email(
     username: str,
     password: str,
 ) -> None:
-    """Deliver the StarRC admin backend (FileMaker Data API) login to a recipient.
+    """Deliver the DMS admin backend (FileMaker Data API) login to a recipient.
 
     The admin backend does not store passwords locally; the credentials come from
     the deployed FileMaker account (``FILEMAKER_USERNAME`` / ``FILEMAKER_PASSWORD``).
@@ -75,10 +75,10 @@ def send_admin_credentials_email(
         raise CustomerEmailError("Admin credentials are not configured.")
 
     message = EmailMessage()
-    message["Subject"] = "StarRC admin backend login"
+    message["Subject"] = "DMS admin backend login"
     message["From"] = formataddr(
         (
-            settings.customer_smtp_from_name.strip() or "StarRC Admin",
+            settings.customer_smtp_from_name.strip() or "DMS Admin",
             settings.customer_smtp_from_email.strip(),
         )
     )
@@ -95,7 +95,7 @@ def send_admin_credentials_email(
             [
                 "Hello,",
                 "",
-                "Here are the StarRC admin backend (FileMaker Data API) credentials:",
+                "Here are the DMS admin backend (FileMaker Data API) credentials:",
                 "",
                 f"Backend: {backend_url}",
                 f"Username: {username.strip()}",
@@ -105,15 +105,15 @@ def send_admin_credentials_email(
                 "These credentials are provisioned by the FileMaker server; "
                 "contact an administrator if you need them rotated.",
                 "",
-                "StarRC Admin",
+                "DMS Admin",
             ]
         )
     )
 
-    _deliver(settings, message)
+    deliver_email_message(settings, message)
 
 
-def _deliver(settings: Settings, message: EmailMessage) -> None:
+def deliver_email_message(settings: Settings, message: EmailMessage) -> None:
     smtp_class = smtplib.SMTP_SSL if settings.customer_smtp_ssl else smtplib.SMTP
     try:
         with smtp_class(

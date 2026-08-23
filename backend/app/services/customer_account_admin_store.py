@@ -7,10 +7,10 @@ from typing import Any
 import asyncpg
 
 from app.services.customer_access import (
-    MAYAKO_CLIENT_NAME,
-    MAYAKO_PART_CUSTOMER_ID,
-    MAYAKO_PRODUCT_PRIVILEGE,
-    MAYAKO_SHIPMENT_COMPANY_ID,
+    DEFAULT_CUSTOMER_CLIENT_NAME,
+    DEFAULT_CUSTOMER_PART_CUSTOMER_ID,
+    DEFAULT_CUSTOMER_PRODUCT_PRIVILEGE,
+    DEFAULT_CUSTOMER_SHIPMENT_COMPANY_ID,
     customer_access_permissions,
     normalize_customer_access_role,
 )
@@ -25,11 +25,15 @@ class CustomerAccountAdminStore:
         self._memory: dict[str, dict[str, Any]] = {}
         self._memory_events: list[dict[str, Any]] = []
         self._memory_email_events: list[dict[str, Any]] = []
+        self._memory_portal_config: dict[str, Any] | None = None
 
     async def init(self, accounts: dict[str, Any]) -> None:
         if self.database_url.startswith("memory://"):
+            if self._memory_portal_config is None:
+                self._memory_portal_config = _portal_config_seed(accounts)
             for key, account in accounts.items():
-                self._memory.setdefault(key, self._new_memory_state(account))
+                state = self._memory.setdefault(key, self._new_memory_state(account))
+                _apply_portal_config_to_account(state, self._memory_portal_config)
             return
 
         self._pool = await asyncpg.create_pool(self.database_url, min_size=1, max_size=5)
@@ -41,6 +45,7 @@ class CustomerAccountAdminStore:
                     username TEXT NOT NULL DEFAULT '',
                     display_name TEXT NOT NULL DEFAULT '',
                     email TEXT NOT NULL DEFAULT '',
+                    company_name TEXT NOT NULL DEFAULT '',
                     client_name TEXT NOT NULL DEFAULT '',
                     product_privilege TEXT NOT NULL DEFAULT '',
                     part_customer_id TEXT NOT NULL DEFAULT '',
@@ -64,6 +69,7 @@ class CustomerAccountAdminStore:
                     ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT '',
+                    ADD COLUMN IF NOT EXISTS company_name TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS product_privilege TEXT NOT NULL DEFAULT '',
                     ADD COLUMN IF NOT EXISTS part_customer_id TEXT NOT NULL DEFAULT '',
@@ -97,17 +103,43 @@ class CustomerAccountAdminStore:
                     ON customer_account_email_event (created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_customer_account_email_event_account
                     ON customer_account_email_event (username_key, created_at DESC);
+                CREATE TABLE IF NOT EXISTS customer_portal_config (
+                    config_key TEXT PRIMARY KEY,
+                    client_name TEXT NOT NULL,
+                    catalog_customer_id TEXT NOT NULL,
+                    web_customer_code TEXT NOT NULL,
+                    shipment_company_group_id TEXT NOT NULL DEFAULT '',
+                    version BIGINT NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_by TEXT NOT NULL DEFAULT 'environment'
+                );
                 """
+            )
+            portal_seed = _portal_config_seed(accounts)
+            await conn.execute(
+                """
+                INSERT INTO customer_portal_config (
+                    config_key, client_name, catalog_customer_id,
+                    web_customer_code, shipment_company_group_id,
+                    version, updated_by
+                )
+                VALUES ('default', $1, $2, $3, $4, 1, 'environment')
+                ON CONFLICT (config_key) DO NOTHING
+                """,
+                portal_seed["clientName"],
+                portal_seed["catalogCustomerId"],
+                portal_seed["webCustomerCode"],
+                portal_seed["shipmentCompanyGroupId"],
             )
             for key, account in accounts.items():
                 await conn.execute(
                     """
                     INSERT INTO customer_account_control (
-                        username_key, username, display_name, email, client_name,
+                        username_key, username, display_name, email, company_name, client_name,
                         product_privilege, part_customer_id, shipment_company_id,
                         enabled, can_view_price, is_admin, access_role, updated_by
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, 'environment')
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, $11, $12, 'environment')
                     ON CONFLICT (username_key) DO UPDATE
                     SET username = CASE
                             WHEN customer_account_control.username = '' THEN EXCLUDED.username
@@ -120,6 +152,10 @@ class CustomerAccountAdminStore:
                         email = CASE
                             WHEN customer_account_control.email = '' THEN EXCLUDED.email
                             ELSE customer_account_control.email
+                        END,
+                        company_name = CASE
+                            WHEN customer_account_control.company_name = '' THEN EXCLUDED.company_name
+                            ELSE customer_account_control.company_name
                         END,
                         client_name = CASE
                             WHEN customer_account_control.client_name = '' THEN EXCLUDED.client_name
@@ -150,6 +186,7 @@ class CustomerAccountAdminStore:
                     account.username,
                     account.display_name,
                     account.email,
+                    account.company_name,
                     account.client_name,
                     account.product_privilege,
                     account.part_customer_id,
@@ -170,20 +207,22 @@ class CustomerAccountAdminStore:
 
                 UPDATE customer_account_control
                 SET is_admin = access_role = 'admin';
+
+                UPDATE customer_account_control
+                SET company_name = COALESCE(NULLIF(client_name, ''), 'Mayako')
+                WHERE company_name = '';
                 """
             )
             await conn.execute(
                 """
-                UPDATE customer_account_control
-                SET client_name = $1,
-                    product_privilege = $2,
-                    part_customer_id = $3,
-                    shipment_company_id = $4
+                UPDATE customer_account_control AS account
+                SET client_name = config.client_name,
+                    product_privilege = config.web_customer_code,
+                    part_customer_id = config.catalog_customer_id,
+                    shipment_company_id = config.shipment_company_group_id
+                FROM customer_portal_config AS config
+                WHERE config.config_key = 'default'
                 """,
-                MAYAKO_CLIENT_NAME,
-                MAYAKO_PRODUCT_PRIVILEGE,
-                MAYAKO_PART_CUSTOMER_ID,
-                MAYAKO_SHIPMENT_COMPANY_ID,
             )
 
             # Preserve login information that was written before this table existed.
@@ -313,6 +352,117 @@ class CustomerAccountAdminStore:
             )
         return {str(row["username_key"]): _account_state_dict(row) for row in rows}
 
+    async def get_portal_config(self) -> dict[str, Any]:
+        if self.database_url.startswith("memory://"):
+            if self._memory_portal_config is None:
+                raise RuntimeError("Customer portal config is not initialized")
+            return dict(self._memory_portal_config)
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT *
+                FROM customer_portal_config
+                WHERE config_key = 'default'
+                """
+            )
+        if not row:
+            raise RuntimeError("Customer portal config is not initialized")
+        return _portal_config_dict(row)
+
+    async def update_portal_config(
+        self,
+        *,
+        client_name: str,
+        catalog_customer_id: str,
+        web_customer_code: str,
+        shipment_company_group_id: str,
+        updated_by: str,
+    ) -> dict[str, Any]:
+        values = {
+            "clientName": client_name.strip(),
+            "catalogCustomerId": catalog_customer_id.strip(),
+            "webCustomerCode": web_customer_code.strip(),
+            "shipmentCompanyGroupId": shipment_company_group_id.strip(),
+        }
+        if self.database_url.startswith("memory://"):
+            if self._memory_portal_config is None:
+                raise RuntimeError("Customer portal config is not initialized")
+            now = datetime.now(timezone.utc)
+            self._memory_portal_config.update(
+                **values,
+                version=int(self._memory_portal_config["version"]) + 1,
+                updatedAt=now,
+                updatedBy=updated_by,
+            )
+            for state in self._memory.values():
+                _apply_portal_config_to_account(state, self._memory_portal_config)
+                state["updatedAt"] = now
+                state["updatedBy"] = updated_by
+            return dict(self._memory_portal_config)
+
+        if not self._pool:
+            raise RuntimeError("Customer account admin store is not initialized")
+        async with self._pool.acquire() as conn, conn.transaction():
+            previous_client_name = await conn.fetchval(
+                """
+                SELECT client_name
+                FROM customer_portal_config
+                WHERE config_key = 'default'
+                FOR UPDATE
+                """
+            )
+            row = await conn.fetchrow(
+                """
+                UPDATE customer_portal_config
+                SET client_name = $1,
+                    catalog_customer_id = $2,
+                    web_customer_code = $3,
+                    shipment_company_group_id = $4,
+                    version = version + 1,
+                    updated_at = now(),
+                    updated_by = $5
+                WHERE config_key = 'default'
+                RETURNING *
+                """,
+                values["clientName"],
+                values["catalogCustomerId"],
+                values["webCustomerCode"],
+                values["shipmentCompanyGroupId"],
+                updated_by,
+            )
+            if not row:
+                raise RuntimeError("Customer portal config is not initialized")
+            await conn.execute(
+                """
+                UPDATE customer_account_control
+                SET client_name = $1,
+                    product_privilege = $2,
+                    part_customer_id = $3,
+                    shipment_company_id = $4,
+                    updated_at = now(),
+                    updated_by = $5
+                WHERE deleted = FALSE
+                """,
+                values["clientName"],
+                values["webCustomerCode"],
+                values["catalogCustomerId"],
+                values["shipmentCompanyGroupId"],
+                updated_by,
+            )
+            if previous_client_name and previous_client_name != values["clientName"]:
+                await conn.execute(
+                    """
+                    UPDATE customer_chat_history
+                    SET client_name = $1
+                    WHERE client_name = $2
+                    """,
+                    values["clientName"],
+                    previous_client_name,
+                )
+        return _portal_config_dict(row)
+
     async def create_account(
         self,
         *,
@@ -321,17 +471,24 @@ class CustomerAccountAdminStore:
         email: str,
         enabled: bool,
         updated_by: str,
+        company_name: str = "",
         can_view_price: bool = False,
         is_admin: bool = False,
         access_role: str = "",
     ) -> dict[str, Any] | None:
         key = username.strip().casefold()
         now = datetime.now(timezone.utc)
+        portal_config = await self.get_portal_config()
         role = normalize_customer_access_role(
             access_role,
             is_admin=is_admin,
         )
         permissions = customer_access_permissions(role)
+        normalized_company_name = (
+            company_name.strip()
+            or str(portal_config["clientName"]).strip()
+            or DEFAULT_CUSTOMER_CLIENT_NAME
+        )
         if self.database_url.startswith("memory://"):
             existing = self._memory.get(key)
             if existing and not existing["deleted"]:
@@ -341,10 +498,11 @@ class CustomerAccountAdminStore:
                     username=username.strip(),
                     displayName=display_name.strip(),
                     email=email.strip().casefold(),
-                    clientName=MAYAKO_CLIENT_NAME,
-                    productPrivilege=MAYAKO_PRODUCT_PRIVILEGE,
-                    partCustomerId=MAYAKO_PART_CUSTOMER_ID,
-                    shipmentCompanyId=MAYAKO_SHIPMENT_COMPANY_ID,
+                    companyName=normalized_company_name,
+                    clientName=portal_config["clientName"],
+                    productPrivilege=portal_config["webCustomerCode"],
+                    partCustomerId=portal_config["catalogCustomerId"],
+                    shipmentCompanyId=portal_config["shipmentCompanyGroupId"],
                     enabled=bool(enabled),
                     canViewPrice=bool(can_view_price),
                     isAdmin=permissions["isAdmin"],
@@ -360,10 +518,11 @@ class CustomerAccountAdminStore:
                 "username": username.strip(),
                 "displayName": display_name.strip(),
                 "email": email.strip().casefold(),
-                "clientName": MAYAKO_CLIENT_NAME,
-                "productPrivilege": MAYAKO_PRODUCT_PRIVILEGE,
-                "partCustomerId": MAYAKO_PART_CUSTOMER_ID,
-                "shipmentCompanyId": MAYAKO_SHIPMENT_COMPANY_ID,
+                "companyName": normalized_company_name,
+                "clientName": portal_config["clientName"],
+                "productPrivilege": portal_config["webCustomerCode"],
+                "partCustomerId": portal_config["catalogCustomerId"],
+                "shipmentCompanyId": portal_config["shipmentCompanyGroupId"],
                 "enabled": bool(enabled),
                 "canViewPrice": bool(can_view_price),
                 "isAdmin": permissions["isAdmin"],
@@ -388,16 +547,17 @@ class CustomerAccountAdminStore:
             row = await conn.fetchrow(
                 """
                 INSERT INTO customer_account_control (
-                    username_key, username, display_name, email, client_name,
+                    username_key, username, display_name, email, company_name, client_name,
                     product_privilege, part_customer_id, shipment_company_id,
                     enabled, can_view_price, is_admin, access_role,
                     deleted, updated_at, updated_by
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, now(), $13)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE, now(), $14)
                 ON CONFLICT (username_key) DO UPDATE
                 SET username = EXCLUDED.username,
                     display_name = EXCLUDED.display_name,
                     email = EXCLUDED.email,
+                    company_name = EXCLUDED.company_name,
                     client_name = EXCLUDED.client_name,
                     product_privilege = EXCLUDED.product_privilege,
                     part_customer_id = EXCLUDED.part_customer_id,
@@ -417,10 +577,11 @@ class CustomerAccountAdminStore:
                 username.strip(),
                 display_name.strip(),
                 email.strip().casefold(),
-                MAYAKO_CLIENT_NAME,
-                MAYAKO_PRODUCT_PRIVILEGE,
-                MAYAKO_PART_CUSTOMER_ID,
-                MAYAKO_SHIPMENT_COMPANY_ID,
+                normalized_company_name,
+                portal_config["clientName"],
+                portal_config["webCustomerCode"],
+                portal_config["catalogCustomerId"],
+                portal_config["shipmentCompanyGroupId"],
                 bool(enabled),
                 bool(can_view_price),
                 permissions["isAdmin"],
@@ -438,6 +599,7 @@ class CustomerAccountAdminStore:
         can_view_price: bool | None = None,
         display_name: str | None = None,
         email: str | None = None,
+        company_name: str | None = None,
         is_admin: bool | None = None,
         access_role: str | None = None,
     ) -> dict[str, Any] | None:
@@ -465,6 +627,7 @@ class CustomerAccountAdminStore:
             else bool(before["canViewPrice"])
         )
         permissions = customer_access_permissions(role)
+        portal_config = await self.get_portal_config()
         if self.database_url.startswith("memory://"):
             state = self._memory.get(key)
             if not state or state["deleted"]:
@@ -481,10 +644,9 @@ class CustomerAccountAdminStore:
                 state["displayName"] = display_name.strip()
             if email is not None:
                 state["email"] = email.strip().casefold()
-            state["clientName"] = MAYAKO_CLIENT_NAME
-            state["productPrivilege"] = MAYAKO_PRODUCT_PRIVILEGE
-            state["partCustomerId"] = MAYAKO_PART_CUSTOMER_ID
-            state["shipmentCompanyId"] = MAYAKO_SHIPMENT_COMPANY_ID
+            if company_name is not None:
+                state["companyName"] = company_name.strip()
+            _apply_portal_config_to_account(state, portal_config)
             return dict(state)
 
         if not self._pool:
@@ -497,6 +659,7 @@ class CustomerAccountAdminStore:
                     can_view_price = $3,
                     display_name = COALESCE($4, display_name),
                     email = COALESCE($5, email),
+                    company_name = COALESCE($13, company_name),
                     client_name = $6,
                     product_privilege = $7,
                     part_customer_id = $8,
@@ -513,13 +676,14 @@ class CustomerAccountAdminStore:
                 price_access,
                 display_name.strip() if display_name is not None else None,
                 email.strip().casefold() if email is not None else None,
-                MAYAKO_CLIENT_NAME,
-                MAYAKO_PRODUCT_PRIVILEGE,
-                MAYAKO_PART_CUSTOMER_ID,
-                MAYAKO_SHIPMENT_COMPANY_ID,
+                portal_config["clientName"],
+                portal_config["webCustomerCode"],
+                portal_config["catalogCustomerId"],
+                portal_config["shipmentCompanyGroupId"],
                 permissions["isAdmin"],
                 role,
                 updated_by,
+                company_name.strip() if company_name is not None else None,
             )
         return _account_state_dict(row) if row else None
 
@@ -809,10 +973,11 @@ class CustomerAccountAdminStore:
             "username": account.username,
             "displayName": account.display_name,
             "email": account.email,
-            "clientName": MAYAKO_CLIENT_NAME,
-            "productPrivilege": MAYAKO_PRODUCT_PRIVILEGE,
-            "partCustomerId": MAYAKO_PART_CUSTOMER_ID,
-            "shipmentCompanyId": MAYAKO_SHIPMENT_COMPANY_ID,
+            "companyName": account.company_name,
+            "clientName": account.client_name,
+            "productPrivilege": account.product_privilege,
+            "partCustomerId": account.part_customer_id,
+            "shipmentCompanyId": account.shipment_company_id,
             "enabled": True,
             "canViewPrice": bool(account.can_view_price),
             "isAdmin": bool(account.is_admin),
@@ -830,12 +995,58 @@ class CustomerAccountAdminStore:
         }
 
 
+def _portal_config_seed(accounts: dict[str, Any]) -> dict[str, Any]:
+    account = next(iter(accounts.values()), None)
+    now = datetime.now(timezone.utc)
+    return {
+        "clientName": str(
+            getattr(account, "client_name", "") or DEFAULT_CUSTOMER_CLIENT_NAME
+        ).strip(),
+        "catalogCustomerId": str(
+            getattr(account, "part_customer_id", "") or DEFAULT_CUSTOMER_PART_CUSTOMER_ID
+        ).strip(),
+        "webCustomerCode": str(
+            getattr(account, "product_privilege", "") or DEFAULT_CUSTOMER_PRODUCT_PRIVILEGE
+        ).strip(),
+        "shipmentCompanyGroupId": str(
+            getattr(account, "shipment_company_id", "")
+            or DEFAULT_CUSTOMER_SHIPMENT_COMPANY_ID
+        ).strip(),
+        "version": 1,
+        "updatedAt": now,
+        "updatedBy": "environment",
+    }
+
+
+def _apply_portal_config_to_account(
+    state: dict[str, Any],
+    config: dict[str, Any],
+) -> None:
+    state["clientName"] = config["clientName"]
+    state["productPrivilege"] = config["webCustomerCode"]
+    state["partCustomerId"] = config["catalogCustomerId"]
+    state["shipmentCompanyId"] = config["shipmentCompanyGroupId"]
+
+
+def _portal_config_dict(row: asyncpg.Record) -> dict[str, Any]:
+    return {
+        "clientName": str(row["client_name"]),
+        "catalogCustomerId": str(row["catalog_customer_id"]),
+        "webCustomerCode": str(row["web_customer_code"]),
+        "shipmentCompanyGroupId": str(row["shipment_company_group_id"]),
+        "version": int(row["version"]),
+        "updatedAt": row["updated_at"],
+        "updatedBy": str(row["updated_by"]),
+    }
+
+
 def _account_state_dict(row: asyncpg.Record) -> dict[str, Any]:
     return {
         "usernameKey": str(row["username_key"]),
         "username": str(row["username"]),
         "displayName": str(row["display_name"]),
         "email": str(row["email"]),
+        "companyName": str(row["company_name"] or row["client_name"] or DEFAULT_CUSTOMER_CLIENT_NAME),
         "clientName": str(row["client_name"]),
         "productPrivilege": str(row["product_privilege"]),
         "partCustomerId": str(row["part_customer_id"]),

@@ -5,10 +5,12 @@ from typing import Literal, cast
 
 CustomerAccessRole = Literal["admin", "manager", "team", "agent"]
 
-MAYAKO_CLIENT_NAME = "Mayako"
-MAYAKO_PRODUCT_PRIVILEGE = "0780"
-MAYAKO_PART_CUSTOMER_ID = "CU638"
-MAYAKO_SHIPMENT_COMPANY_ID = "0E254109-8698-4F5D-BE70-ABFD2B929CE9"
+# Generic fallback used only when no customer account exists to seed the
+# administrator-managed scope. Real deployments seed these values per customer.
+DEFAULT_CUSTOMER_CLIENT_NAME = "Customer"
+DEFAULT_CUSTOMER_PRODUCT_PRIVILEGE = ""
+DEFAULT_CUSTOMER_PART_CUSTOMER_ID = ""
+DEFAULT_CUSTOMER_SHIPMENT_COMPANY_ID = ""
 
 CUSTOMER_ACCESS_ROLES: tuple[CustomerAccessRole, ...] = (
     "admin",

@@ -35,7 +35,8 @@ PRODUCT_LAYOUT = "產品清單_業務"
 PRODUCT_BOM_LAYOUT = "@product_bom"
 PART_LAYOUT = "零件清單"
 KIT_ISSUE_LAYOUT = "零件包 發料分类"
-KIT_ISSUE_PAGE_SIZE = 100
+DEFAULT_KIT_ISSUE_PAGE_SIZE = 100
+MAX_KIT_ISSUE_PAGE_SIZE = 200
 KIT_ISSUE_ORDER_FIELD = "BOM計算單::訂單編號"
 
 KIT_ISSUE_FIELDS = [
@@ -164,6 +165,12 @@ async def get_part_info(
 @router.get("/kit-issue-records", response_model=KitIssueRecordsResponse)
 async def get_kit_issue_records(
     page: int = Query(default=1, ge=1),
+    page_size: int = Query(
+        default=DEFAULT_KIT_ISSUE_PAGE_SIZE,
+        alias="pageSize",
+        ge=1,
+        le=MAX_KIT_ISSUE_PAGE_SIZE,
+    ),
     order_no: str = Query(default="", alias="orderNo", max_length=80),
     client: FileMakerClient = Depends(get_filemaker_client),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
@@ -175,15 +182,15 @@ async def get_kit_issue_records(
         if normalized_order_no
         else None
     )
-    offset = ((page - 1) * KIT_ISSUE_PAGE_SIZE) + 1
+    offset = ((page - 1) * page_size) + 1
     result = await client.find_records(
         KIT_ISSUE_LAYOUT,
         query=query,
-        limit=KIT_ISSUE_PAGE_SIZE,
+        limit=page_size,
         offset=offset,
     )
     found_count = int(result["foundCount"] or 0)
-    total_pages = max(1, ceil(found_count / KIT_ISSUE_PAGE_SIZE))
+    total_pages = max(1, ceil(found_count / page_size))
     rows = [
         _kit_issue_row(record, line_no=offset + index)
         for index, record in enumerate(result["data"])
@@ -196,7 +203,7 @@ async def get_kit_issue_records(
         order_id=normalized_order_no or None,
         request_payload={
             "page": page,
-            "pageSize": KIT_ISSUE_PAGE_SIZE,
+            "pageSize": page_size,
             "query": query or {},
         },
         response_payload={
@@ -211,7 +218,7 @@ async def get_kit_issue_records(
         foundCount=found_count,
         returnedCount=result["returnedCount"],
         page=page,
-        pageSize=KIT_ISSUE_PAGE_SIZE,
+        pageSize=page_size,
         totalPages=total_pages,
         orderNo=normalized_order_no,
         fields=KIT_ISSUE_FIELDS,
