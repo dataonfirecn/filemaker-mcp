@@ -93,6 +93,36 @@ async def test_account_override_only_freezes_permissions_that_differ_from_set() 
 
 
 @pytest.mark.asyncio
+async def test_mobile_only_is_an_independent_account_policy() -> None:
+    store = WebViewerAccountAccessStore("memory://webviewer-mobile-only")
+    await store.init()
+    account = await store.observe_account(
+        username="pda",
+        display_name="PDA 测试员",
+        privilege_set="倉庫_組員",
+    )
+
+    assert account["mobileOnly"] is False
+
+    updated = await store.update_account(
+        "pda",
+        enabled=True,
+        mobile_only=True,
+        permissions=account["permissions"],
+        updated_by="admin",
+    )
+    refreshed = await store.observe_account(
+        username="pda",
+        display_name="PDA 测试员",
+        privilege_set="倉庫_組員",
+    )
+
+    assert updated is not None
+    assert updated["mobileOnly"] is True
+    assert refreshed["mobileOnly"] is True
+
+
+@pytest.mark.asyncio
 async def test_full_access_privilege_bootstraps_account_admin() -> None:
     store = WebViewerAccountAccessStore("memory://webviewer-full")
     await store.init()

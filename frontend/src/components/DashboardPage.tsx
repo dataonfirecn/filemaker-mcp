@@ -72,10 +72,10 @@ export default function DashboardPage({
       <section className="dashboard-navigation" aria-labelledby="dashboard-navigation-title">
         <div className="dashboard-section-head">
           <div>
-            <span>快速入口</span>
-            <h2 id="dashboard-navigation-title">业务导航</h2>
+            <span>浏览器入口</span>
+            <h2 id="dashboard-navigation-title">浏览器登录工作台</h2>
           </div>
-          <p>功能入口会根据当前 FileMaker 账号权限自动开放。</p>
+          <p>这些页面在浏览器登录后使用；FileMaker 内嵌页面和 API 已收录到管理员的应用与接口目录。</p>
         </div>
 
         <div className="dashboard-group-grid">

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.mobile_receipts import (
     complete_attachment_upload,
@@ -88,6 +89,8 @@ async def test_receipt_attachment_store_enforces_per_draft_count() -> None:
 
     assert await store.count_active("draft-1", "warehouse") == 1
     assert await store.count_active("draft-1", "someone-else") == 0
+    assert await store.count_active_for_line("draft-1", "warehouse", None) == 1
+    assert await store.count_active_for_line("draft-1", "warehouse", "LINE-1") == 0
     assert await store.get("att_123") == record
 
     uploaded = await store.mark_uploaded("att_123", etag="etag-123")
@@ -128,6 +131,67 @@ class FakeCOSStorage:
             content_type="image/jpeg",
             etag="etag-123",
         )
+
+
+@pytest.mark.asyncio
+async def test_presign_enforces_six_receipt_photos_per_sku_line() -> None:
+    settings = Settings(
+        cos_enabled=True,
+        cos_secret_id="test-id",
+        cos_secret_key="test-key",
+    )
+    store = ReceiptAttachmentStore("memory://line-limit")
+    await store.init()
+    operator = OperatorContext(
+        session_id="session-1",
+        account="warehouse",
+        name="仓库",
+        permissions={"canViewOrders": True},
+    )
+    for index in range(6):
+        await store.create(
+            ReceiptAttachmentRecord(
+                attachment_id=f"att_{index}",
+                draft_id="draft-1",
+                shipment_id="shipment-1",
+                pi_number="PI0019171",
+                line_id="LINE-1",
+                object_key=f"starrc/receipts/LINE-1/att_{index}.jpg",
+                original_filename=f"photo-{index}.jpg",
+                mime_type="image/jpeg",
+                file_size=128,
+                sha256="a" * 64,
+                source="camera",
+                operator_account="warehouse",
+                status="UPLOADED",
+                etag="etag",
+                created_at=datetime.now(timezone.utc),
+                uploaded_at=datetime.now(timezone.utc),
+            )
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_attachment_presign(
+            body=AttachmentPresignRequest(
+                shipmentId="shipment-1",
+                piNumber="PI0019171",
+                lineId="LINE-1",
+                filename="seventh.jpg",
+                mimeType="image/jpeg",
+                fileSize=128,
+                sha256="b" * 64,
+                source="camera",
+            ),
+            draft_id="draft-1",
+            operator=operator,
+            settings=settings,
+            storage=FakeCOSStorage(),
+            attachment_store=store,
+            audit_log=AuditLogStore("memory://audit"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["maximum"] == 6
 
 
 @pytest.mark.asyncio

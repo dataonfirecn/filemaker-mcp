@@ -1,3 +1,58 @@
+# Receipt History WebViewer — Design QA
+
+- Source visual truth: `/Users/gabriel/Documents/Vibe/StarRC-FileMaker/artifacts/receipt-history-webviewer-20260731.jpg`
+- Implementation screenshot: `/Users/gabriel/Documents/Vibe/StarRC-FileMaker/artifacts/receipt-history-ui-audit-20260731/02-after-1068-final.jpg`
+- Viewport/state: 1068 × 768 CSS px, full page 1068 × 928 px, real FileMaker line `A8E29F9C-ACCD-4598-855B-9FB440AFA44A`, first receipt expanded
+- Density normalization: the in-app browser capture exposed a 2× crop mismatch. A QA-only wrapper rendered the 1068 × 928 app viewport at 0.5 scale; the accepted 534 × 464 region was resized to 1068 × 928. Unscaled DOM geometry and overflow were verified separately.
+
+## Full-view comparison evidence
+
+The source used a full-width product header and summary row, followed by a left history panel and a taller right utility rail. At the FileMaker/iPad landscape width, the trace card extended below the main panel and read as an extra block on the right. The revised implementation keeps product, summary, and history sections on one shared grid. Photo and trace cards move below the history as equal-width cards, removing the uneven rail.
+
+At 1068 px, DOM measurement confirmed product, summary, history, and utility sections all start at x=20 and end at x=1033; the remaining 15 px is the browser scrollbar. The top-bar content uses the same visual inset.
+
+## Focused comparison evidence
+
+- Product header: real COS image, SKU, status, names, PI, customer, PO, and packer remain visible with stronger hierarchy.
+- Summary row: four equal tracks retain consistent 104 px heights.
+- History panel: technical fields remain in four columns and the inventory table stays inside the card.
+- Utility area: photo and trace cards use equal 499.5 px tracks at 1068 px.
+- Empty state: zero receipts now displays `暂无入库记录` instead of `存在未关联记录`.
+
+## Required fidelity surfaces
+
+- Fonts and typography: retained Inter/system/PingFang; improved supporting sizes, weights, line height, truncation, and table readability.
+- Spacing and layout rhythm: one shared shell, consistent 12–16 px padding, 12–14 px gaps, matched radii, and aligned edges.
+- Colors and tokens: retained the navy/blue operational palette and semantic green/amber/purple states.
+- Image quality and assets: retained the real COS product image and project Lucide icons; photo thumbnails use lazy loading and cover crops.
+- Copy and content: preserved business labels and corrected the zero-history trace message.
+
+## Findings and comparison history
+
+1. Initial comparison — blocked
+   - [P1] Uneven right rail at the target FileMaker/iPad width.
+   - [P2] Header/page baselines and repeated width declarations were fragile.
+   - [P2] Supporting type and table text were undersized.
+   - [P2] Empty history was described as a broken trace.
+2. Fixes
+   - Switched to a full-width history panel at widths up to 1180 px and equal utility cards below.
+   - Added one shared page shell and a matching top-bar inner container.
+   - Increased type, spacing, table density, focus states, and responsive rules.
+   - Split zero-history from genuinely unlinked history.
+3. Final comparison — passed
+   - 1068, 820, 640, and 390 px have no page-level horizontal overflow.
+   - Receipt expand/collapse and refresh work; browser console contains no errors.
+   - No actionable P0/P1/P2 visual or responsive findings remain.
+
+## Follow-up polish
+
+- A production record containing real receipt photos is still needed to validate the filled six-photo grid visually.
+- The existing main application bundle warning is unrelated; this WebViewer remains a separate lazy-loaded chunk.
+
+final result: passed
+
+---
+
 # Product Inventory Web Viewer — Design QA
 
 - Source visual truth: `/Users/gabriel/.codex/generated_images/019f7d49-3216-7360-9e6f-70198329b24a/exec-22fe9cd5-e1a7-42c0-9c64-b1262ca26777.png`

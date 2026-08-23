@@ -21,6 +21,7 @@ def create_mock_context(
     operator_privilege: str = "mock",
     product_sku: str = "",
     order_id: str = "",
+    line_id: str = "",
     bom_calc_id: str = "",
     customer_id: str = "",
     customer_name: str = "",
@@ -36,6 +37,7 @@ def create_mock_context(
         },
         "productSku": product_sku,
         "orderId": order_id,
+        "lineId": line_id,
         "bomCalcId": bom_calc_id,
         "customerId": customer_id,
         "customerName": customer_name,
@@ -65,6 +67,7 @@ def issue_session_token(context: dict[str, Any], settings: Settings) -> tuple[st
         # "id". Keep the public WebViewer contract as "orderId", while
         # accepting signed contexts produced with the renamed field key.
         "orderId": context.get("orderId") or context.get("id") or "",
+        "lineId": context.get("lineId") or "",
         "bomCalcId": context.get("bomCalcId") or "",
         "customerId": context.get("customerId") or "",
         "customerName": context.get("customerName") or "",

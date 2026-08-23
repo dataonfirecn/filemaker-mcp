@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, type ReactNode, useEffect, useRef } from "react";
 import { ExternalLink, LayoutDashboard, Loader2, Search, SendHorizontal } from "lucide-react";
 import type { BusinessProductRow, NaturalQueryExchange } from "../types";
 
 export type HomePageProps = {
-  operatorName?: string;
+  userMenu?: ReactNode;
   naturalQueryPrompt: string;
   naturalQueryLoading?: boolean;
   naturalQueryExchanges: NaturalQueryExchange[];
@@ -238,7 +238,7 @@ function QueryResponseMessage({
 }
 
 export default function HomePage({
-  operatorName,
+  userMenu,
   naturalQueryPrompt,
   naturalQueryLoading,
   naturalQueryExchanges,
@@ -265,7 +265,7 @@ export default function HomePage({
           <LayoutDashboard size={17} />
           <span>返回 Dashboard</span>
         </button>
-        <strong className="home-chat-user">{operatorName || "-"}</strong>
+        {userMenu}
       </header>
 
       <main className="home-chat-main" aria-label="FileMaker 对话">

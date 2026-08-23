@@ -13,6 +13,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Smartphone,
   Trash2,
   UserPlus,
   UsersRound
@@ -35,7 +36,7 @@ type InternalAccountAdminPageProps = {
 };
 
 type PermissionKey = keyof WebViewerPermissions;
-type AccountFilter = "all" | "enabled" | "disabled" | "price";
+type AccountFilter = "all" | "enabled" | "disabled" | "mobile" | "price";
 type AdminScreen =
   | "accounts"
   | "privilegeSets"
@@ -49,6 +50,7 @@ type AccountDraft = {
   displayName: string;
   filemakerPrivilegeSet: string;
   enabled: boolean;
+  mobileOnly: boolean;
   permissions: WebViewerPermissions;
   partPermissions: PartPermissionMap;
   inheritPrivilegeSet: boolean;
@@ -405,6 +407,7 @@ export default function InternalAccountAdminPage({
         accountFilter === "all" ||
         (accountFilter === "enabled" && account.enabled) ||
         (accountFilter === "disabled" && !account.enabled) ||
+        (accountFilter === "mobile" && account.mobileOnly) ||
         (accountFilter === "price" &&
           account.enabled &&
           account.permissions.canViewPrice);
@@ -459,6 +462,7 @@ export default function InternalAccountAdminPage({
       displayName: account.displayName,
       filemakerPrivilegeSet: account.filemakerPrivilegeSet,
       enabled: account.enabled,
+      mobileOnly: account.mobileOnly,
       permissions: { ...account.permissions },
       partPermissions: { ...account.partPermissions },
       inheritPrivilegeSet: account.inheritsPrivilegeSet,
@@ -495,6 +499,7 @@ export default function InternalAccountAdminPage({
       displayName: "",
       filemakerPrivilegeSet: "",
       enabled: true,
+      mobileOnly: false,
       permissions: { ...blankPermissions },
       partPermissions: emptyPartPermissions(catalog),
       inheritPrivilegeSet: true,
@@ -581,6 +586,7 @@ export default function InternalAccountAdminPage({
             displayName: accountDraft.displayName,
             filemakerPrivilegeSet: accountDraft.filemakerPrivilegeSet,
             enabled: accountDraft.enabled,
+            mobileOnly: accountDraft.mobileOnly,
             permissions: accountDraft.permissions,
             partPermissions: accountDraft.partPermissions,
             inheritPrivilegeSet: accountDraft.inheritPrivilegeSet,
@@ -855,6 +861,7 @@ export default function InternalAccountAdminPage({
               <option value="all">全部用户</option>
               <option value="enabled">允许登录</option>
               <option value="disabled">已停用</option>
+              <option value="mobile">仅移动端</option>
               <option value="price">可查看价格</option>
             </select>
             <small>显示 {filteredAccounts.length} / {data.accounts.length}</small>
@@ -915,6 +922,9 @@ export default function InternalAccountAdminPage({
                             <Power size={13} />
                             {account.enabled ? "允许登录" : "已停用"}
                           </span>
+                          {account.mobileOnly && (
+                            <small><Smartphone size={12} />仅移动端</small>
+                          )}
                         </td>
                         <td>
                           <strong>{legacyCount} / {permissionOptions.length}</strong>
@@ -1084,6 +1094,7 @@ export default function InternalAccountAdminPage({
           <div className="internal-access-identity-grid">
             <article><small>FileMaker 权限集</small><strong>{selectedAccount.filemakerPrivilegeSet}</strong></article>
             <article><small>登录状态</small><strong>{selectedAccount.enabled ? "允许登录" : "已停用"}</strong></article>
+            <article><small>登录入口</small><strong>{selectedAccount.mobileOnly ? "仅移动端" : "Web 与移动端"}</strong></article>
             <article><small>同步来源</small><strong>{selectedAccount.origin === "filemaker" ? "FileMaker 会话" : "后台建立"}</strong></article>
             <article><small>最后同步</small><strong>{formatDateTime(selectedAccount.lastSeenAt)}</strong></article>
           </div>
@@ -1229,6 +1240,22 @@ export default function InternalAccountAdminPage({
                   }
                 />
                 <span>允许登录 StarRC</span>
+              </label>
+              <label className="internal-access-enabled form-switch">
+                <input
+                  type="checkbox"
+                  checked={accountDraft.mobileOnly}
+                  disabled={isSelf}
+                  onChange={(event) =>
+                    setAccountDraft((current) =>
+                      current
+                        ? { ...current, mobileOnly: event.target.checked }
+                        : current
+                    )
+                  }
+                />
+                <span>仅移动端登录</span>
+                <small>启用后禁止登录和访问后台 Web。</small>
               </label>
             </div>
           </section>

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ChevronLeft, ChevronRight, Home } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Monitor } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Page } from "../types";
 
@@ -80,6 +80,10 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
       )}
 
       <nav className="sidebar-groups" aria-label="模块导航">
+        <div className="sidebar-channel-label">
+          <Monitor size={13} />
+          <span>浏览器工作台</span>
+        </div>
         {groups.map((group) => (
           <div key={group.id} className="sidebar-group">
             <div className="sidebar-group-header">

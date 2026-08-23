@@ -1,6 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CalcStatus, ThemeMode } from "../types";
+import InternalUserMenu, { type InternalUserMenuUser } from "./InternalUserMenu";
 import ThemeToggle from "./ThemeToggle";
 
 function statusClass(status: CalcStatus): string {
@@ -22,9 +23,13 @@ export type AppShellProps = {
   calcStatus?: CalcStatus | null;
   readOnly: boolean;
   controlledWrite?: boolean;
-  operatorLabel: string;
+  user: InternalUserMenuUser | null;
+  canManageAccounts: boolean;
   theme: ThemeMode;
   onThemeToggle: () => void;
+  onOpenSettings: () => void;
+  onOpenAccountAdmin?: () => void;
+  onSignOut: () => void;
   children?: ReactNode;
 };
 
@@ -34,9 +39,13 @@ export default function AppShell({
   calcStatus,
   readOnly,
   controlledWrite = false,
-  operatorLabel,
+  user,
+  canManageAccounts,
   theme,
   onThemeToggle,
+  onOpenSettings,
+  onOpenAccountAdmin,
+  onSignOut,
   children
 }: AppShellProps) {
   return (
@@ -49,11 +58,14 @@ export default function AppShell({
           </div>
           <div className="app-shell-meta">
             <ThemeToggle theme={theme} onToggle={onThemeToggle} />
-            {operatorLabel !== "-" && (
-              <div className="meta-group">
-                <span className="meta-label">操作员</span>
-                <span className="meta-value">{operatorLabel}</span>
-              </div>
+            {user && (
+              <InternalUserMenu
+                user={user}
+                canManageAccounts={canManageAccounts}
+                onOpenSettings={onOpenSettings}
+                onOpenAccountAdmin={onOpenAccountAdmin}
+                onSignOut={onSignOut}
+              />
             )}
             {calcStatus && <span className={statusClass(calcStatus)}>{calcStatus}</span>}
             {controlledWrite ? (

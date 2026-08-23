@@ -35,6 +35,7 @@ FileMaker 安全性同步 97 个账号和 39 个实际权限集；默认策略�
 - 启用或停用账号及整个 FileMaker 权限集。
 - 按权限集设置默认权限，也可为单个账号覆盖。
 - 单独控制价格、产品、订单、库存、BOM、智能问答、RAG 与订单合并。
+- 可将单个账号设为“仅移动端登录”，后台会同时阻止该账号登录和访问 Web 管理页面。
 - 预先绑定 FileMaker 账号；账号本身和密码仍需在 FileMaker“安全性”中建立和维护。
 
 价格权限在后端强制执行。没有 `canViewPrice` 的会话询价会返回 HTTP 403，普通业务响应中的
@@ -46,6 +47,52 @@ FileMaker 安全性同步 97 个账号和 39 个实际权限集；默认策略�
 ```dotenv
 WEBVIEWER_REMOTE_ACCOUNTS_JSON='[{"username":"amy","displayName":"Amy","privilegeSet":"Sales","passwordHash":"pbkdf2_sha256$..."}]'
 ```
+
+移动端使用同一套远程账号登录：`POST /api/webviewer/session` 签发会话，
+`GET /api/webviewer/session/me` 返回当前用户姓名、FileMaker 权限集和实时权限。
+订单与移动到货接口都会在后端强制检查 `canViewOrders`；停用账号或调整权限后，
+下一次请求立即生效。
+
+### PDA 成品入库与追溯
+
+PDA 扫描的是出货单，但提交的是已经包好的 SKU 成品入库，不会自动修改客户订单数量。
+每个 SKU 独立入库一次；欠料的 SKU 保持未入库，包好后可再次扫描同一张出货单处理。
+写入链路固定为：
+
+`出貨單資料.ID` → `出貨單資料入庫.ID_出庫單資料` →
+`產品庫存.ID_出貨單資料入庫`，同时在 `產品庫存.ID_出貨單資料`
+保留来源明细 ID。这样可以按零件包回查入库数量、时间和操作人。
+
+生产环境只启用 `FILEMAKER_MOBILE_RECEIPT_WRITE_ENABLED` 这条专用写入通道；
+通用 `FILEMAKER_READ_ONLY=true` 保持不变。每个 SKU 最多 6 张收货图片，
+整张记录最多 1 张出货照片，图片直接上传腾讯 COS。
+
+### PDA 产品资料与照片
+
+`GET /api/orders/products/{sku}/detail` 会从 FileMaker
+`產品 資料_包裝` 读取只读 BOM、包装资料及基础信息，产品图、包装参考图与 BOM
+零件图只返回腾讯 COS 的短时签名链接，不下载或代理 FileMaker 容器。
+
+产品图片字段的分类为：
+
+- `檔案 1 | 容器` 至 `檔案 10 | 容器`：SKU 产品照片。
+- `檔案 11 | 容器` 至 `檔案 15 | 容器`：包装参考照片。
+- 出货照片属于整张到货记录，选填且最多一张，不写入上述产品字段。
+
+只有产品照片完全为空时，PDA 才能调用
+`POST /api/mobile/v1/products/{sku}/photos/presign` 现场补拍。每个补图会话最多
+6 张，客户端先直传 COS；完成接口随后异步写入 `ProductAssets.asset_file` 与
+原产品容器。上传状态保存在 SQLite；服务重启后，客户端下一次状态轮询会自动续跑
+未完成的 FileMaker 同步。
+
+历史容器迁移分两步执行，两个脚本都默认只做 dry-run：
+
+```bash
+PYTHONPATH=backend .venv/bin/python backend/scripts/migrate_product_assets.py --limit 50
+PYTHONPATH=backend .venv/bin/python backend/scripts/migrate_product_assets_to_cos.py --limit 100
+```
+
+确认 dry-run 数量后分别加 `--commit` 才会写入 `ProductAssets` 或 COS。
 
 ## RAG 索引范围与关系语义
 

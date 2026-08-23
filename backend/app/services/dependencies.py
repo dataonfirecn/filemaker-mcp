@@ -20,6 +20,7 @@ from app.services.natural_query_conversation_store import NaturalQueryConversati
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
+from app.services.product_photo_upload_store import ProductPhotoUploadStore
 from app.services.part_permission_catalog import PART_PERMISSION_KEY_SET
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
@@ -29,6 +30,7 @@ from app.services.webviewer_session import (
     verify_session_token,
 )
 from app.services.webviewer_account_access import WebViewerAccountAccessStore
+from app.services.webviewer_remote_auth import is_webviewer_mobile_request
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -107,6 +109,10 @@ def get_part_creation_options_cache(request: Request) -> PartCreationOptionsCach
     return request.app.state.part_creation_options_cache
 
 
+def get_product_photo_upload_store(request: Request) -> ProductPhotoUploadStore:
+    return request.app.state.product_photo_upload_store
+
+
 def get_rag_index_worker(request: Request) -> RagIndexWorker | None:
     return getattr(request.app.state, "rag_index_worker", None)
 
@@ -138,6 +144,14 @@ async def get_webviewer_session_context(request: Request) -> dict:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "此 StarRC 账号或其 FileMaker 权限集已停用。"},
+        )
+    if account["mobileOnly"] and not is_webviewer_mobile_request(
+        client_channel=request.headers.get("X-Client-Channel", ""),
+        user_agent=request.headers.get("User-Agent", ""),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "此账号仅允许通过移动端访问。"},
         )
 
     access = dict(account["permissions"])
@@ -249,6 +263,8 @@ def _permission_for_request(request: Request) -> str | None:
             return "canMergeOrders"
         return "canViewOrders"
     if path.startswith("/api/mobile/v1/receipts"):
+        return "canViewOrders"
+    if path.startswith("/api/mobile/v1/products"):
         return "canViewOrders"
     if path.startswith("/api/natural-query/analytics"):
         return "canManageRag"

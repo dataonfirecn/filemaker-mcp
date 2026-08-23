@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 import asyncio
 
@@ -12,7 +12,12 @@ from app.models.webviewer_admin import (
     WebViewerPrivilegeSetAdminUpdateRequest,
     WebViewerSendAdminCredentialsRequest,
 )
-from app.models.webviewer import WebViewerSessionRequest, WebViewerSessionResponse
+from app.models.webviewer import (
+    WebViewerCurrentSessionResponse,
+    WebViewerCurrentUser,
+    WebViewerSessionRequest,
+    WebViewerSessionResponse,
+)
 from app.services.audit_log import AuditLogStore, OperatorContext
 from app.services.customer_chat_auth import CustomerLoginRateLimiter
 from app.services.customer_email import (
@@ -20,6 +25,7 @@ from app.services.customer_email import (
     send_admin_credentials_email,
 )
 from app.services.part_permission_catalog import permission_catalog
+from app.services.service_directory import api_service_directory
 from app.services.dependencies import (
     get_audit_log_store,
     get_operator_context,
@@ -35,7 +41,11 @@ from app.services.webviewer_session import (
     issue_session_token,
     verify_external_context,
 )
-from app.services.webviewer_remote_auth import authenticate_webviewer_remote
+from app.services.webviewer_remote_auth import (
+    authenticate_webviewer_remote,
+    is_webviewer_mobile_request,
+    webviewer_remote_request_allowed,
+)
 
 router = APIRouter(prefix="/webviewer", tags=["webviewer"])
 remote_login_limiter = CustomerLoginRateLimiter()
@@ -44,6 +54,7 @@ remote_login_limiter = CustomerLoginRateLimiter()
 @router.post("/session", response_model=WebViewerSessionResponse)
 async def create_webviewer_session(
     body: WebViewerSessionRequest,
+    request: Request,
     settings: Settings = Depends(get_settings),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
     account_access: WebViewerAccountAccessStore = Depends(get_webviewer_account_access_store),
@@ -88,6 +99,16 @@ async def create_webviewer_session(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"message": "用户名或密码不正确"},
             )
+        if not webviewer_remote_request_allowed(
+            account,
+            client_channel=request.headers.get("X-Client-Channel", ""),
+            user_agent=request.headers.get("User-Agent", ""),
+        ):
+            await remote_login_limiter.clear(limiter_key)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "该账号仅允许通过指定的 PDA 应用登录"},
+            )
         await remote_login_limiter.clear(limiter_key)
         context = create_mock_context(
             operator_account=account.username,
@@ -96,6 +117,7 @@ async def create_webviewer_session(
             persistent_id=account.username,
             product_sku=body.product_sku,
             order_id=body.order_id,
+            line_id=body.line_id,
             bom_calc_id=body.bom_calc_id,
             customer_id=body.customer_id,
             customer_name=body.customer_name,
@@ -109,6 +131,7 @@ async def create_webviewer_session(
             operator_privilege=operator.privilege if operator else "mock",
             product_sku=body.product_sku,
             order_id=body.order_id,
+            line_id=body.line_id,
             bom_calc_id=body.bom_calc_id,
             customer_id=body.customer_id,
             customer_name=body.customer_name,
@@ -134,6 +157,14 @@ async def create_webviewer_session(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "此 StarRC 账号或其 FileMaker 权限集已停用。"},
+        )
+    if account_state["mobileOnly"] and not is_webviewer_mobile_request(
+        client_channel=request.headers.get("X-Client-Channel", ""),
+        user_agent=request.headers.get("User-Agent", ""),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "此账号仅允许通过移动端登录。"},
         )
     context["access"] = dict(account_state["permissions"])
     context["partPermissions"] = dict(account_state["partPermissions"])
@@ -172,6 +203,32 @@ async def create_webviewer_session(
     )
 
 
+@router.get("/session/me", response_model=WebViewerCurrentSessionResponse)
+async def get_current_webviewer_session(
+    session_context: dict = Depends(get_webviewer_session_context),
+) -> WebViewerCurrentSessionResponse:
+    operator = session_context.get("operator") or {}
+    username = str(operator.get("account") or "unknown")
+    return WebViewerCurrentSessionResponse(
+        sessionId=str(session_context.get("sessionId") or ""),
+        user=WebViewerCurrentUser(
+            username=username,
+            displayName=str(operator.get("name") or username),
+            filemakerPrivilegeSet=str(operator.get("privilege") or "unknown"),
+        ),
+        permissions={
+            str(key): bool(value)
+            for key, value in (session_context.get("access") or {}).items()
+        },
+        partPermissions={
+            str(key): bool(value)
+            for key, value in (
+                session_context.get("partPermissions") or {}
+            ).items()
+        },
+    )
+
+
 @router.get("/admin/accounts", response_model=WebViewerAccountAdminResponse)
 async def list_webviewer_accounts(
     _access: dict[str, bool] = Depends(get_webviewer_access),
@@ -191,6 +248,16 @@ async def get_part_permission_catalog(
     _access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict:
     return permission_catalog()
+
+
+@router.get(
+    "/admin/service-directory",
+    response_model=dict,
+)
+async def get_service_directory(
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+) -> dict:
+    return api_service_directory()
 
 
 @router.get(
@@ -248,6 +315,7 @@ async def register_webviewer_account(
     account = await store.update_account(
         body.username,
         enabled=body.enabled,
+        mobile_only=body.mobile_only,
         permissions=requested_permissions,
         part_permissions=requested_part_permissions,
         inherit_privilege_set=body.inherit_privilege_set,
@@ -323,9 +391,15 @@ async def update_webviewer_account(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"message": "不能停用当前管理员或移除自己的账号管理权限。"},
             )
+        if body.mobile_only:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"message": "不能将当前登录的管理员改为仅移动端账号。"},
+            )
     updated = await store.update_account(
         username,
         enabled=body.enabled,
+        mobile_only=body.mobile_only,
         permissions=permissions,
         part_permissions=body.part_permissions,
         inherit_privilege_set=body.inherit_privilege_set,

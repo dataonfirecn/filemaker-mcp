@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 AttachmentSource = Literal["camera", "photo_library"]
 AttachmentStatus = Literal["PENDING", "UPLOADED", "BOUND", "FAILED", "ORPHAN"]
+ReceiptSubmissionStatus = Literal["partial", "sealed"]
 
 
 class AttachmentPresignRequest(BaseModel):
@@ -83,5 +84,74 @@ class AttachmentResponse(BaseModel):
 class AttachmentDownloadResponse(BaseModel):
     download_url: str = Field(alias="downloadUrl")
     expires_at: datetime = Field(alias="expiresAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class ReceiptSubmissionLine(BaseModel):
+    line_id: str = Field(alias="lineId", min_length=1, max_length=160)
+    record_id: str = Field(alias="recordId", min_length=1, max_length=80)
+    sku: str = Field(min_length=1, max_length=160)
+    received_quantity: int = Field(alias="receivedQuantity", gt=0)
+    expected_quantity: int = Field(alias="expectedQuantity", ge=0)
+    remark: str = Field(default="", max_length=2000)
+    attachment_ids: list[str] = Field(
+        default_factory=list,
+        alias="attachmentIds",
+        max_length=6,
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ReceiptSubmissionRequest(BaseModel):
+    draft_id: str = Field(alias="draftId", min_length=1, max_length=160)
+    shipment_id: str = Field(alias="shipmentId", min_length=1, max_length=160)
+    document_number: str = Field(alias="documentNumber", max_length=160)
+    pi_number: str = Field(alias="piNumber", max_length=160)
+    receipt_remark: str = Field(default="", alias="receiptRemark", max_length=4000)
+    shipment_attachment_ids: list[str] = Field(
+        default_factory=list,
+        alias="shipmentAttachmentIds",
+        max_length=1,
+    )
+    lines: list[ReceiptSubmissionLine] = Field(min_length=1, max_length=500)
+    audit_log: list[dict] = Field(default_factory=list, alias="auditLog", max_length=5000)
+    submitted_at: datetime = Field(alias="submittedAt")
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("lines")
+    @classmethod
+    def validate_unique_lines(
+        cls,
+        value: list[ReceiptSubmissionLine],
+    ) -> list[ReceiptSubmissionLine]:
+        line_ids = [line.line_id for line in value]
+        if len(line_ids) != len(set(line_ids)):
+            raise ValueError("lines must not contain duplicate lineId values")
+        return value
+
+
+class ReceiptSubmissionLineResponse(BaseModel):
+    line_id: str = Field(alias="lineId")
+    receipt_id: str = Field(alias="receiptId")
+    quantity: int
+    status: str
+    received_at: datetime = Field(alias="receivedAt")
+    received_by: str = Field(alias="receivedBy")
+    already_received: bool = Field(default=False, alias="alreadyReceived")
+
+    model_config = {"populate_by_name": True}
+
+
+class ReceiptSubmissionResponse(BaseModel):
+    receipt_id: str = Field(alias="receiptId")
+    status: ReceiptSubmissionStatus
+    sealed_at: datetime = Field(alias="sealedAt")
+    all_lines_received: bool = Field(alias="allLinesReceived")
+    received_line_count: int = Field(alias="receivedLineCount")
+    total_line_count: int = Field(alias="totalLineCount")
+    lines: list[ReceiptSubmissionLineResponse]
 
     model_config = {"populate_by_name": True}

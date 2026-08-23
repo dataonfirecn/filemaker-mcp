@@ -9,7 +9,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import { Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { BookOpen, Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -30,6 +30,9 @@ import OrderDetailPage from "./components/OrderDetailPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
 import InternalOrderMergePage from "./components/InternalOrderMergePage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
+import InternalSettingsPage from "./components/InternalSettingsPage";
+import InternalServiceDirectoryPage from "./components/InternalServiceDirectoryPage";
+import InternalUserMenu from "./components/InternalUserMenu";
 import GenerateDialog from "./components/GenerateDialog";
 import PartSearchDialog from "./components/PartSearchDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
@@ -37,6 +40,7 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import SuccessAlert from "./components/SuccessAlert";
 import { numberFilterParams } from "./components/grid-config";
 import { parseError } from "./utils/error";
+import { takePreviewSession } from "./utils/previewSession";
 import type {
   CalculationLine,
   CalculationPreview,
@@ -67,6 +71,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 const THEME_STORAGE_KEY = "starrc-theme";
+const previewSessionFromWindow = takePreviewSession();
 
 const emptyBusinessProductFilters: BusinessProductFilters = {
   category: "",
@@ -135,6 +140,14 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   accessAdmin: {
     title: "账号与权限",
     subtitle: "将 FileMaker 权限集同步为 StarRC 功能授权，单独控制价格查看。"
+  },
+  settings: {
+    title: "个人设置",
+    subtitle: "查看当前账号信息，并调整工作台的显示与会话选项。"
+  },
+  serviceDirectory: {
+    title: "应用与接口目录",
+    subtitle: "区分浏览器入口、FileMaker 内嵌页面与受控集成 API。"
   }
 };
 
@@ -168,6 +181,34 @@ function orderIdQueryValue(params: URLSearchParams): string {
   return queryValue(params, "orderId", queryValue(params, "id", ""));
 }
 
+function pageFromSearchParams(params: URLSearchParams): Page {
+  const requestedPage = params.get("page");
+  switch (requestedPage) {
+    case "chat":
+    case "productInventory":
+    case "internalOrderMerge":
+    case "orderDetail":
+    case "bom":
+    case "issue":
+    case "kitIssue":
+    case "businessProducts":
+    case "businessProductDetail":
+    case "parts":
+    case "partDetail":
+    case "ragControl":
+    case "settings":
+    case "accessAdmin":
+    case "serviceDirectory":
+      return requestedPage;
+    case "product":
+      return "bom";
+    case "partDetailPrototype":
+      return "partDetail";
+    default:
+      return "home";
+  }
+}
+
 function formatQty(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "";
   const num = Number(value);
@@ -197,27 +238,16 @@ function initialTheme(): ThemeMode {
 export default function App() {
   const didInit = useRef(false);
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
-  const [session, setSession] = useState<SessionResponse | null>(null);
+  const [session, setSession] = useState<SessionResponse | null>(() => previewSessionFromWindow);
   const [remoteLoginRequired, setRemoteLoginRequired] = useState(false);
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
   const [remoteLoginLoading, setRemoteLoginLoading] = useState(false);
   const [remoteLoginError, setRemoteLoginError] = useState<string | null>(null);
   const [productBom, setProductBom] = useState<ProductBomResponse | null>(null);
-  const [page, setPage] = useState<Page>(() => {
-    const requestedPage = new URLSearchParams(window.location.search).get("page");
-    return requestedPage === "productInventory"
-      ? "productInventory"
-      : requestedPage === "internalOrderMerge"
-        ? "internalOrderMerge"
-        : requestedPage === "chat"
-          ? "chat"
-        : requestedPage === "parts"
-          ? "parts"
-          : requestedPage === "partDetail" || requestedPage === "partDetailPrototype"
-            ? "partDetail"
-          : "home";
-  });
+  const [page, setPage] = useState<Page>(() =>
+    pageFromSearchParams(new URLSearchParams(window.location.search))
+  );
   // BOM 单页工作台阶段与 SKU 输入
   const [bomStep, setBomStep] = useState<BomStep>("select");
   const [bomSkuInput, setBomSkuInput] = useState("");
@@ -293,29 +323,7 @@ export default function App() {
     const customerId = queryValue(params, "customerId", "");
     const customerName = queryValue(params, "customerName", "");
     const currency = queryValue(params, "currency", "USD");
-    const pageParam = params.get("page");
-    const initialPage: Page =
-      pageParam === "productInventory"
-        ? "productInventory"
-        : pageParam === "internalOrderMerge"
-        ? "internalOrderMerge"
-        : pageParam === "chat"
-        ? "chat"
-        : pageParam === "orderDetail"
-        ? "orderDetail"
-        : pageParam === "bom" || pageParam === "product"
-        ? "bom"
-        : pageParam === "kitIssue"
-          ? "kitIssue"
-          : pageParam === "businessProducts"
-            ? "businessProducts"
-            : pageParam === "parts"
-              ? "parts"
-              : pageParam === "partDetail" || pageParam === "partDetailPrototype"
-                ? "partDetail"
-            : pageParam === "ragControl"
-              ? "ragControl"
-              : "home";
+    const initialPage = pageFromSearchParams(params);
     const ctx = params.get("ctx");
     const sig = params.get("sig");
 
@@ -848,6 +856,28 @@ export default function App() {
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
+    if (previewSessionFromWindow) {
+      const params = new URLSearchParams(window.location.search);
+      setKitIssueOrderNo(orderIdQueryValue(params));
+      setBomSkuInput(
+        queryValue(
+          params,
+          "productSku",
+          previewSessionFromWindow.context.productSku || "STRX-202"
+        )
+      );
+      if (pageFromSearchParams(params) === "ragControl") {
+        void loadRagStatus(previewSessionFromWindow);
+        void loadTopQuestions(previewSessionFromWindow);
+        void loadRelationshipMapping(previewSessionFromWindow);
+      }
+      void fetchJson("/api/webviewer/session/me", previewSessionFromWindow.token).catch(() => {
+        setSession(null);
+        setRemoteLoginRequired(true);
+        setRemoteLoginError("预览会话已过期，请重新登录。");
+      });
+      return;
+    }
     void startSession().catch((err) => {
       const params = new URLSearchParams(window.location.search);
       if (!(params.get("ctx") && params.get("sig"))) {
@@ -879,6 +909,44 @@ export default function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
 
+  function signOut() {
+    const signedOutUsername = session?.context.operator.account ?? "";
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.delete("ctx");
+    currentUrl.searchParams.delete("sig");
+    window.history.replaceState(
+      {},
+      "",
+      `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+    );
+
+    setSession(null);
+    setRemoteLoginRequired(true);
+    setRemoteUsername(signedOutUsername);
+    setRemotePassword("");
+    setRemoteLoginError(null);
+    setPage("home");
+    setError(null);
+    setSuccess(null);
+    setProductBom(null);
+    setPreview(null);
+    setCalcLines([]);
+    setDocument(null);
+    setKitIssueData(null);
+    setBusinessProductsData(null);
+    setBusinessProductDetail(null);
+    setNaturalQueryPrompt("");
+    setNaturalQueryExchanges([]);
+    setRagStatus(null);
+    setRagSearchResponse(null);
+    setTopQuestionsData(null);
+    setRelationshipMappingData(null);
+    setSelectedPartIdentifier("");
+    setGenerateDialogOpen(false);
+    setConfirmOpen(false);
+    setPartSearchLine(null);
+  }
+
   useEffect(() => {
     if (!partSearchLine || !session) return;
     const timer = window.setTimeout(() => {
@@ -896,6 +964,17 @@ export default function App() {
     if (page !== "businessProducts" || !session || businessProductsData || businessProductsLoading) return;
     void loadBusinessProducts(1, session);
   }, [page, session, businessProductsData, businessProductsLoading]);
+
+  useEffect(() => {
+    if (
+      session
+      && (page === "accessAdmin" || page === "serviceDirectory")
+      && !session.context.access.canManageAccounts
+    ) {
+      setPage("home");
+      setError("当前账号没有访问系统管理页面的权限。");
+    }
+  }, [page, session]);
 
   useEffect(() => {
     if (!success) return;
@@ -1283,13 +1362,15 @@ export default function App() {
   const calculationDate = document?.createdAt ?? preview?.createdAt ?? null;
   const operatorDisplayName = session?.context.operator.name?.trim() || "";
   const operatorAccount = session?.context.operator.account?.trim() || "";
-  const operatorLabel = operatorDisplayName || operatorAccount
-    ? operatorDisplayName && operatorAccount && operatorDisplayName.localeCompare(operatorAccount, undefined, { sensitivity: "accent" }) !== 0
-      ? `${operatorDisplayName} / ${operatorAccount}`
-      : operatorDisplayName || operatorAccount
-    : "-";
   const operatorName =
     session?.context.operator.name || session?.context.operator.account || "";
+  const currentUser = session
+    ? {
+        username: operatorAccount,
+        displayName: operatorDisplayName || operatorAccount,
+        privilegeSet: session.context.operator.privilege
+      }
+    : null;
   const access = session?.context.access;
   const requestedOrderId =
     session?.context.orderId || orderIdQueryValue(new URLSearchParams(window.location.search));
@@ -1403,13 +1484,22 @@ export default function App() {
         ? [{
             id: "system-admin",
             label: "系统管理",
-            items: [{
-              id: "accessAdmin" as Page,
-              label: "账号与权限",
-              description: "FileMaker 权限集与 StarRC 授权",
-              Icon: ShieldCheck,
-              badge: access.canViewPrice ? "可看价格" : "价格受限"
-            }]
+            items: [
+              {
+                id: "serviceDirectory" as Page,
+                label: "应用与接口目录",
+                description: "浏览器、FileMaker 内嵌页与 API 清单",
+                Icon: BookOpen,
+                badge: "管理员"
+              },
+              {
+                id: "accessAdmin" as Page,
+                label: "账号与权限",
+                description: "FileMaker 权限集与 StarRC 授权",
+                Icon: ShieldCheck,
+                badge: access.canViewPrice ? "可看价格" : "价格受限"
+              }
+            ]
           }]
         : [])
     ],
@@ -1527,7 +1617,19 @@ export default function App() {
     <main className={`app app-${page}`}>
       {page === "chat" ? (
         <HomePage
-          operatorName={operatorName}
+          userMenu={currentUser ? (
+            <InternalUserMenu
+              user={currentUser}
+              canManageAccounts={session?.context.access.canManageAccounts ?? false}
+              onOpenSettings={() => handleNavigate("settings")}
+              onOpenAccountAdmin={
+                session?.context.access.canManageAccounts
+                  ? () => handleNavigate("accessAdmin")
+                  : undefined
+              }
+              onSignOut={signOut}
+            />
+          ) : undefined}
           naturalQueryPrompt={naturalQueryPrompt}
           naturalQueryLoading={naturalQueryLoading}
           naturalQueryExchanges={naturalQueryExchanges}
@@ -1556,9 +1658,17 @@ export default function App() {
               calcStatus={showBOMWorkflow ? calcStatus : null}
               readOnly={session?.readOnly ?? false}
               controlledWrite={page === "orderDetail" && (session?.bomWriteEnabled ?? false)}
-              operatorLabel={operatorLabel}
+              user={currentUser}
+              canManageAccounts={session?.context.access.canManageAccounts ?? false}
               theme={theme}
               onThemeToggle={toggleTheme}
+              onOpenSettings={() => handleNavigate("settings")}
+              onOpenAccountAdmin={
+                session?.context.access.canManageAccounts
+                  ? () => handleNavigate("accessAdmin")
+                  : undefined
+              }
+              onSignOut={signOut}
             />
 
             {showBOMWorkflow && <StepIndicator currentStep={currentStep} />}
@@ -1813,6 +1923,26 @@ export default function App() {
                 token={session.token}
                 currentUsername={session.context.operator.account}
               />
+            )}
+
+            {page === "settings" && session && currentUser && (
+              <InternalSettingsPage
+                user={currentUser}
+                permissions={session.context.access}
+                readOnly={session.readOnly}
+                theme={theme}
+                onThemeChange={setTheme}
+                onOpenAccountAdmin={
+                  session.context.access.canManageAccounts
+                    ? () => handleNavigate("accessAdmin")
+                    : undefined
+                }
+                onSignOut={signOut}
+              />
+            )}
+
+            {page === "serviceDirectory" && session?.context.access.canManageAccounts && (
+              <InternalServiceDirectoryPage apiBase={apiBase} session={session} />
             )}
 
             <GenerateDialog

@@ -10,6 +10,9 @@ const MaterialIdWebViewerApp = lazy(
 const NewPartWebViewerApp = lazy(
   () => import("./components/NewPartWebViewerApp")
 );
+const ReceiptHistoryWebViewerApp = lazy(
+  () => import("./components/ReceiptHistoryWebViewerApp")
+);
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const requestedPage = new URLSearchParams(window.location.search).get("page");
@@ -20,6 +23,8 @@ const RootApp =
       ? MaterialIdWebViewerApp
     : requestedPage === "newPartWebViewer"
       ? NewPartWebViewerApp
+    : requestedPage === "receiptHistory"
+      ? ReceiptHistoryWebViewerApp
     : App;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

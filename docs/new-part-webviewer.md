@@ -21,6 +21,7 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 
 - 打开脚本：`新建零件_WebViewer`
 - 创建成功回调脚本：`新建零件_WebViewer回调`
+- 普通关闭脚本：`StarRC_CloseWebViewer`
 - 普通窗口中以 Card 窗口打开；已处于 Card 窗口时，以
   `1024 × 760` Dialog 窗口打开，避免嵌套 Card。
 - 可粘贴脚本片段：
@@ -52,6 +53,12 @@ StarRC_WebViewerURL ( "?page=newPartWebViewer" )
 
 “清空重来”必须在确认弹窗中再次确认后才执行。清空、检查和建立按钮固定
 在 WebViewer 底部操作栏，不随表单内容浮动。
+
+页面从载入阶段起就在右上角显示“关闭窗口”按钮。尚未建立零件时，按钮调用
+FileMaker 的 `StarRC_CloseWebViewer` 脚本关闭当前 Card / Dialog 窗口，不依赖
+WebViewer 外层不明显的原生关闭控件；脚本参数会带上
+`{"action":"close","source":"newPartWebViewer"}`。建立完成后，页眉和完成页的
+关闭按钮继续调用 `新建零件_WebViewer回调`，先保存建立结果再关闭窗口。
 
 建立成功后不再立即关闭 WebViewer，而是进入独立完成页。完成页以整洁的汇总
 显示零件编号、名称、客户与厂商、分类、材质、仓位、FileMaker Record ID、

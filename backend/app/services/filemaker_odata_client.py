@@ -177,6 +177,39 @@ class FileMakerODataClient:
         payload = await self.request(f"/{self._encode_segment(table)}", params=params)
         return _normalize_record_response(table=table, payload=payload)
 
+    async def create_record(
+        self,
+        table: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = await self.request(
+            f"/{self._encode_segment(table)}",
+            method="POST",
+            json_body=data,
+            extra_headers={"Prefer": "return=representation"},
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    async def update_record(
+        self,
+        table: str,
+        key: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = await self.request(
+            f"/{self._encode_segment(table)}({odata_key_literal(key)})",
+            method="PATCH",
+            json_body=data,
+            extra_headers={"Prefer": "return=representation"},
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    async def delete_record(self, table: str, key: str) -> None:
+        await self.request(
+            f"/{self._encode_segment(table)}({odata_key_literal(key)})",
+            method="DELETE",
+        )
+
     async def related_records(
         self,
         table: str,
@@ -269,6 +302,7 @@ class FileMakerODataClient:
         json_body: dict[str, Any] | None = None,
         accept: str = "application/json",
         parse_json: bool = True,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         self._ensure_available()
         url = f"{self._base_url()}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
@@ -277,14 +311,17 @@ class FileMakerODataClient:
             separator = "&" if "?" in url else "?"
             url = f"{url}{separator}{query_string}"
         try:
+            headers = {
+                "Accept": accept,
+                "Content-Type": "application/json",
+                "Authorization": self._authorization_header(),
+            }
+            if extra_headers:
+                headers.update(extra_headers)
             response = await self._client.request(
                 method,
                 url,
-                headers={
-                    "Accept": accept,
-                    "Content-Type": "application/json",
-                    "Authorization": self._authorization_header(),
-                },
+                headers=headers,
                 json=json_body,
             )
         except httpx.RequestError as exc:

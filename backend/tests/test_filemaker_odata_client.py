@@ -177,6 +177,28 @@ async def test_odata_tables_reads_service_document() -> None:
     assert fake_http.requests[0]["url"] == "https://filemaker.example.test/fmi/odata/v4/DMS%20DB/"
 
 
+@pytest.mark.asyncio
+async def test_odata_write_helpers_use_entity_keys_and_return_representation() -> None:
+    client = FileMakerODataClient(SettingsStub())
+    real_client = client._client
+    fake_http = FakeHTTPClient()
+    client._client = fake_http
+    await real_client.aclose()
+
+    await client.create_record("出貨單資料入庫", {"數量": 12})
+    await client.update_record("出貨單資料入庫", "RID-1", {"狀態": "已入庫"})
+    await client.delete_record("出貨單資料入庫", "RID-1")
+
+    create, update, delete = fake_http.requests
+    assert create["method"] == "POST"
+    assert create["headers"]["Prefer"] == "return=representation"
+    assert create["json"] == {"數量": 12}
+    assert update["method"] == "PATCH"
+    assert "%E5%87%BA%E8%B2%A8%E5%96%AE%E8%B3%87%E6%96%99%E5%85%A5%E5%BA%AB('RID-1')" in update["url"]
+    assert update["json"] == {"狀態": "已入庫"}
+    assert delete["method"] == "DELETE"
+
+
 def test_odata_metadata_parser_extracts_navigation_bindings() -> None:
     schema = parse_odata_metadata(SAMPLE_METADATA)
     parts = schema.entity_for_set("Parts")

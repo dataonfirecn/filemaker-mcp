@@ -17,6 +17,7 @@ from app.api import (
     inventory,
     material_ids,
     mes_callbacks,
+    mobile_products,
     mobile_receipts,
     natural_query_analytics,
     natural_language_query,
@@ -27,6 +28,7 @@ from app.api import (
     part_directory,
     qrcode,
     rag_index,
+    receipt_history,
     webviewer,
 )
 from app.core.config import get_settings
@@ -45,6 +47,7 @@ from app.services.natural_query_conversation_store import NaturalQueryConversati
 from app.services.natural_query_analytics_worker import NaturalQueryAnalyticsWorker
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
+from app.services.product_photo_upload_store import ProductPhotoUploadStore
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.webviewer_account_access import (
@@ -77,6 +80,8 @@ async def lifespan(app: FastAPI):
     await receipt_attachment_store.init()
     part_asset_upload_store = PartAssetUploadStore(settings.database_path)
     await part_asset_upload_store.init()
+    product_photo_upload_store = ProductPhotoUploadStore(settings.database_path)
+    await product_photo_upload_store.init()
     part_creation_options_cache = PartCreationOptionsCache(
         database_path=settings.database_path,
         filemaker=filemaker_client,
@@ -139,6 +144,7 @@ async def lifespan(app: FastAPI):
     app.state.webviewer_account_access_store = webviewer_account_access_store
     app.state.receipt_attachment_store = receipt_attachment_store
     app.state.part_asset_upload_store = part_asset_upload_store
+    app.state.product_photo_upload_store = product_photo_upload_store
     app.state.part_creation_options_cache = part_creation_options_cache
     app.state.cos_storage_service = cos_storage_service
     app.state.natural_query_conversation_store = natural_query_conversation_store
@@ -252,10 +258,12 @@ app.include_router(natural_language_query.router, prefix=settings.api_prefix)
 app.include_router(natural_query_analytics.router, prefix=settings.api_prefix)
 app.include_router(odata.router, prefix=settings.api_prefix)
 app.include_router(orders.router, prefix=settings.api_prefix)
+app.include_router(receipt_history.router, prefix=settings.api_prefix)
 app.include_router(rag_index.router, prefix=settings.api_prefix)
 app.include_router(mes_callbacks.router, prefix=settings.api_prefix)
 app.include_router(qrcode.router, prefix=settings.api_prefix)
 app.include_router(mobile_receipts.router, prefix=settings.api_prefix)
+app.include_router(mobile_products.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

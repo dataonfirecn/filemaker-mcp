@@ -5,6 +5,7 @@ export type SessionResponse = {
     sessionId: string;
     productSku: string;
     orderId: string;
+    lineId: string;
     bomCalcId: string;
     customerId: string;
     customerName: string;
@@ -19,6 +20,82 @@ export type SessionResponse = {
   };
   readOnly: boolean;
   bomWriteEnabled: boolean;
+};
+
+export type ReceiptHistoryPhoto = {
+  attachmentId: string;
+  draftId: string;
+  scope: "product" | "shipment" | string;
+  source: string;
+  filename: string;
+  mimeType: string;
+  fileSize: number;
+  status: string;
+  uploadedAt: string;
+  operatorAccount: string;
+  url: string;
+};
+
+export type ReceiptHistoryInventoryMovement = {
+  recordKey: string;
+  receiptId: string;
+  lineId: string;
+  productSku: string;
+  date: string;
+  batchNumber: string;
+  description: string;
+  inboundQuantity: number;
+  outboundQuantity: number;
+  operator: string;
+};
+
+export type ReceiptHistoryEntry = {
+  receiptId: string;
+  status: string;
+  quantity: number;
+  receivedAt: string;
+  receivedBy: string;
+  createdBy: string;
+  modifiedAt: string;
+  modifiedBy: string;
+  traceable: boolean;
+  inventoryMovements: ReceiptHistoryInventoryMovement[];
+};
+
+export type ReceiptHistoryResponse = {
+  line: {
+    lineId: string;
+    orderId: string;
+    documentNumber: string;
+    piNumber: string;
+    customerPo: string;
+    customer: string;
+    salesOwner: string;
+    productSku: string;
+    productName: string;
+    englishName: string;
+    mainImageUrl: string;
+    orderReferenceQuantity: number;
+    currentReceivedQuantity: number;
+    currentStock: number;
+    packagingStatus: string;
+    packagingOperator: string;
+    sourceCreatedAt: string;
+    sourceUpdatedAt: string;
+  };
+  summary: {
+    receiptCount: number;
+    completedReceiptCount: number;
+    officialReceivedQuantity: number;
+    orderReferenceQuantity: number;
+    differenceFromOrder: number;
+    inventoryMovementCount: number;
+    photoCount: number;
+    fullyTraceable: boolean;
+  };
+  receipts: ReceiptHistoryEntry[];
+  photos: ReceiptHistoryPhoto[];
+  readOnly: boolean;
 };
 
 export type WebViewerPermissions = {
@@ -68,6 +145,7 @@ export type WebViewerAdminAccount = {
   displayName: string;
   filemakerPrivilegeSet: string;
   enabled: boolean;
+  mobileOnly: boolean;
   permissions: WebViewerPermissions;
   partPermissions: PartPermissionMap;
   inheritsPrivilegeSet: boolean;
@@ -134,7 +212,9 @@ export type Page =
   | "parts"
   | "partDetail"
   | "ragControl"
-  | "accessAdmin";
+  | "accessAdmin"
+  | "settings"
+  | "serviceDirectory";
 
 export type InternalOrderRow = {
   orderId: string;

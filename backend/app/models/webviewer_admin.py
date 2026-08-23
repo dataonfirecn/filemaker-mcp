@@ -22,6 +22,7 @@ class WebViewerAccountAdminItem(BaseModel):
     display_name: str = Field(alias="displayName")
     filemaker_privilege_set: str = Field(alias="filemakerPrivilegeSet")
     enabled: bool
+    mobile_only: bool = Field(default=False, alias="mobileOnly")
     permissions: WebViewerPermissions
     part_permissions: dict[str, bool] = Field(
         default_factory=dict,
@@ -68,6 +69,7 @@ class WebViewerAccountRegisterRequest(BaseModel):
         max_length=160,
     )
     enabled: bool = True
+    mobile_only: bool = Field(default=False, alias="mobileOnly")
     permissions: WebViewerPermissions | None = None
     part_permissions: dict[str, bool] | None = Field(
         default=None,
@@ -96,6 +98,7 @@ class WebViewerAccountAdminUpdateRequest(BaseModel):
         max_length=160,
     )
     enabled: bool
+    mobile_only: bool | None = Field(default=None, alias="mobileOnly")
     permissions: WebViewerPermissions
     part_permissions: dict[str, bool] | None = Field(
         default=None,

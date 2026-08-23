@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     filemaker_timeout_seconds: float = 30.0
     filemaker_ssl_verify: bool = False
     filemaker_read_only: bool = True
+    # Dedicated, allow-listed write path for iPad finished-goods receipts.
+    # Generic FileMaker write endpoints remain governed by FILEMAKER_READ_ONLY.
+    filemaker_mobile_receipt_write_enabled: bool = False
     # Dedicated, allow-listed write path for the internal-order merge page.
     # This remains independent from FILEMAKER_READ_ONLY so generic create/update/
     # delete/script endpoints can stay locked while this one workflow is enabled.
@@ -206,7 +209,9 @@ class Settings(BaseSettings):
     cos_public_base_url: str = "https://oss.dataonfire.cn"
     cos_presign_ttl_seconds: int = 10 * 60
     cos_max_upload_bytes: int = 10 * 1024 * 1024
-    cos_max_attachments_per_receipt: int = 8
+    # Safety ceiling for one draft. Business limits are enforced separately:
+    # six receipt photos per SKU line and one packed-shipment photo.
+    cos_max_attachments_per_receipt: int = 3001
     cos_allowed_content_types: str = (
         "image/jpeg,image/png,image/webp,image/heic,image/heif"
     )

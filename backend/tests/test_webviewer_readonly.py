@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Request
@@ -9,7 +10,10 @@ from app.api.filemaker import (
     ensure_write_allowed,
     router as filemaker_router,
 )
-from app.api.webviewer import create_webviewer_session
+from app.api.webviewer import (
+    create_webviewer_session,
+    get_current_webviewer_session,
+)
 from app.core.config import Settings
 from app.models.webviewer import WebViewerSessionRequest
 from app.services.audit_log import AuditLogStore, OperatorContext
@@ -25,6 +29,7 @@ from app.services.webviewer_session import (
     operator_from_session,
     verify_session_token,
 )
+from app.services.webviewer_account_access import WebViewerAccountAccessStore
 
 
 class FileMakerSettingsStub:
@@ -176,6 +181,14 @@ async def test_remote_webviewer_login_issues_audited_internal_session() -> None:
             customerId="CU004",
             customerName="SARL IMODEL",
         ),
+        Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/webviewer/session",
+                "headers": [],
+            }
+        ),
         settings,
         audit,
     )
@@ -184,6 +197,245 @@ async def test_remote_webviewer_login_issues_audited_internal_session() -> None:
     assert response.context["operator"]["privilege"] == "internal_remote"
     assert response.context["customerId"] == "CU004"
     assert len(audit._memory_rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_remote_webviewer_login_enforces_configured_pda_client() -> None:
+    password = "123456"
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=False,
+        webviewer_remote_access_enabled=True,
+        webviewer_remote_accounts_json=json.dumps(
+            [
+                {
+                    "username": "pda",
+                    "displayName": "PDA 测试员",
+                    "passwordHash": hash_customer_password(password, iterations=100_000),
+                    "allowedClientChannels": ["ios-pda"],
+                    "allowedUserAgentPrefixes": ["StarRCPDA/4 "],
+                }
+            ]
+        ),
+    )
+    audit = AuditLogStore("memory://")
+    browser_request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/webviewer/session",
+            "headers": [(b"user-agent", b"Mozilla/5.0")],
+        }
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_webviewer_session(
+            WebViewerSessionRequest(username="pda", password=password),
+            browser_request,
+            settings,
+            audit,
+        )
+
+    assert exc.value.status_code == 403
+
+    pda_request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/webviewer/session",
+            "headers": [
+                (b"x-client-channel", b"ios-pda"),
+                (b"user-agent", b"StarRCPDA/4 CFNetwork/3860 Darwin/25"),
+            ],
+        }
+    )
+    response = await create_webviewer_session(
+        WebViewerSessionRequest(username="pda", password=password),
+        pda_request,
+        settings,
+        audit,
+    )
+
+    assert response.context["operator"]["account"] == "pda"
+
+
+@pytest.mark.asyncio
+async def test_mobile_only_account_blocks_web_login_and_allows_pda_app() -> None:
+    password = "123456"
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=False,
+        webviewer_remote_access_enabled=True,
+        webviewer_remote_accounts_json=json.dumps(
+            [
+                {
+                    "username": "pda",
+                    "displayName": "PDA 测试员",
+                    "passwordHash": hash_customer_password(password, iterations=100_000),
+                }
+            ]
+        ),
+    )
+    audit = AuditLogStore("memory://")
+    store = WebViewerAccountAccessStore("memory://mobile-only-login")
+    await store.init(
+        seed_accounts=[
+            {
+                "username": "pda",
+                "displayName": "PDA 测试员",
+                "privilegeSet": "倉庫_組員",
+            }
+        ]
+    )
+    account = await store.get_account("pda")
+    assert account is not None
+    await store.update_account(
+        "pda",
+        enabled=True,
+        mobile_only=True,
+        permissions=account["permissions"],
+        updated_by="admin",
+    )
+
+    with pytest.raises(HTTPException) as denied:
+        await create_webviewer_session(
+            WebViewerSessionRequest(username="pda", password=password),
+            Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/api/webviewer/session",
+                    "headers": [(b"user-agent", b"Mozilla/5.0")],
+                }
+            ),
+            settings,
+            audit,
+            store,
+        )
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail["message"] == "此账号仅允许通过移动端登录。"
+
+    response = await create_webviewer_session(
+        WebViewerSessionRequest(username="pda", password=password),
+        Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/webviewer/session",
+                "headers": [
+                    (b"x-client-channel", b"ios-pda"),
+                    (b"user-agent", b"StarRCPDA/4 CFNetwork/3860 Darwin/25"),
+                ],
+            }
+        ),
+        settings,
+        audit,
+        store,
+    )
+
+    assert response.context["operator"]["account"] == "pda"
+
+
+@pytest.mark.asyncio
+async def test_mobile_only_account_rejects_existing_session_from_web() -> None:
+    settings = Settings(webviewer_context_secret="unit-test-secret")
+    store = WebViewerAccountAccessStore("memory://mobile-only-existing-session")
+    await store.init()
+    account = await store.observe_account(
+        username="pda",
+        display_name="PDA 测试员",
+        privilege_set="倉庫_組員",
+    )
+    await store.update_account(
+        "pda",
+        enabled=True,
+        mobile_only=True,
+        permissions=account["permissions"],
+        updated_by="admin",
+    )
+    context = create_mock_context(
+        operator_account="pda",
+        operator_name="PDA 测试员",
+        operator_privilege="倉庫_組員",
+    )
+    token, _ = issue_session_token(context, settings)
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            settings=settings,
+            webviewer_account_access_store=store,
+        )
+    )
+
+    with pytest.raises(HTTPException) as denied:
+        await get_webviewer_session_context(
+            Request(
+                {
+                    "type": "http",
+                    "method": "GET",
+                    "path": "/api/webviewer/session/me",
+                    "headers": [
+                        (b"authorization", f"Bearer {token}".encode()),
+                        (b"user-agent", b"Mozilla/5.0"),
+                    ],
+                    "app": app,
+                }
+            )
+        )
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail["message"] == "此账号仅允许通过移动端访问。"
+
+    mobile_context = await get_webviewer_session_context(
+        Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/webviewer/session/me",
+                "headers": [
+                    (b"authorization", f"Bearer {token}".encode()),
+                    (b"x-client-channel", b"ios-pda"),
+                    (b"user-agent", b"StarRCPDA/4 CFNetwork/3860 Darwin/25"),
+                ],
+                "app": app,
+            }
+        )
+    )
+
+    assert mobile_context["operator"]["account"] == "pda"
+
+
+@pytest.mark.asyncio
+async def test_current_webviewer_session_returns_user_and_live_permissions() -> None:
+    response = await get_current_webviewer_session(
+        session_context={
+            "sessionId": "session-1",
+            "operator": {
+                "account": "pda-test",
+                "name": "PDA 测试员",
+                "privilege": "倉庫_組員",
+            },
+            "access": {
+                "canViewOrders": True,
+                "canManageAccounts": False,
+            },
+            "partPermissions": {
+                "canViewPart": True,
+                "canEditPart": False,
+            },
+        }
+    )
+
+    payload = response.model_dump(by_alias=True)
+    assert payload["sessionId"] == "session-1"
+    assert payload["user"] == {
+        "username": "pda-test",
+        "displayName": "PDA 测试员",
+        "filemakerPrivilegeSet": "倉庫_組員",
+    }
+    assert payload["permissions"]["canViewOrders"] is True
+    assert payload["permissions"]["canManageAccounts"] is False
+    assert payload["partPermissions"]["canEditPart"] is False
 
 
 def test_bom_preview_line_calculates_without_store_write() -> None:
