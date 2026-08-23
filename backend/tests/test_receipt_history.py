@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 from fastapi import HTTPException, Request
@@ -80,6 +81,14 @@ class FakeOData:
                         "创建人": "dataonfire",
                         "修改时间戳": "2026-07-27T10:29:24Z",
                         "修改人": "dataonfire",
+                        "log": json.dumps({
+                            "schema": "starrc.finished-goods-receipt",
+                            "schemaVersion": 1,
+                            "source": {"channel": "ios-pda"},
+                            "operator": {"account": "pda", "name": "PDA 测试员"},
+                            "identifiers": {"lineId": LINE_ID, "receiptId": RECEIPT_ID},
+                            "attachments": {},
+                        }),
                     }
                 ]
             }

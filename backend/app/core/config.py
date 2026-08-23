@@ -148,8 +148,8 @@ class Settings(BaseSettings):
     semantic_mapping_path: str = "backend/config/semantic_mapping.json"
 
     natural_query_timezone: str = "Asia/Shanghai"
-    natural_query_filemaker_date_format: str = "%Y/%m/%d"
-    natural_query_filemaker_timestamp_format: str = "%Y/%m/%d %H:%M:%S"
+    natural_query_filemaker_date_format: str = "%m/%d/%Y"
+    natural_query_filemaker_timestamp_format: str = "%m/%d/%Y %H:%M:%S"
     natural_query_product_created_fields: str = (
         "创建日期,創建日期,建立日期,新增日期,创建时间,創建時間,建立時間,"
         "创建时间戳,創建時間戳,createdAt,created_at,CreationTimestamp,"

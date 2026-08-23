@@ -77,7 +77,7 @@ def test_product_catalog_query_forces_scope_on_every_search_branch() -> None:
     ]
 
 
-def test_product_inventory_workbook_contains_only_sku_and_inventory() -> None:
+def test_product_inventory_workbook_contains_bilingual_names_and_inventory() -> None:
     content = _product_inventory_workbook([
         {"fieldData": {"product_sku": "MYK-01", "stock": "12"}},
         {"fieldData": {"product_sku": "=NOT_A_FORMULA", "stock": "3.5"}},
@@ -86,9 +86,14 @@ def test_product_inventory_workbook_contains_only_sku_and_inventory() -> None:
     workbook = load_workbook(BytesIO(content), data_only=False)
     sheet = workbook["Products"]
     assert list(sheet.values) == [
-        ("SKU", "Inventory"),
-        ("MYK-01", 12),
-        ("=NOT_A_FORMULA", 3.5),
+        (
+            "产品编号 / SKU",
+            "中文名称 / Chinese Name",
+            "英文名称 / English Name",
+            "库存 / Inventory",
+        ),
+        ("MYK-01", None, None, 12),
+        ("=NOT_A_FORMULA", None, None, 3.5),
     ]
     assert sheet["A3"].data_type == "s"
     assert sheet.freeze_panes == "A2"
@@ -168,10 +173,15 @@ def test_product_excel_export_fetches_all_pages_with_customer_scope() -> None:
     assert response.headers["content-disposition"].endswith('.xlsx"')
     workbook = load_workbook(BytesIO(response.body), read_only=True)
     assert list(workbook["Products"].values) == [
-        ("SKU", "Inventory"),
-        ("SKU-1", 7),
-        ("SKU-2", 0),
-        ("SKU-3", -2),
+        (
+            "产品编号 / SKU",
+            "中文名称 / Chinese Name",
+            "英文名称 / English Name",
+            "库存 / Inventory",
+        ),
+        ("SKU-1", None, None, 7),
+        ("SKU-2", None, None, 0),
+        ("SKU-3", None, None, -2),
     ]
     assert [call[3] for call in filemaker.calls] == [1, 3]
     assert all(call[0] == "@products" for call in filemaker.calls)

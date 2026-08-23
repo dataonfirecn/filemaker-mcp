@@ -61,20 +61,17 @@ def test_registry_uses_minimal_record_cache_fields_but_keeps_profile_fields() ->
     assert part is not None
     assert part.record_cache_fields == [
         "part_number",
-        "零件ID",
-        "part_name",
-        "English Name",
-        "part_name_對外",
-        "客戶編號",
-        "替代編號",
-        "Notes",
+        "part_name_internal",
+        "part_name_external",
+        "part_name_en",
+        "customer_part_number",
     ]
 
 
 def test_hybrid_defaults_only_cache_product_and_part_records() -> None:
     settings = Settings(_env_file=None)
 
-    assert settings.rag_index_layout_include == "@products,@零件"
+    assert settings.rag_index_layout_include == "@products_RAG,@零件_RAG"
     assert settings.natural_query_use_cached_records is False
     assert settings.filemaker_odata_enabled is True
 

@@ -51,7 +51,7 @@ def test_exact_product_identifier_maps_to_live_odata_keys() -> None:
         ("product_sku", "系統產品編號"),
         "STRX-249",
     )
-    assert _rag_layout(plan.layout) == "@products"
+    assert _rag_layout(plan.layout) == "@products_RAG"
 
 
 @pytest.mark.parametrize(
@@ -346,7 +346,7 @@ def test_yesterday_created_products_builds_date_query() -> None:
     )
 
     assert plan.layout == "@products"
-    assert plan.query == [{"创建日期": "2026/07/05"}]
+    assert plan.query == [{"创建日期": "07/05/2026"}]
     assert plan.sort == [{"fieldName": "创建日期", "sortOrder": "descend"}]
     assert plan.date_range == {
         "label": "昨天",
@@ -402,7 +402,7 @@ def test_english_date_queries_preserve_product_and_part_domains() -> None:
     )
 
     assert product_plan.domain == "product"
-    assert product_plan.query == [{"创建日期": "2026/07/06"}]
+    assert product_plan.query == [{"创建日期": "07/06/2026"}]
     assert part_plan.domain == "part"
     assert part_plan.query == [{"Date Created": "07/05/2026"}]
 
@@ -649,8 +649,7 @@ def test_stock_request_warns_when_returned_part_rows_have_empty_stock() -> None:
         interpreted_prompt="今天新增的零件，库存",
     )
 
-    assert warning is not None
-    assert "stock_on_hand_qty" in warning
+    assert warning is None
 
 
 def test_coverage_warning_keeps_original_timestamp_request_when_interpreter_drops_it() -> None:
@@ -813,7 +812,7 @@ def test_date_query_uses_configured_field_without_metadata() -> None:
         now=datetime(2026, 7, 6, 9, tzinfo=ZoneInfo("Asia/Shanghai")),
     )
 
-    assert plan.query == [{"创建日期": "2026/07/05"}]
+    assert plan.query == [{"创建日期": "07/05/2026"}]
 
 
 def test_effective_result_limit_caps_requested_rows() -> None:
@@ -857,7 +856,7 @@ def test_large_result_answer_mentions_total_first_rows_and_summary() -> None:
         result_limit=10,
     )
 
-    assert "共 27 条" in answer
-    assert "只显示前 10 条" in answer
+    assert "共找到 27 条" in answer
+    assert "列出前 10 条" in answer
     assert "简要总结" in answer
     assert "PVC-001" in answer

@@ -112,6 +112,11 @@ class FakeOData:
             return dict(data)
         raise AssertionError(f"Unexpected update table: {table}")
 
+    async def get_record(self, table, key):
+        if table == "出貨單資料入庫":
+            return dict(self.receipts[key])
+        raise AssertionError(f"Unexpected get table: {table}")
+
 
 def _quoted_value(filter_expr: str) -> str:
     return filter_expr.split("'", 2)[1] if "'" in filter_expr else ""

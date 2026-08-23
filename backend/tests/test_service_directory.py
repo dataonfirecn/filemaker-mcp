@@ -5,7 +5,7 @@ def test_api_service_directory_lists_filemaker_integration_directions() -> None:
     payload = api_service_directory()
 
     services = payload["services"]
-    assert len(services) == 8
+    assert len(services) == 9
     assert all(service["direction"] for service in services)
     assert all(service["authentication"] for service in services)
 

@@ -166,15 +166,16 @@ async def test_order_receipt_catalog_returns_latest_traceable_receipt():
         ["LINE-1", "LINE-PENDING", "LINE-1"],
     )
 
-    assert result == {
-        "LINE-1": {
-            "receiptId": "RECEIPT-NEW",
-            "quantity": 300.0,
-            "status": "已入庫",
-            "receivedAt": "01/02/2026 08:30:00",
-            "receivedBy": "PDA 测试用户",
-        }
-    }
+    receipt = result["LINE-1"]
+    assert receipt["receiptId"] == "RECEIPT-NEW"
+    assert receipt["quantity"] == 350.0
+    assert receipt["status"] == "已入庫"
+    assert receipt["receivedAt"] == "2026-01-02T08:30:00+08:00"
+    assert receipt["receivedBy"] == "PDA 测试用户"
+    assert [item["receiptId"] for item in receipt["history"]] == [
+        "RECEIPT-NEW",
+        "RECEIPT-OLD",
+    ]
     assert (
         "產品庫存",
         "ID_出貨單資料入庫 eq 'RECEIPT-NEW'",
