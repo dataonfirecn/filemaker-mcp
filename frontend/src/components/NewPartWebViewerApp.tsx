@@ -29,6 +29,7 @@ const placeholderName = "新零件，請填寫正確中文名稱＆詳細資訊"
 const maxPhotoInputBytes = 20 * 1024 * 1024;
 const maxPhotoDimension = 1800;
 const completeScriptName = "新建零件_WebViewer回调";
+const closeScriptName = "StarRC_CloseWebViewer";
 
 type Option = {
   code: string;
@@ -815,6 +816,27 @@ export default function NewPartWebViewerApp() {
     }
   }
 
+  function closeWebViewer() {
+    setFileMakerActionError(null);
+    if (!window.FileMaker?.PerformScript) {
+      setFileMakerActionError(
+        "当前页面不在 FileMaker WebViewer 中，无法关闭 FileMaker 窗口。"
+      );
+      return;
+    }
+    try {
+      window.FileMaker.PerformScript(
+        closeScriptName,
+        JSON.stringify({
+          action: "close",
+          source: "newPartWebViewer"
+        })
+      );
+    } catch (nextError) {
+      setFileMakerActionError(`无法调用 FileMaker：${parseError(nextError)}`);
+    }
+  }
+
   function completeInFileMaker(action: FileMakerCompletionAction) {
     if (!created) return;
     if (!window.FileMaker) {
@@ -863,10 +885,22 @@ export default function NewPartWebViewerApp() {
   if (starting) {
     return (
       <main className="npw-root npw-centered">
+        <button
+          className="npw-close-webviewer npw-close-floating"
+          type="button"
+          onClick={closeWebViewer}
+          title="关闭新建零件窗口"
+        >
+          <X size={16} />
+          <span>关闭窗口</span>
+        </button>
         <span className="npw-loading-icon"><PackagePlus size={24} /></span>
         <Loader2 className="npw-spin" size={25} />
         <strong>正在连接 FileMaker…</strong>
         <small>读取新建零件字段、值列表与编号规则</small>
+        {fileMakerActionError && (
+          <small className="npw-close-error">{fileMakerActionError}</small>
+        )}
       </main>
     );
   }
@@ -874,9 +908,21 @@ export default function NewPartWebViewerApp() {
   if (!session || !options) {
     return (
       <main className="npw-root npw-centered">
+        <button
+          className="npw-close-webviewer npw-close-floating"
+          type="button"
+          onClick={closeWebViewer}
+          title="关闭新建零件窗口"
+        >
+          <X size={16} />
+          <span>关闭窗口</span>
+        </button>
         <span className="npw-error-icon"><AlertCircle size={23} /></span>
         <h1>无法打开新建零件页面</h1>
         <p>{error ?? "WebViewer 会话初始化失败。"}</p>
+        {fileMakerActionError && (
+          <p className="npw-close-error">{fileMakerActionError}</p>
+        )}
         <button type="button" onClick={() => window.location.reload()}>
           <RefreshCw size={16} /> 重新载入
         </button>
@@ -985,7 +1031,18 @@ export default function NewPartWebViewerApp() {
             <strong>零件创建完成</strong>
             <small>资料已经保存到 FileMaker</small>
           </span>
-          <span className="npw-connected"><i /> 已连接 FileMaker</span>
+          <span className="npw-header-actions">
+            <span className="npw-connected"><i /> 已连接 FileMaker</span>
+            <button
+              className="npw-close-webviewer"
+              type="button"
+              onClick={() => completeInFileMaker("return")}
+              title="保存建立结果并关闭窗口"
+            >
+              <X size={16} />
+              <span>关闭窗口</span>
+            </button>
+          </span>
         </header>
 
         <div className="npw-complete-page">
@@ -1114,6 +1171,15 @@ export default function NewPartWebViewerApp() {
             </button>
           )}
           <span className="npw-connected"><i /> 已连接 FileMaker</span>
+          <button
+            className="npw-close-webviewer"
+            type="button"
+            onClick={closeWebViewer}
+            title="关闭新建零件窗口"
+          >
+            <X size={16} />
+            <span>关闭窗口</span>
+          </button>
         </span>
       </header>
 

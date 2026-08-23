@@ -10,12 +10,33 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "StarRC FileMaker Service"
+    app_name: str = "DMS FileMaker Service"
     app_env: str = "local"
     api_prefix: str = "/api"
     cors_origins: str = (
         "http://localhost:8080,http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:3000"
+    )
+    # Set the minimum to 0 while distributing a new build, then raise it to
+    # enforce the upgrade. The latest build is informational for diagnostics.
+    ios_pda_minimum_build: int = Field(default=0, ge=0)
+    ios_pda_latest_build: int = Field(default=11, ge=0)
+    ios_pda_diagnostic_email_enabled: bool = True
+    ios_pda_diagnostic_email_recipient: str = ""
+    ios_pda_diagnostic_report_max_characters: int = Field(
+        default=500_000,
+        ge=1_000,
+        le=500_000,
+    )
+    ios_pda_diagnostic_expired_token_grace_seconds: int = Field(
+        default=30 * 24 * 60 * 60,
+        ge=0,
+        le=90 * 24 * 60 * 60,
+    )
+    ios_pda_diagnostic_email_max_per_hour: int = Field(
+        default=20,
+        ge=1,
+        le=100,
     )
 
     database_path: str = "backend/data/app.db"
@@ -51,6 +72,22 @@ class Settings(BaseSettings):
     filemaker_timeout_seconds: float = 30.0
     filemaker_ssl_verify: bool = False
     filemaker_read_only: bool = True
+    # Dedicated, allow-listed write path for iPad finished-goods receipts.
+    # Generic FileMaker write endpoints remain governed by FILEMAKER_READ_ONLY.
+    filemaker_mobile_receipt_write_enabled: bool = False
+    # JSON trace snapshot stored on each 出貨單資料入庫 row. Keep this field on
+    # the OData table occurrence so FileMaker and Web history can cross-query it.
+    filemaker_mobile_receipt_log_field: str = "log"
+    filemaker_mobile_receipt_log_max_characters: int = Field(
+        default=200_000,
+        ge=10_000,
+        le=1_000_000,
+    )
+    filemaker_mobile_receipt_log_audit_entries: int = Field(
+        default=100,
+        ge=0,
+        le=1_000,
+    )
     # Dedicated, allow-listed write path for the internal-order merge page.
     # This remains independent from FILEMAKER_READ_ONLY so generic create/update/
     # delete/script endpoints can stay locked while this one workflow is enabled.
@@ -97,6 +134,7 @@ class Settings(BaseSettings):
     filemaker_part_write_layout: str = "@零件"
     filemaker_part_number_field: str = "part_number"
     filemaker_part_photo_field: str = "影像 | 容器"
+    filemaker_part_qrcode_field: str = "qrcode_image"
     filemaker_part_max_photo_bytes: int = 8 * 1024 * 1024
     # Dedicated PartAssets path. Keep disabled until the FileMaker table/layout
     # has been installed; legacy container reads and writes remain available.
@@ -126,16 +164,71 @@ class Settings(BaseSettings):
     natural_query_analytics_pending_limit: int = 100
     natural_query_analytics_worker_enabled: bool = False
     natural_query_analytics_poll_interval_seconds: float = 60.0
-    llm_provider: str = "deepseek"
-    llm_model: str = "deepseek-v4-flash"
-    llm_base_url: str = "https://api.deepseek.com"
+    nightly_maintenance_enabled: bool = False
+    nightly_maintenance_timezone: str = "Asia/Shanghai"
+    nightly_maintenance_poll_interval_seconds: float = 60.0
+    nightly_maintenance_catchup_hours: int = 8
+    nightly_reports_directory: str = "backend/data/nightly-reports"
+    nightly_customer_chat_report_enabled: bool = False
+    nightly_customer_chat_report_schedule_time: str = "00:20"
+    nightly_customer_chat_report_issue_limit: int = Field(default=50, ge=1, le=500)
+    nightly_customer_chat_report_slow_ms: int = Field(default=10_000, ge=100, le=300_000)
+    nightly_query_analytics_enabled: bool = True
+    nightly_query_analytics_midday_schedule_time: str = "12:00"
+    nightly_query_analytics_schedule_time: str = "00:00"
+    nightly_query_analytics_max_questions: int = 1000
+    synthetic_query_monitor_enabled: bool = False
+    synthetic_query_monitor_interval_minutes: int = Field(default=60, ge=15, le=1440)
+    synthetic_query_monitor_questions_per_run: int = Field(default=5, ge=1, le=20)
+    synthetic_query_monitor_poll_interval_seconds: float = Field(
+        default=60.0,
+        ge=5.0,
+        le=3600.0,
+    )
+    synthetic_query_monitor_timeout_seconds: float = Field(
+        default=90.0,
+        ge=5.0,
+        le=300.0,
+    )
+    synthetic_query_monitor_slow_ms: int = Field(
+        default=30_000,
+        ge=100,
+        le=300_000,
+    )
+    synthetic_query_monitor_email_on_issue: bool = True
+    nightly_security_red_team_enabled: bool = True
+    nightly_security_red_team_schedule_time: str = "01:30"
+    nightly_security_red_team_concurrency: int = 4
+    nightly_security_red_team_timeout_seconds: float = 180.0
+    nightly_security_red_team_max_output_tokens: int = 512
+    nightly_report_email_enabled: bool = False
+    nightly_report_email_recipients: str = ""
+    nightly_report_email_public_url: str = (
+        "https://starrc.dataonfire.cn/?page=reports"
+    )
+    nightly_report_email_max_attempts: int = Field(default=3, ge=1, le=5)
+    llm_provider: str = "lm_studio"
+    llm_model: str = "qwen/qwen3.6-35b-a3b"
+    llm_base_url: str = "http://121.10.201.189:15123/v1"
     llm_api_key: str = Field(
         default="",
-        validation_alias=AliasChoices("LLM_API_KEY", "DEEPSEEK_API_KEY"),
+        validation_alias="LLM_API_KEY",
     )
-    llm_timeout_seconds: float = 12.0
-    llm_max_output_tokens: int = 320
+    llm_timeout_seconds: float = 60.0
+    llm_max_output_tokens: int = 2048
     llm_ssl_verify: bool = True
+    lm_studio_model: str = "qwen/qwen3.6-35b-a3b"
+    lm_studio_base_url: str = "http://121.10.201.189:15123/v1"
+    lm_studio_api_key: str = ""
+    lm_studio_timeout_seconds: float = 60.0
+    lm_studio_max_output_tokens: int = 2048
+    lm_studio_ssl_verify: bool = True
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_api_key: str = ""
+    deepseek_timeout_seconds: float = 60.0
+    deepseek_max_output_tokens: int = 2048
+    deepseek_ssl_verify: bool = True
 
     rag_index_enabled: bool = True
     rag_database_path: str = "backend/data/rag_index.db"
@@ -145,7 +238,7 @@ class Settings(BaseSettings):
     rag_index_refresh_schedule_time: str = "00:00"
     rag_index_refresh_schedule_timezone: str = "Asia/Shanghai"
     rag_index_layout_prefix: str = "@"
-    rag_index_layout_include: str = "@products,@零件"
+    rag_index_layout_include: str = "@products_RAG,@零件_RAG"
     rag_index_layout_exclude: str = ""
     rag_index_max_layouts: int = 0
     rag_index_read_layout_fields: bool = True
@@ -155,13 +248,24 @@ class Settings(BaseSettings):
     rag_index_max_fields_per_record: int = 40
     rag_index_value_max_length: int = 160
     rag_index_semantic_profile_enabled: bool = True
-    rag_index_semantic_profile_layouts: str = "@products,@零件"
+    rag_index_semantic_profile_layouts: str = "@products_RAG,@零件_RAG"
     rag_index_semantic_sample_records: int = 200
     rag_index_semantic_llm_timeout_seconds: float = 30.0
     rag_index_semantic_llm_max_output_tokens: int = 3600
+    rag_embedding_enabled: bool = False
+    rag_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    rag_embedding_base_url: str = ""
+    rag_embedding_api_key: str = ""
+    rag_embedding_ssl_verify: bool = True
+    rag_embedding_timeout_seconds: float = 120.0
+    rag_embedding_batch_size: int = 32
+    rag_embedding_max_records_per_run: int = 20000
+    rag_embedding_input_max_chars: int = 4000
+    rag_embedding_query_enabled: bool = True
 
     webviewer_context_secret: str = "dev-webviewer-secret-change-me"
     webviewer_session_ttl_seconds: int = 8 * 60 * 60
+    ios_pda_session_ttl_seconds: int = 7 * 24 * 60 * 60
     webviewer_allow_mock_context: bool = True
     webviewer_remote_access_enabled: bool = False
     webviewer_remote_accounts_json: str = "[]"
@@ -206,7 +310,9 @@ class Settings(BaseSettings):
     cos_public_base_url: str = "https://oss.dataonfire.cn"
     cos_presign_ttl_seconds: int = 10 * 60
     cos_max_upload_bytes: int = 10 * 1024 * 1024
-    cos_max_attachments_per_receipt: int = 8
+    # Safety ceiling for one draft. Business limits are enforced separately:
+    # six receipt photos per SKU line and one packed-shipment photo.
+    cos_max_attachments_per_receipt: int = 3001
     cos_allowed_content_types: str = (
         "image/jpeg,image/png,image/webp,image/heic,image/heif"
     )
@@ -313,9 +419,21 @@ class Settings(BaseSettings):
             problems.append("MES_CALLBACK_API_KEY 未配置；生产环境的 MES 回调必须鉴权。")
         if not self.mes_hmac_secret.strip():
             problems.append("MES_HMAC_SECRET 未配置；生产环境的 MES 回调必须校验签名。")
-        if self.natural_query_llm_enabled and not self.llm_api_key.strip():
+        active_provider_key = (
+            self.lm_studio_api_key
+            if self.llm_provider.strip().lower() == "lm_studio"
+            else self.deepseek_api_key
+            if self.llm_provider.strip().lower() == "deepseek"
+            else ""
+        )
+        if (
+            self.natural_query_llm_enabled
+            and not self.llm_api_key.strip()
+            and not active_provider_key.strip()
+        ):
             problems.append(
-                "NATURAL_QUERY_LLM_ENABLED=true 但 LLM_API_KEY 未配置；"
+                "NATURAL_QUERY_LLM_ENABLED=true 但 LLM_API_KEY、LM_STUDIO_API_KEY "
+                "或 DEEPSEEK_API_KEY 未配置当前供应商的密钥；"
                 "生产环境启用 LLM 必须同时提供 API key。"
             )
         if self.cos_enabled and not self.cos_configured:
@@ -343,6 +461,10 @@ class Settings(BaseSettings):
             problems.append("COS_MAX_UPLOAD_BYTES 必须大于 0。")
         if self.cos_max_attachments_per_receipt <= 0:
             problems.append("COS_MAX_ATTACHMENTS_PER_RECEIPT 必须大于 0。")
+        if self.ios_pda_latest_build < self.ios_pda_minimum_build:
+            problems.append(
+                "IOS_PDA_LATEST_BUILD 不能小于 IOS_PDA_MINIMUM_BUILD。"
+            )
 
         if self.customer_chat_enabled:
             # Local import avoids a module cycle: the auth service also consumes Settings.

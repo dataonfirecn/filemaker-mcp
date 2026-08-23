@@ -135,6 +135,52 @@
   opacity: 0.66;
 }
 
+.npw-close-webviewer {
+  display: inline-flex;
+  min-width: 82px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid #e0bbb7;
+  border-radius: 9px;
+  color: #a13f37;
+  background: #fff6f5;
+  font-size: 9px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.npw-close-webviewer:hover:not(:disabled) {
+  border-color: #ce8c86;
+  color: #8d2f29;
+  background: #ffedeb;
+}
+
+.npw-close-webviewer:focus-visible {
+  outline: 3px solid rgba(196, 62, 50, 0.16);
+  outline-offset: 2px;
+}
+
+.npw-close-webviewer:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+
+.npw-close-floating {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 50;
+}
+
+.npw-close-error {
+  color: var(--npw-error) !important;
+}
+
 .npw-page {
   width: min(1420px, calc(100% - 28px));
   margin: 0 auto;
@@ -1444,6 +1490,16 @@
 
   .npw-connected {
     font-size: 0;
+  }
+
+  .npw-close-webviewer {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .npw-close-webviewer span {
+    display: none;
   }
 
   .npw-cache-refresh {

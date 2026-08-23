@@ -1,5 +1,6 @@
-import { ArrowRight, Eye, LayoutGrid, MessageCircle, ShieldCheck } from "lucide-react";
-import type { Page } from "../types";
+import { AlertTriangle, ArrowRight, CheckCircle2, Eye, FileText, LayoutGrid, MessageCircle, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { Page, ReportDashboardResponse, ReportStatus } from "../types";
 import type { SidebarNavGroup } from "./SidebarNav";
 
 export type DashboardPageProps = {
@@ -7,7 +8,15 @@ export type DashboardPageProps = {
   operatorName: string;
   canViewPrice: boolean;
   readOnly: boolean;
+  apiBase: string;
+  token: string;
   onNavigate: (page: Page) => void;
+};
+
+const statusCopy: Record<ReportStatus, string> = {
+  success: "正常",
+  warning: "需关注",
+  failed: "失败"
 };
 
 export default function DashboardPage({
@@ -15,17 +24,47 @@ export default function DashboardPage({
   operatorName,
   canViewPrice,
   readOnly,
+  apiBase,
+  token,
   onNavigate
 }: DashboardPageProps) {
   const items = groups.flatMap((group) => group.items);
   const enabledItems = items.filter((item) => !item.disabled);
   const chatItem = items.find((item) => item.id === "chat");
+  const [reportData, setReportData] = useState<ReportDashboardResponse | null>(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setReportLoading(true);
+    fetch(`${apiBase}/api/reports/dashboard?days=14`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+        return response.json() as Promise<ReportDashboardResponse>;
+      })
+      .then((payload) => {
+        setReportData(payload);
+        setReportError("");
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setReportError("夜间报告摘要暂时无法读取。");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setReportLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiBase, token]);
 
   return (
     <div className="dashboard-page">
       <section className="dashboard-hero" aria-labelledby="dashboard-welcome">
         <div className="dashboard-hero-copy">
-          <span className="dashboard-eyebrow">STAR-RC 工作台</span>
+          <span className="dashboard-eyebrow">DMS 工作台</span>
           <h2 id="dashboard-welcome">欢迎回来，{operatorName || "同事"}</h2>
           <p>从这里进入订单、BOM、产品、零件和 FileMaker 智能查询。</p>
         </div>
@@ -69,13 +108,96 @@ export default function DashboardPage({
         </article>
       </section>
 
+      <section className="dashboard-report-panel" aria-labelledby="dashboard-report-title">
+        <header className="dashboard-report-heading">
+          <div>
+            <span>昨夜运行概览</span>
+            <h2 id="dashboard-report-title">管理层报告摘要</h2>
+          </div>
+          <button type="button" onClick={() => onNavigate("reports")}>
+            查看报告中心<ArrowRight size={16} />
+          </button>
+        </header>
+
+        {reportLoading ? (
+          <div className="dashboard-report-empty">正在读取夜间报告摘要…</div>
+        ) : reportError ? (
+          <div className="dashboard-report-empty warning"><AlertTriangle size={17} />{reportError}</div>
+        ) : !reportData?.hasReports ? (
+          <div className="dashboard-report-empty"><FileText size={18} />夜间任务运行后，重要指标和异常会显示在这里。</div>
+        ) : (
+          <div className="dashboard-report-content">
+            <div className="dashboard-report-overview">
+              <article className={`dashboard-report-state ${reportData.overallStatus}`}>
+                <span className="dashboard-report-state-icon">
+                  {reportData.overallStatus === "success"
+                    ? <CheckCircle2 size={22} />
+                    : <AlertTriangle size={22} />}
+                </span>
+                <div>
+                  <small>截至 {reportData.latestDate} 的最新夜间任务</small>
+                  <strong>{statusCopy[reportData.overallStatus]}</strong>
+                  <span>{reportData.reportCount} 份报告 · 数据完整度 {reportData.dataCompleteness}%</span>
+                </div>
+              </article>
+              <div className="dashboard-report-counts">
+                <div><strong>{reportData.successCount}</strong><span>正常</span></div>
+                <div><strong>{reportData.warningCount}</strong><span>需关注</span></div>
+                <div><strong>{reportData.failedCount}</strong><span>失败</span></div>
+              </div>
+            </div>
+
+            <div className="dashboard-report-metrics">
+              {reportData.metrics.slice(0, 6).map((metric) => (
+                <article className={metric.severity} key={`${metric.reportType}-${metric.metricCode}`}>
+                  <span>{metric.metricName}</span>
+                  <strong>{metric.displayValue || `${metric.metricValue ?? "-"}${metric.unit}`}</strong>
+                  <small>{metric.reportTitle}</small>
+                </article>
+              ))}
+            </div>
+
+            <div className="dashboard-report-bottom">
+              <section className="dashboard-report-exceptions">
+                <header><strong>重要异常</strong><span>{reportData.exceptions.length} 项</span></header>
+                {reportData.exceptions.length ? reportData.exceptions.slice(0, 4).map((item) => (
+                  <button type="button" key={item.id} onClick={() => onNavigate("reports")}>
+                    <span className={`report-status-dot ${item.severity === "critical" ? "failed" : "warning"}`} />
+                    <span><strong>{item.title}</strong><small>{item.reportTitle || item.category}</small></span>
+                    <ArrowRight size={14} />
+                  </button>
+                )) : <div className="dashboard-report-no-exception"><CheckCircle2 size={16} />没有未处理的重要异常</div>}
+              </section>
+              <section className="dashboard-report-trend">
+                <header><strong>最近运行</strong><span>14天</span></header>
+                <div className="dashboard-report-trend-days">
+                  {reportData.trends.map((item) => {
+                    const state: ReportStatus = item.failedCount
+                      ? "failed"
+                      : item.warningCount
+                        ? "warning"
+                        : "success";
+                    return (
+                      <div key={item.reportDate} title={`${item.reportDate} · 完整度 ${item.dataCompleteness}%`}>
+                        <span className={state} style={{ height: `${Math.max(18, item.dataCompleteness)}%` }} />
+                        <small>{item.reportDate.slice(5)}</small>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="dashboard-navigation" aria-labelledby="dashboard-navigation-title">
         <div className="dashboard-section-head">
           <div>
-            <span>快速入口</span>
-            <h2 id="dashboard-navigation-title">业务导航</h2>
+            <span>浏览器入口</span>
+            <h2 id="dashboard-navigation-title">浏览器登录工作台</h2>
           </div>
-          <p>功能入口会根据当前 FileMaker 账号权限自动开放。</p>
+          <p>这些页面在浏览器登录后使用；FileMaker 内嵌页面和 API 已收录到管理员的应用与接口目录。</p>
         </div>
 
         <div className="dashboard-group-grid">

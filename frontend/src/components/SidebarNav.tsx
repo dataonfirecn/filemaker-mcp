@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ChevronLeft, ChevronRight, Home } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Monitor } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Page } from "../types";
 
@@ -54,11 +54,10 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
       <div className="sidebar-header">
         <div className="sidebar-brand">
           <div className="sidebar-logo" aria-hidden="true">
-            <span className="sidebar-logo-star">★</span>
-            <span className="sidebar-logo-text">RC</span>
+            <img src="/dms-mark.svg" alt="" />
           </div>
           <div className="sidebar-brand-text">
-            <strong>Star-RC</strong>
+            <strong>DMS</strong>
             <span>运营导航中心</span>
           </div>
         </div>
@@ -80,6 +79,10 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
       )}
 
       <nav className="sidebar-groups" aria-label="模块导航">
+        <div className="sidebar-channel-label">
+          <Monitor size={13} />
+          <span>浏览器工作台</span>
+        </div>
         {groups.map((group) => (
           <div key={group.id} className="sidebar-group">
             <div className="sidebar-group-header">

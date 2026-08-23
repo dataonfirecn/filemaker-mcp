@@ -9,7 +9,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import { Boxes, BrainCircuit, ClipboardList, Database, Eye, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { BookOpen, Boxes, BrainCircuit, ClipboardList, Database, Eye, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -30,6 +30,10 @@ import OrderDetailPage from "./components/OrderDetailPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
 import InternalOrderMergePage from "./components/InternalOrderMergePage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
+import InternalSettingsPage from "./components/InternalSettingsPage";
+import InternalServiceDirectoryPage from "./components/InternalServiceDirectoryPage";
+import ReportsPage from "./components/ReportsPage";
+import InternalUserMenu from "./components/InternalUserMenu";
 import GenerateDialog from "./components/GenerateDialog";
 import PartSearchDialog from "./components/PartSearchDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
@@ -37,6 +41,7 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import SuccessAlert from "./components/SuccessAlert";
 import { numberFilterParams } from "./components/grid-config";
 import { parseError } from "./utils/error";
+import { takePreviewSession } from "./utils/previewSession";
 import type {
   CalculationLine,
   CalculationPreview,
@@ -67,6 +72,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 const THEME_STORAGE_KEY = "starrc-theme";
+const previewSessionFromWindow = takePreviewSession();
 
 const emptyBusinessProductFilters: BusinessProductFilters = {
   category: "",
@@ -77,7 +83,7 @@ const emptyBusinessProductFilters: BusinessProductFilters = {
 
 const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   home: {
-    title: "Star-RC",
+    title: "DMS",
     subtitle: "企业运营导航中心"
   },
   chat: {
@@ -134,7 +140,19 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   accessAdmin: {
     title: "账号与权限",
-    subtitle: "将 FileMaker 权限集同步为 StarRC 功能授权，单独控制价格查看。"
+    subtitle: "将 FileMaker 权限集同步为 DMS 功能授权，单独控制价格查看。"
+  },
+  settings: {
+    title: "个人设置",
+    subtitle: "查看当前账号信息，并调整工作台的显示与会话选项。"
+  },
+  serviceDirectory: {
+    title: "应用与接口目录",
+    subtitle: "区分浏览器入口、FileMaker 内嵌页面与受控集成 API。"
+  },
+  reports: {
+    title: "报告中心",
+    subtitle: "查询夜间任务报告、管理指标与重要异常，安全预览归档HTML。"
   }
 };
 
@@ -168,6 +186,35 @@ function orderIdQueryValue(params: URLSearchParams): string {
   return queryValue(params, "orderId", queryValue(params, "id", ""));
 }
 
+function pageFromSearchParams(params: URLSearchParams): Page {
+  const requestedPage = params.get("page");
+  switch (requestedPage) {
+    case "chat":
+    case "productInventory":
+    case "internalOrderMerge":
+    case "orderDetail":
+    case "bom":
+    case "issue":
+    case "kitIssue":
+    case "businessProducts":
+    case "businessProductDetail":
+    case "parts":
+    case "partDetail":
+    case "ragControl":
+    case "settings":
+    case "accessAdmin":
+    case "serviceDirectory":
+    case "reports":
+      return requestedPage;
+    case "product":
+      return "bom";
+    case "partDetailPrototype":
+      return "partDetail";
+    default:
+      return "home";
+  }
+}
+
 function formatQty(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "";
   const num = Number(value);
@@ -197,27 +244,16 @@ function initialTheme(): ThemeMode {
 export default function App() {
   const didInit = useRef(false);
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
-  const [session, setSession] = useState<SessionResponse | null>(null);
+  const [session, setSession] = useState<SessionResponse | null>(() => previewSessionFromWindow);
   const [remoteLoginRequired, setRemoteLoginRequired] = useState(false);
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
   const [remoteLoginLoading, setRemoteLoginLoading] = useState(false);
   const [remoteLoginError, setRemoteLoginError] = useState<string | null>(null);
   const [productBom, setProductBom] = useState<ProductBomResponse | null>(null);
-  const [page, setPage] = useState<Page>(() => {
-    const requestedPage = new URLSearchParams(window.location.search).get("page");
-    return requestedPage === "productInventory"
-      ? "productInventory"
-      : requestedPage === "internalOrderMerge"
-        ? "internalOrderMerge"
-        : requestedPage === "chat"
-          ? "chat"
-        : requestedPage === "parts"
-          ? "parts"
-          : requestedPage === "partDetail" || requestedPage === "partDetailPrototype"
-            ? "partDetail"
-          : "home";
-  });
+  const [page, setPage] = useState<Page>(() =>
+    pageFromSearchParams(new URLSearchParams(window.location.search))
+  );
   // BOM 单页工作台阶段与 SKU 输入
   const [bomStep, setBomStep] = useState<BomStep>("select");
   const [bomSkuInput, setBomSkuInput] = useState("");
@@ -293,29 +329,7 @@ export default function App() {
     const customerId = queryValue(params, "customerId", "");
     const customerName = queryValue(params, "customerName", "");
     const currency = queryValue(params, "currency", "USD");
-    const pageParam = params.get("page");
-    const initialPage: Page =
-      pageParam === "productInventory"
-        ? "productInventory"
-        : pageParam === "internalOrderMerge"
-        ? "internalOrderMerge"
-        : pageParam === "chat"
-        ? "chat"
-        : pageParam === "orderDetail"
-        ? "orderDetail"
-        : pageParam === "bom" || pageParam === "product"
-        ? "bom"
-        : pageParam === "kitIssue"
-          ? "kitIssue"
-          : pageParam === "businessProducts"
-            ? "businessProducts"
-            : pageParam === "parts"
-              ? "parts"
-              : pageParam === "partDetail" || pageParam === "partDetailPrototype"
-                ? "partDetail"
-            : pageParam === "ragControl"
-              ? "ragControl"
-              : "home";
+    const initialPage = pageFromSearchParams(params);
     const ctx = params.get("ctx");
     const sig = params.get("sig");
 
@@ -848,6 +862,28 @@ export default function App() {
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
+    if (previewSessionFromWindow) {
+      const params = new URLSearchParams(window.location.search);
+      setKitIssueOrderNo(orderIdQueryValue(params));
+      setBomSkuInput(
+        queryValue(
+          params,
+          "productSku",
+          previewSessionFromWindow.context.productSku || "STRX-202"
+        )
+      );
+      if (pageFromSearchParams(params) === "ragControl") {
+        void loadRagStatus(previewSessionFromWindow);
+        void loadTopQuestions(previewSessionFromWindow);
+        void loadRelationshipMapping(previewSessionFromWindow);
+      }
+      void fetchJson("/api/webviewer/session/me", previewSessionFromWindow.token).catch(() => {
+        setSession(null);
+        setRemoteLoginRequired(true);
+        setRemoteLoginError("预览会话已过期，请重新登录。");
+      });
+      return;
+    }
     void startSession().catch((err) => {
       const params = new URLSearchParams(window.location.search);
       if (!(params.get("ctx") && params.get("sig"))) {
@@ -879,6 +915,44 @@ export default function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
 
+  function signOut() {
+    const signedOutUsername = session?.context.operator.account ?? "";
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.delete("ctx");
+    currentUrl.searchParams.delete("sig");
+    window.history.replaceState(
+      {},
+      "",
+      `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+    );
+
+    setSession(null);
+    setRemoteLoginRequired(true);
+    setRemoteUsername(signedOutUsername);
+    setRemotePassword("");
+    setRemoteLoginError(null);
+    setPage("home");
+    setError(null);
+    setSuccess(null);
+    setProductBom(null);
+    setPreview(null);
+    setCalcLines([]);
+    setDocument(null);
+    setKitIssueData(null);
+    setBusinessProductsData(null);
+    setBusinessProductDetail(null);
+    setNaturalQueryPrompt("");
+    setNaturalQueryExchanges([]);
+    setRagStatus(null);
+    setRagSearchResponse(null);
+    setTopQuestionsData(null);
+    setRelationshipMappingData(null);
+    setSelectedPartIdentifier("");
+    setGenerateDialogOpen(false);
+    setConfirmOpen(false);
+    setPartSearchLine(null);
+  }
+
   useEffect(() => {
     if (!partSearchLine || !session) return;
     const timer = window.setTimeout(() => {
@@ -896,6 +970,17 @@ export default function App() {
     if (page !== "businessProducts" || !session || businessProductsData || businessProductsLoading) return;
     void loadBusinessProducts(1, session);
   }, [page, session, businessProductsData, businessProductsLoading]);
+
+  useEffect(() => {
+    if (
+      session
+      && (page === "accessAdmin" || page === "serviceDirectory")
+      && !session.context.access.canManageAccounts
+    ) {
+      setPage("home");
+      setError("当前账号没有访问系统管理页面的权限。");
+    }
+  }, [page, session]);
 
   useEffect(() => {
     if (!success) return;
@@ -948,11 +1033,11 @@ export default function App() {
     void loadBusinessProductDetail(row.recordId, row);
   }
 
-  function setPartPageUrl(nextPage: "parts" | "partDetail", part?: PartDirectoryRow) {
+  function setPartPageUrl(nextPage: "parts" | "partDetail", identifier?: string) {
     const url = new URL(window.location.href);
     url.searchParams.set("page", nextPage);
-    if (nextPage === "partDetail" && part) {
-      url.searchParams.set("partId", part.partId || part.partNumber);
+    if (nextPage === "partDetail" && identifier) {
+      url.searchParams.set("partId", identifier);
     } else {
       url.searchParams.delete("partId");
     }
@@ -960,10 +1045,49 @@ export default function App() {
   }
 
   function openPartDetail(part: PartDirectoryRow) {
-    setSelectedPartIdentifier(part.partId || part.partNumber);
+    const identifier = part.partId || part.partNumber;
+    setSelectedPartIdentifier(identifier);
     setPage("partDetail");
     setError(null);
-    setPartPageUrl("partDetail", part);
+    setPartPageUrl("partDetail", identifier);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
+  function openNaturalQueryResult(row: BusinessProductRow, domain: string) {
+    if (domain !== "part") {
+      openBusinessProductDetail(row);
+      return;
+    }
+
+    const identifier = String(
+      row.raw.part_id
+        || row.raw.part_number
+        || row.productSku
+        || row.systemProductSku
+        || row.recordId
+        || ""
+    ).trim();
+    if (!identifier) {
+      setError("查询结果缺少零件编号，无法打开详情。");
+      return;
+    }
+    setSelectedPartIdentifier(identifier);
+    setPage("partDetail");
+    setError(null);
+    setPartPageUrl("partDetail", identifier);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
+  function openNaturalQueryTarget(targetType: string, targetIdentifier: string) {
+    const identifier = targetIdentifier.trim();
+    if (targetType !== "part" || !identifier) {
+      setError("该查询明细暂时没有可打开的目标资料。");
+      return;
+    }
+    setSelectedPartIdentifier(identifier);
+    setPage("partDetail");
+    setError(null);
+    setPartPageUrl("partDetail", identifier);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
@@ -1283,13 +1407,15 @@ export default function App() {
   const calculationDate = document?.createdAt ?? preview?.createdAt ?? null;
   const operatorDisplayName = session?.context.operator.name?.trim() || "";
   const operatorAccount = session?.context.operator.account?.trim() || "";
-  const operatorLabel = operatorDisplayName || operatorAccount
-    ? operatorDisplayName && operatorAccount && operatorDisplayName.localeCompare(operatorAccount, undefined, { sensitivity: "accent" }) !== 0
-      ? `${operatorDisplayName} / ${operatorAccount}`
-      : operatorDisplayName || operatorAccount
-    : "-";
   const operatorName =
     session?.context.operator.name || session?.context.operator.account || "";
+  const currentUser = session
+    ? {
+        username: operatorAccount,
+        displayName: operatorDisplayName || operatorAccount,
+        privilegeSet: session.context.operator.privilege
+      }
+    : null;
   const access = session?.context.access;
   const requestedOrderId =
     session?.context.orderId || orderIdQueryValue(new URLSearchParams(window.location.search));
@@ -1362,6 +1488,19 @@ export default function App() {
         ]
       },
       {
+        id: "reports-center",
+        label: "运营报告",
+        items: [
+          {
+            id: "reports",
+            label: "报告中心",
+            description: "查询夜间HTML报告、指标与重要异常",
+            Icon: FileBarChart,
+            badge: "每日更新"
+          }
+        ]
+      },
+      {
         id: "ai-search",
         label: "智能搜索",
         items: [
@@ -1403,13 +1542,22 @@ export default function App() {
         ? [{
             id: "system-admin",
             label: "系统管理",
-            items: [{
-              id: "accessAdmin" as Page,
-              label: "账号与权限",
-              description: "FileMaker 权限集与 StarRC 授权",
-              Icon: ShieldCheck,
-              badge: access.canViewPrice ? "可看价格" : "价格受限"
-            }]
+            items: [
+              {
+                id: "serviceDirectory" as Page,
+                label: "应用与接口目录",
+                description: "浏览器、FileMaker 内嵌页与 API 清单",
+                Icon: BookOpen,
+                badge: "管理员"
+              },
+              {
+                id: "accessAdmin" as Page,
+                label: "账号与权限",
+                description: "FileMaker 权限集与 DMS 授权",
+                Icon: ShieldCheck,
+                badge: access.canViewPrice ? "可看价格" : "价格受限"
+              }
+            ]
           }]
         : [])
     ],
@@ -1462,8 +1610,11 @@ export default function App() {
       <main className="remote-login-page">
         <section className="remote-login-card" aria-labelledby="remote-login-title">
           <div className="remote-login-brand">
-            <span>STAR RC</span>
-            <small>FileMaker Web 工作台</small>
+            <img className="remote-login-logo" src="/dms-mark.svg" alt="" />
+            <div className="remote-login-brand-copy">
+              <span>DMS</span>
+              <small>FileMaker Web 工作台</small>
+            </div>
           </div>
           <div className="remote-login-icon" aria-hidden="true"><KeyRound size={23} /></div>
           <h1 id="remote-login-title">内部员工登录</h1>
@@ -1527,7 +1678,19 @@ export default function App() {
     <main className={`app app-${page}`}>
       {page === "chat" ? (
         <HomePage
-          operatorName={operatorName}
+          userMenu={currentUser ? (
+            <InternalUserMenu
+              user={currentUser}
+              canManageAccounts={session?.context.access.canManageAccounts ?? false}
+              onOpenSettings={() => handleNavigate("settings")}
+              onOpenAccountAdmin={
+                session?.context.access.canManageAccounts
+                  ? () => handleNavigate("accessAdmin")
+                  : undefined
+              }
+              onSignOut={signOut}
+            />
+          ) : undefined}
           naturalQueryPrompt={naturalQueryPrompt}
           naturalQueryLoading={naturalQueryLoading}
           naturalQueryExchanges={naturalQueryExchanges}
@@ -1535,7 +1698,8 @@ export default function App() {
           canViewPrice={session?.context.access.canViewPrice ?? false}
           onNaturalQueryPromptChange={setNaturalQueryPrompt}
           onNaturalQuerySubmit={(prompt) => void submitNaturalQuery(prompt)}
-          onOpenBusinessProduct={openBusinessProductDetail}
+          onOpenQueryResult={openNaturalQueryResult}
+          onOpenQueryTarget={openNaturalQueryTarget}
           onOpenDashboard={() => handleNavigate("home")}
         />
       ) : (
@@ -1556,9 +1720,17 @@ export default function App() {
               calcStatus={showBOMWorkflow ? calcStatus : null}
               readOnly={session?.readOnly ?? false}
               controlledWrite={page === "orderDetail" && (session?.bomWriteEnabled ?? false)}
-              operatorLabel={operatorLabel}
+              user={currentUser}
+              canManageAccounts={session?.context.access.canManageAccounts ?? false}
               theme={theme}
               onThemeToggle={toggleTheme}
+              onOpenSettings={() => handleNavigate("settings")}
+              onOpenAccountAdmin={
+                session?.context.access.canManageAccounts
+                  ? () => handleNavigate("accessAdmin")
+                  : undefined
+              }
+              onSignOut={signOut}
             />
 
             {showBOMWorkflow && <StepIndicator currentStep={currentStep} />}
@@ -1572,6 +1744,8 @@ export default function App() {
                 operatorName={operatorName}
                 canViewPrice={session?.context.access.canViewPrice ?? false}
                 readOnly={session?.readOnly ?? true}
+                apiBase={apiBase}
+                token={session?.token ?? ""}
                 onNavigate={handleNavigate}
               />
             )}
@@ -1758,6 +1932,8 @@ export default function App() {
 
             {page === "businessProductDetail" && (
               <BusinessProductDetailPage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
                 product={businessProductDetail}
                 loading={businessProductDetailLoading}
                 formatQty={formatQty}
@@ -1813,6 +1989,32 @@ export default function App() {
                 token={session.token}
                 currentUsername={session.context.operator.account}
               />
+            )}
+
+            {page === "settings" && session && currentUser && (
+              <InternalSettingsPage
+                apiBase={apiBase}
+                token={session.token}
+                user={currentUser}
+                permissions={session.context.access}
+                readOnly={session.readOnly}
+                theme={theme}
+                onThemeChange={setTheme}
+                onOpenAccountAdmin={
+                  session.context.access.canManageAccounts
+                    ? () => handleNavigate("accessAdmin")
+                    : undefined
+                }
+                onSignOut={signOut}
+              />
+            )}
+
+            {page === "serviceDirectory" && session?.context.access.canManageAccounts && (
+              <InternalServiceDirectoryPage apiBase={apiBase} session={session} />
+            )}
+
+            {page === "reports" && session && (
+              <ReportsPage apiBase={apiBase} token={session.token} />
             )}
 
             <GenerateDialog

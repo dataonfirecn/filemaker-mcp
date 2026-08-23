@@ -52,7 +52,7 @@ def send_customer_credentials_email(
         )
     )
 
-    _deliver(settings, message)
+    deliver_email_message(settings, message)
 
 
 def send_admin_credentials_email(
@@ -110,10 +110,10 @@ def send_admin_credentials_email(
         )
     )
 
-    _deliver(settings, message)
+    deliver_email_message(settings, message)
 
 
-def _deliver(settings: Settings, message: EmailMessage) -> None:
+def deliver_email_message(settings: Settings, message: EmailMessage) -> None:
     smtp_class = smtplib.SMTP_SSL if settings.customer_smtp_ssl else smtplib.SMTP
     try:
         with smtp_class(

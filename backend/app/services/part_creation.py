@@ -23,6 +23,7 @@ from app.models.part_creation import (
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
 from app.services.material_id_options import load_material_id_options
+from app.services.qrcode_service import generate_png
 
 VALUE_LISTS = {
     "warehouseDivisions": "倉庫分工",
@@ -64,6 +65,8 @@ ALLOWED_PHOTO_TYPES = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+PART_QRCODE_BOX_SIZE = 4
+PART_QRCODE_BORDER = 0
 
 _create_lock = asyncio.Lock()
 
@@ -337,9 +340,17 @@ async def create_part(
             )
 
     photo = None if body.photo_upload_id.strip() else _prepare_photo(body, settings)
+    part_number = body.part_number.strip()
+    qrcode_png = generate_png(
+        payload=part_number,
+        box_size=PART_QRCODE_BOX_SIZE,
+        border=PART_QRCODE_BORDER,
+        fill_color="black",
+        back_color="white",
+    )
     record_id = ""
     async with _create_lock:
-        if await _find_part_by_number(filemaker, settings, body.part_number.strip()):
+        if await _find_part_by_number(filemaker, settings, part_number):
             raise PartCreationError(
                 "此零件编号已存在，请重新生成或修改。",
                 code="DUPLICATE_PART_NUMBER",
@@ -365,6 +376,14 @@ async def create_part(
             )
 
         try:
+            await filemaker.upload_container(
+                settings.filemaker_part_write_layout,
+                record_id,
+                settings.filemaker_part_qrcode_field,
+                qrcode_png,
+                f"{part_number}.png",
+                "image/png",
+            )
             if photo:
                 await filemaker.upload_container(
                     settings.filemaker_part_write_layout,

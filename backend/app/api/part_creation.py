@@ -70,7 +70,7 @@ async def refresh_part_creation_cache(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "message": "只有 StarRC 管理员可以手动刷新 FileMaker 选项缓存。",
+                "message": "只有 DMS 管理员可以手动刷新 FileMaker 选项缓存。",
                 "permission": "canManageAccounts",
             },
         )

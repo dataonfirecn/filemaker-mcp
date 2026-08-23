@@ -1,9 +1,10 @@
+import asyncio
+import re
+from datetime import datetime
 from typing import Any, Literal
-from urllib.parse import urlparse
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -21,11 +22,21 @@ from app.services.dependencies import (
     get_audit_log_store,
     get_cos_storage_service,
     get_filemaker_client,
+    get_filemaker_odata_client,
     get_operator_context,
     get_settings,
     get_webviewer_session_context,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
+from app.services.filemaker_odata_client import (
+    FileMakerODataClient,
+    FileMakerODataError,
+)
+from app.services.filemaker_timestamps import (
+    FILEMAKER_TIMEZONE,
+    format_filemaker_timestamp,
+    parse_filemaker_timestamp,
+)
 from app.services.cos_storage import COSStorageError, COSStorageService
 from app.services.internal_order_merge import (
     InternalOrderMergeError,
@@ -52,6 +63,10 @@ INTERNAL_ORDER_CATEGORY = "内部订单"
 ORDER_LIST_PAGE_SIZE = 500
 ORDER_LIST_MAX_RECORDS = 5000
 ORDER_JOIN_BATCH_SIZE = 200
+PRODUCT_ASSET_LAYOUT = "ProductAssets"
+PRODUCT_ASSET_BATCH_SIZE = 200
+PRODUCT_PACKAGING_LAYOUT = "產品 資料_包裝"
+PART_ASSET_SOURCE_LAYOUT = "@零件"
 
 
 class PartDetailsRequest(BaseModel):
@@ -607,7 +622,7 @@ async def get_order_part_image(
     client: FileMakerClient = Depends(get_filemaker_client),
     settings: Settings = Depends(get_settings),
     storage: COSStorageService = Depends(get_cos_storage_service),
-) -> Response:
+) -> RedirectResponse:
     try:
         result = await client.find_records(
             PART_LAYOUT,
@@ -641,14 +656,9 @@ async def get_order_part_image(
                     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
                     headers={"Cache-Control": "private, max-age=300"},
                 )
-        image_url = _text(fields.get("影像 | 容器")) or _text(fields.get("圖面 | 容器"))
-        if not image_url:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "零件没有图片"})
-        content, content_type = await _download_container(client, image_url)
-        return Response(
-            content=content,
-            media_type=content_type or "image/jpeg",
-            headers={"Cache-Control": "private, max-age=1800"},
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "零件没有已同步到 COS 的图片"},
         )
     except HTTPException:
         raise
@@ -664,22 +674,31 @@ async def get_order_product_image(
     product_sku: str,
     _operator: OperatorContext = Depends(get_operator_context),
     client: FileMakerClient = Depends(get_filemaker_client),
-) -> Response:
-    try:
-        product_result = await client.find_records(
-            PRODUCT_LAYOUT,
-            query={"product_sku": f"=={product_sku.strip()}"},
-            limit=1,
+    storage: COSStorageService = Depends(get_cos_storage_service),
+) -> RedirectResponse:
+    normalized_sku = product_sku.strip()
+    if not normalized_sku:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Missing productSku"},
         )
-        product_records = _records(product_result)
-        image_url = _text(_fields(product_records[0]).get("檔案 1 | 容器")) if product_records else ""
+    try:
+        image_catalog = await _product_cos_image_catalog(
+            client,
+            storage,
+            [normalized_sku],
+            primary_only=True,
+        )
+        image_url = _text(image_catalog.get(normalized_sku, {}).get("mainImageUrl"))
         if not image_url:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "产品没有图片"})
-        content, content_type = await _download_container(client, image_url)
-        return Response(
-            content=content,
-            media_type=content_type or "image/jpeg",
-            headers={"Cache-Control": "private, max-age=1800"},
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "产品没有已迁移到 COS 的图片"},
+            )
+        return RedirectResponse(
+            image_url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "private, max-age=300"},
         )
     except HTTPException:
         raise
@@ -695,15 +714,23 @@ async def get_order_product_detail(
     product_sku: str,
     _operator: OperatorContext = Depends(get_operator_context),
     client: FileMakerClient = Depends(get_filemaker_client),
+    storage: COSStorageService = Depends(get_cos_storage_service),
 ) -> dict[str, Any]:
     normalized_sku = product_sku.strip()
     if not normalized_sku:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"message": "Missing productSku"})
     try:
-        result = await client.find_records(
-            PRODUCT_LAYOUT,
-            query={"product_sku": f"=={normalized_sku}"},
-            limit=1,
+        result, packaging_result = await asyncio.gather(
+            client.find_records(
+                PRODUCT_LAYOUT,
+                query={"product_sku": f"=={normalized_sku}"},
+                limit=1,
+            ),
+            client.find_records(
+                PRODUCT_PACKAGING_LAYOUT,
+                query={"product_sku": f"=={normalized_sku}"},
+                limit=1,
+            ),
         )
     except FileMakerAPIError as exc:
         raise HTTPException(
@@ -714,7 +741,95 @@ async def get_order_product_detail(
     if not records:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": f"找不到产品：{normalized_sku}"})
     enriched = await enrich_product_record(client, records[0])
-    return _product_payload(_fields(enriched), normalized_sku)
+    packaging_records = _records(packaging_result)
+    packaging_record = packaging_records[0] if packaging_records else {}
+    packaging_fields = _fields(packaging_record)
+    bom_rows = _packaging_bom_rows(packaging_record)
+    part_image_catalog = await _part_cos_image_catalog(
+        client,
+        storage,
+        [_text(item.get("產品 BOM::零件編號")) for item in bom_rows],
+    )
+    image_catalog = await _product_cos_image_catalog(
+        client,
+        storage,
+        [normalized_sku],
+    )
+    images = image_catalog.get(normalized_sku, {})
+    payload = _product_payload(
+        _fields(enriched),
+        normalized_sku,
+        main_image_url=_text(images.get("mainImageUrl")),
+        image_urls=[
+            _text(item.get("url"))
+            for item in images.get("images", [])
+            if _text(item.get("url"))
+        ],
+    )
+    payload.update(
+        {
+            "productRecordId": str(
+                packaging_record.get("recordId")
+                or records[0].get("recordId")
+                or ""
+            ),
+            "canAddProductPhotos": (
+                not images.get("images")
+                and not any(
+                    _container_present(
+                        packaging_fields.get(f"檔案 {slot} | 容器")
+                    )
+                    for slot in range(1, 11)
+                )
+            ),
+            "packagingImageUrls": [
+                _text(item.get("url"))
+                for item in images.get("packagingImages", [])
+                if _text(item.get("url"))
+            ],
+            "productLocation": _text(packaging_fields.get("產品位置")),
+            "labelSpecificationBack": _text(
+                packaging_fields.get("標籤規格後")
+            ),
+            "packagingTimePerPackage": _number(
+                packaging_fields.get("包裝工時單包")
+            ),
+            "preparationTimePerPackage": _number(
+                packaging_fields.get("準備工時單包")
+            ),
+            "preparationQuantity": _number(
+                packaging_fields.get("準備工時數量")
+            ),
+            "preparationMinutes": _number(
+                packaging_fields.get("準備工時分")
+            ),
+            "preparationSeconds": _number(
+                packaging_fields.get("準備工時秒")
+            ),
+            "packagingMinutes": _number(
+                packaging_fields.get("包裝工時分")
+            ),
+            "packagingSeconds": _number(
+                packaging_fields.get("包裝工時秒")
+            ),
+            "packagingCheck": _text(packaging_fields.get("包裝檢查")),
+            "bomDate": (
+                _text(packaging_fields.get("產品 BOM::日期"))
+                or _text(payload.get("bomDate"))
+            ),
+            "bom": [
+                _packaging_bom_payload(
+                    row,
+                    image_url=part_image_catalog.get(
+                        _text(row.get("產品 BOM::零件編號")),
+                        "",
+                    ),
+                )
+                for row in bom_rows
+            ],
+        }
+    )
+    return payload
 
 
 @router.get("/{order_id}")
@@ -722,7 +837,9 @@ async def get_order_detail(
     order_id: str,
     _operator: OperatorContext = Depends(get_operator_context),
     client: FileMakerClient = Depends(get_filemaker_client),
+    odata: FileMakerODataClient = Depends(get_filemaker_odata_client),
     settings: Settings = Depends(get_settings),
+    storage: COSStorageService = Depends(get_cos_storage_service),
 ) -> dict[str, Any]:
     normalized_order_id = order_id.strip()
     if not normalized_order_id:
@@ -793,6 +910,33 @@ async def get_order_detail(
         if item_id in seen_ids:
             continue
         items.append(_item_payload({}, qty_fields, qty_fields, {}, len(items) + 1))
+
+    image_catalog = await _product_cos_image_catalog(
+        client,
+        storage,
+        [_text(item.get("sku")) for item in items],
+        primary_only=True,
+    )
+    for item in items:
+        product = image_catalog.get(_text(item.get("sku")), {})
+        item["mainImageUrl"] = _text(product.get("mainImageUrl"))
+        if not _text(item.get("name")):
+            item["name"] = _text(product.get("name"))
+        if not _text(item.get("englishName")):
+            item["englishName"] = _text(product.get("englishName"))
+
+    try:
+        receipt_catalog = await _order_receipt_catalog(
+            odata,
+            [_text(item.get("id")) for item in items],
+        )
+    except FileMakerODataError as exc:
+        raise HTTPException(
+            status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "读取产品入库时间失败。", "payload": exc.payload},
+        ) from exc
+    for item in items:
+        item["receipt"] = receipt_catalog.get(_text(item.get("id")))
 
     first_item_fields = _fields(rich_items[0]) if rich_items else {}
     customer = (
@@ -892,12 +1036,129 @@ def _number(value: Any) -> float:
         return 0
 
 
-def _product_payload(fields: dict[str, Any], fallback_sku: str = "") -> dict[str, Any]:
+async def _order_receipt_catalog(
+    odata: FileMakerODataClient,
+    line_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    normalized_ids = list(dict.fromkeys(line_id for line_id in line_ids if line_id))
+    rows_by_line = await asyncio.gather(
+        *(_completed_receipt_rows(odata, line_id) for line_id in normalized_ids)
+    )
+    catalog: dict[str, dict[str, Any]] = {}
+    for line_id, rows in zip(normalized_ids, rows_by_line):
+        if not rows:
+            continue
+        sorted_receipts = sorted(
+            rows,
+            key=lambda row: _receipt_timestamp(row.get("创建时间戳")),
+            reverse=True,
+        )
+        history = await asyncio.gather(
+            *(_receipt_history_item(odata, receipt) for receipt in sorted_receipts)
+        )
+        latest = history[0]
+        received_quantity = sum(_number(row.get("數量")) for row in rows)
+        catalog[line_id] = {
+            "receiptId": latest["receiptId"],
+            "quantity": received_quantity,
+            "status": latest["status"],
+            "receivedAt": latest["receivedAt"],
+            "receivedBy": latest["receivedBy"],
+            "history": history,
+        }
+    return catalog
+
+
+async def _receipt_history_item(
+    odata: FileMakerODataClient,
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    receipt_id = _text(receipt.get("ID"))
+    escaped_receipt_id = receipt_id.replace("'", "''")
+    inventory = await odata.records(
+        "產品庫存",
+        filter_expr=f"ID_出貨單資料入庫 eq '{escaped_receipt_id}'",
+        top=10,
+        count=False,
+    )
+    inventory_rows = [
+        row for row in inventory.get("rows", []) if isinstance(row, dict)
+    ]
+    inventory_row = next(
+        (
+            row
+            for row in inventory_rows
+            if _text(row.get("ID_出貨單資料入庫")) == receipt_id
+        ),
+        inventory_rows[0] if inventory_rows else {},
+    )
+    return {
+        "receiptId": receipt_id,
+        "quantity": _number(receipt.get("數量")),
+        "status": _text(receipt.get("狀態")),
+        "receivedAt": format_filemaker_timestamp(receipt.get("创建时间戳")),
+        "receivedBy": (
+            _text(inventory_row.get("記錄人"))
+            or _text(receipt.get("创建人"))
+        ),
+        "documentNumber": _text(inventory_row.get("批號")),
+        "remark": _text(inventory_row.get("描述")),
+    }
+
+
+def _receipt_timestamp(value: Any) -> datetime:
+    return parse_filemaker_timestamp(value) or datetime.min.replace(
+        tzinfo=FILEMAKER_TIMEZONE
+    )
+
+
+async def _completed_receipt_rows(
+    odata: FileMakerODataClient,
+    line_id: str,
+) -> list[dict[str, Any]]:
+    escaped_line_id = line_id.replace("'", "''")
+    filter_expr = (
+        f"ID_出庫單資料 eq '{escaped_line_id}' and 狀態 eq '已入庫'"
+    )
+    rows: list[dict[str, Any]] = []
+    skip = 0
+    while True:
+        result = await odata.records(
+            "出貨單資料入庫",
+            filter_expr=filter_expr,
+            top=10,
+            skip=skip,
+            count=True,
+        )
+        page = [
+            row for row in result.get("rows", []) if isinstance(row, dict)
+        ]
+        rows.extend(page)
+        found_count = int(result.get("foundCount") or 0)
+        if (
+            not page
+            or len(page) < 10
+            or (found_count > 0 and len(rows) >= found_count)
+        ):
+            return rows
+        skip += len(page)
+
+
+def _product_payload(
+    fields: dict[str, Any],
+    fallback_sku: str = "",
+    *,
+    main_image_url: str = "",
+    image_urls: list[str] | None = None,
+) -> dict[str, Any]:
+    resolved_image_urls = image_urls or []
     return {
         "sku": _text(fields.get("product_sku")) or fallback_sku,
         "name": _text(fields.get("產品名稱_中文")),
         "englishName": _text(fields.get("product_name")),
-        "hasImage": bool(_text(fields.get("檔案 1 | 容器"))),
+        "hasImage": bool(main_image_url),
+        "mainImageUrl": main_image_url,
+        "imageUrls": resolved_image_urls,
         "client": _text(fields.get("Client")),
         "stock": _number(fields.get(PRODUCT_STOCK_FIELD)),
         "unitPrice": _number(fields.get("產品售價::Price")),
@@ -914,6 +1175,310 @@ def _product_payload(fields: dict[str, Any], fallback_sku: str = "") -> dict[str
         "salesNotes": _text(fields.get("銷售紀錄")),
         "vendor": _text(fields.get("產品 BOM::廠商")),
     }
+
+
+async def _product_cos_image_catalog(
+    client: FileMakerClient,
+    storage: COSStorageService,
+    product_skus: list[str],
+    *,
+    primary_only: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Return signed COS URLs without reading FileMaker container bytes."""
+    normalized_skus = list(
+        dict.fromkeys(_text(value) for value in product_skus if _text(value))
+    )
+    if not normalized_skus or not storage.configured:
+        return {}
+
+    products: list[dict[str, Any]] = []
+    for start in range(0, len(normalized_skus), PRODUCT_ASSET_BATCH_SIZE):
+        batch = normalized_skus[start : start + PRODUCT_ASSET_BATCH_SIZE]
+        result = await client.find_records(
+            PRODUCT_LAYOUT,
+            query=[{"product_sku": f"=={sku}"} for sku in batch],
+            limit=max(len(batch) * 2, 20),
+        )
+        products.extend(_records(result))
+
+    source_to_sku: dict[str, str] = {}
+    product_summaries: dict[str, dict[str, str]] = {}
+    for record in products:
+        source_record_id = str(record.get("recordId") or "").strip()
+        fields = _fields(record)
+        sku = _text(fields.get("product_sku"))
+        if source_record_id and sku and sku not in source_to_sku.values():
+            source_to_sku[source_record_id] = sku
+            product_summaries[sku] = {
+                "name": _text(fields.get("產品名稱_中文")),
+                "englishName": _text(fields.get("product_name")),
+            }
+    if not source_to_sku:
+        return {}
+
+    asset_records: list[dict[str, Any]] = []
+    source_record_ids = list(source_to_sku)
+    for start in range(0, len(source_record_ids), PRODUCT_ASSET_BATCH_SIZE):
+        batch = source_record_ids[start : start + PRODUCT_ASSET_BATCH_SIZE]
+        result = await client.find_records(
+            PRODUCT_ASSET_LAYOUT,
+            query=[
+                {
+                    "source_record_id": f"=={source_record_id}",
+                    "asset_type": f"=={asset_type}",
+                    "migration_status": "==copied",
+                }
+                for source_record_id in batch
+                for asset_type in ("product_image", "packaging_reference")
+            ],
+            limit=max(len(batch) * 30, 100),
+        )
+        asset_records.extend(_records(result))
+
+    candidates: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for record in asset_records:
+        fields = _fields(record)
+        source_record_id = _text(fields.get("source_record_id"))
+        sku = source_to_sku.get(source_record_id, "")
+        asset_id = _text(fields.get("id_asset"))
+        if not sku or not asset_id:
+            continue
+        category = _product_asset_category(fields)
+        if not category:
+            continue
+        candidates.setdefault(
+            sku,
+            {"images": [], "packagingImages": []},
+        )[category].append(
+            {
+                "assetId": asset_id,
+                "sourceRecordId": source_record_id,
+                "filename": _text(fields.get("original_filename")),
+                "mimeType": _text(fields.get("mime_type")) or "image/jpeg",
+                "isPrimary": _truthy(fields.get("is_primary")),
+                "sortOrder": int(_number(fields.get("sort_order"))),
+                "category": category,
+            }
+        )
+
+    catalog: dict[str, dict[str, Any]] = {
+        sku: {
+            "mainImageUrl": "",
+            "images": [],
+            "packagingImages": [],
+            "name": summary["name"],
+            "englishName": summary["englishName"],
+        }
+        for sku, summary in product_summaries.items()
+    }
+    sign_jobs: list[tuple[str, dict[str, Any], Any]] = []
+    for sku, categorized in candidates.items():
+        product_images = categorized["images"]
+        product_images.sort(
+            key=lambda item: (
+                not item["isPrimary"],
+                item["sortOrder"],
+                item["assetId"],
+            )
+        )
+        packaging_images = categorized["packagingImages"]
+        packaging_images.sort(
+            key=lambda item: (item["sortOrder"], item["assetId"])
+        )
+        selected = (
+            product_images[:1]
+            if primary_only
+            else [*product_images, *packaging_images]
+        )
+        for image in selected:
+            object_key = storage.create_migrated_product_asset_object_key(
+                source_record_id=image["sourceRecordId"],
+                asset_id=image["assetId"],
+                mime_type=image["mimeType"],
+                original_filename=image["filename"],
+            )
+            sign_jobs.append(
+                (
+                    sku,
+                    image,
+                    _verified_cos_download(storage, object_key),
+                )
+            )
+
+    signed_results = await asyncio.gather(
+        *(job[2] for job in sign_jobs),
+        return_exceptions=True,
+    )
+    for (sku, image, _job), result in zip(sign_jobs, signed_results):
+        if isinstance(result, Exception):
+            continue
+        url, expires_at = result
+        payload = {
+            "assetId": image["assetId"],
+            "url": url,
+            "filename": image["filename"],
+            "isPrimary": image["isPrimary"],
+            "sortOrder": image["sortOrder"],
+            "expiresAt": expires_at.isoformat(),
+        }
+        entry = catalog.setdefault(
+            sku,
+            {
+                "mainImageUrl": "",
+                "images": [],
+                "packagingImages": [],
+                "name": "",
+                "englishName": "",
+            },
+        )
+        entry[image["category"]].append(payload)
+        if image["category"] == "images" and not entry["mainImageUrl"]:
+            entry["mainImageUrl"] = url
+    return catalog
+
+
+async def _verified_cos_download(
+    storage: COSStorageService,
+    object_key: str,
+) -> tuple[str, Any]:
+    await run_in_threadpool(storage.head_object, object_key)
+    return await run_in_threadpool(storage.create_presigned_download, object_key)
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).casefold() in {"1", "true", "yes", "y", "是"}
+
+
+def _product_asset_category(fields: dict[str, Any]) -> str:
+    asset_type = _text(fields.get("asset_type"))
+    if asset_type == "packaging_reference":
+        return "packagingImages"
+    legacy_field = _text(fields.get("legacy_source_field"))
+    match = re.fullmatch(r"檔案\s+(\d+)\s+\|\s+容器", legacy_field)
+    if match:
+        slot = int(match.group(1))
+        if 1 <= slot <= 10:
+            return "images"
+        if 11 <= slot <= 15:
+            return "packagingImages"
+        return ""
+    return "images" if asset_type in {"", "product_image"} else ""
+
+
+def _packaging_bom_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
+    portal_data = record.get("portalData") if isinstance(record, dict) else {}
+    rows = portal_data.get("產品 BOM") if isinstance(portal_data, dict) else []
+    return [item for item in rows if isinstance(item, dict)] if isinstance(rows, list) else []
+
+
+def _packaging_bom_payload(
+    row: dict[str, Any],
+    *,
+    image_url: str,
+) -> dict[str, Any]:
+    return {
+        "id": str(row.get("recordId") or ""),
+        "partNumber": _text(row.get("產品 BOM::零件編號")),
+        "partName": _text(row.get("产品BOM_零件::part_name_internal")),
+        "requiredQuantity": _number(row.get("產品 BOM::需求數量")),
+        "warehouseLocation": _text(
+            row.get("产品BOM_零件::warehouse_location_primary")
+        ),
+        "stock": _number(row.get("产品BOM_零件::stock_on_hand_qty")),
+        "subPackage": _text(row.get("產品 BOM::分包")),
+        "imageUrl": image_url,
+    }
+
+
+async def _part_cos_image_catalog(
+    client: FileMakerClient,
+    storage: COSStorageService,
+    part_numbers: list[str],
+) -> dict[str, str]:
+    normalized = list(
+        dict.fromkeys(_text(value) for value in part_numbers if _text(value))
+    )
+    if not normalized or not storage.configured:
+        return {}
+    parts: list[dict[str, Any]] = []
+    for start in range(0, len(normalized), PRODUCT_ASSET_BATCH_SIZE):
+        batch = normalized[start : start + PRODUCT_ASSET_BATCH_SIZE]
+        result = await client.find_records(
+            PART_ASSET_SOURCE_LAYOUT,
+            query=[{"part_number": f"=={part_number}"} for part_number in batch],
+            limit=max(len(batch) * 2, 20),
+        )
+        parts.extend(_records(result))
+    part_id_to_number: dict[str, str] = {}
+    for part in parts:
+        fields = _fields(part)
+        part_id = _text(fields.get("part_id"))
+        part_number = _text(fields.get("part_number"))
+        if part_id and part_number:
+            part_id_to_number[part_id] = part_number
+    if not part_id_to_number:
+        return {}
+
+    assets: list[dict[str, Any]] = []
+    part_ids = list(part_id_to_number)
+    for start in range(0, len(part_ids), PRODUCT_ASSET_BATCH_SIZE):
+        batch = part_ids[start : start + PRODUCT_ASSET_BATCH_SIZE]
+        result = await client.find_records(
+            "PartAssets",
+            query=[
+                {
+                    "part_id_fk": f"=={part_id}",
+                    "asset_type": "==part_image",
+                    "status": "==READY",
+                }
+                for part_id in batch
+            ],
+            limit=max(len(batch) * 10, 100),
+            sort=[
+                {"fieldName": "is_primary", "sortOrder": "descend"},
+                {"fieldName": "sort_order", "sortOrder": "ascend"},
+            ],
+        )
+        assets.extend(_records(result))
+
+    candidates: dict[str, dict[str, Any]] = {}
+    for asset in assets:
+        fields = _fields(asset)
+        part_id = _text(fields.get("part_id_fk"))
+        object_key = _text(fields.get("object_key"))
+        if not part_id or not object_key or part_id in candidates:
+            continue
+        candidates[part_id] = {
+            "objectKey": object_key,
+            "isPrimary": _truthy(fields.get("is_primary")),
+            "sortOrder": int(_number(fields.get("sort_order"))),
+        }
+
+    jobs = [
+        (part_id, _verified_cos_download(storage, item["objectKey"]))
+        for part_id, item in candidates.items()
+    ]
+    results = await asyncio.gather(
+        *(job[1] for job in jobs),
+        return_exceptions=True,
+    )
+    catalog: dict[str, str] = {}
+    for (part_id, _job), result in zip(jobs, results):
+        if isinstance(result, Exception):
+            continue
+        url, _expires_at = result
+        catalog[part_id_to_number[part_id]] = url
+    return catalog
+
+
+def _container_present(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_text(value.get(key)) for key in ("url", "data", "value"))
+    return bool(value)
 
 
 def _part_payload(fields: dict[str, Any]) -> dict[str, Any]:
@@ -937,24 +1502,3 @@ def _part_payload(fields: dict[str, Any]) -> dict[str, Any]:
         "position2": _text(fields.get("位置2")),
         "hasImage": bool(_text(fields.get("影像 | 容器")) or _text(fields.get("圖面 | 容器"))),
     }
-
-
-async def _download_container(client: FileMakerClient, url: str) -> tuple[bytes, str]:
-    source_host = urlparse(client.settings.filemaker_host).hostname
-    target_host = urlparse(url).hostname
-    if not source_host or target_host != source_host:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"message": "无效的图片地址"})
-
-    token = await client.get_token()
-    async with httpx.AsyncClient(
-        timeout=client.settings.filemaker_timeout_seconds,
-        verify=client.settings.filemaker_ssl_verify,
-        follow_redirects=True,
-    ) as image_client:
-        response = await image_client.get(url, headers={"Authorization": f"Bearer {token}"})
-    if not response.is_success:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"message": f"FileMaker 图片读取失败：HTTP {response.status_code}"},
-        )
-    return response.content, response.headers.get("content-type", "image/jpeg").split(";", 1)[0]

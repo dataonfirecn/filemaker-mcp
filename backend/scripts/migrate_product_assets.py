@@ -53,15 +53,28 @@ class AssetSpec:
     visibility: str = "customer"
 
 
-IMAGE_SPECS = tuple(
+PRODUCT_IMAGE_SPECS = tuple(
     AssetSpec(
         source_field=f"檔案 {position} | 容器",
         asset_type="product_image",
         sort_order=position,
         is_primary=1 if position == 1 else 0,
     )
-    for position in range(1, 21)
+    for position in range(1, 11)
 )
+
+PACKAGING_IMAGE_SPECS = tuple(
+    AssetSpec(
+        source_field=f"檔案 {position} | 容器",
+        asset_type="packaging_reference",
+        sort_order=position - 10,
+        is_primary=0,
+        visibility="internal",
+    )
+    for position in range(11, 16)
+)
+
+IMAGE_SPECS = PRODUCT_IMAGE_SPECS + PACKAGING_IMAGE_SPECS
 
 REQUIRED_TARGET_FIELDS = {
     "id_asset",
@@ -146,6 +159,13 @@ def parse_args() -> argparse.Namespace:
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _integer(value: Any) -> int:
+    try:
+        return int(float(str(value or "0").strip()))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _container_url(value: Any) -> str:
@@ -322,6 +342,36 @@ async def _copy_asset(
         and _text(existing_fields.get("migration_status")) == "copied"
         and _container_url(existing_fields.get(TARGET_CONTAINER_FIELD))
     ):
+        corrected_metadata = {
+            "asset_type": spec.asset_type,
+            "visibility": spec.visibility,
+            "legacy_source_field": spec.source_field,
+            "sort_order": spec.sort_order,
+            "is_primary": spec.is_primary,
+            "updated_by": MIGRATION_ACTOR,
+        }
+        needs_metadata_update = (
+            _text(existing_fields.get("asset_type")) != spec.asset_type
+            or _text(existing_fields.get("visibility")) != spec.visibility
+            or _text(existing_fields.get("legacy_source_field"))
+            != spec.source_field
+            or _integer(existing_fields.get("sort_order")) != spec.sort_order
+            or _integer(existing_fields.get("is_primary")) != spec.is_primary
+        )
+        if needs_metadata_update:
+            target_record_id = _text(existing.get("recordId"))
+            await client.update_record(
+                TARGET_LAYOUT,
+                target_record_id,
+                corrected_metadata,
+            )
+            return "metadata_updated", {
+                **existing,
+                "fieldData": {
+                    **existing_fields,
+                    **corrected_metadata,
+                },
+            }
         return "skipped_existing", existing
 
     content, content_type, filename = await _download_container(
@@ -402,6 +452,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         "sourceProductsScanned": 0,
         "candidateAssets": 0,
         "copied": 0,
+        "metadataUpdated": 0,
         "skippedExisting": 0,
         "failed": 0,
     }
@@ -453,6 +504,10 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                         summary["copied"] += 1
                         if target_record:
                             target_index[migration_key] = target_record
+                    elif outcome == "metadata_updated":
+                        summary["metadataUpdated"] += 1
+                        if target_record:
+                            target_index[migration_key] = target_record
                     elif outcome == "skipped_existing":
                         summary["skippedExisting"] += 1
 
@@ -490,6 +545,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "products": summary["sourceProductsScanned"],
                                 "candidates": summary["candidateAssets"],
                                 "copied": summary["copied"],
+                                "metadataUpdated": summary["metadataUpdated"],
                                 "skipped": summary["skippedExisting"],
                                 "failed": summary["failed"],
                             },

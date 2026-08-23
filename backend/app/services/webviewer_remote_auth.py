@@ -18,6 +18,20 @@ class WebViewerRemoteAccount:
     display_name: str
     password_hash: str
     privilege_set: str
+    allowed_client_channels: tuple[str, ...] = ()
+    allowed_user_agent_prefixes: tuple[str, ...] = ()
+
+
+def _optional_string_list(item: dict, key: str) -> tuple[str, ...]:
+    raw = item.get(key)
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise WebViewerRemoteAuthError(f"{key} must be a string array")
+    values = tuple(str(value).strip() for value in raw if str(value).strip())
+    if len(values) != len(raw):
+        raise WebViewerRemoteAuthError(f"{key} must contain only non-empty strings")
+    return values
 
 
 def load_webviewer_remote_accounts(settings: Settings) -> dict[str, WebViewerRemoteAccount]:
@@ -38,6 +52,11 @@ def load_webviewer_remote_accounts(settings: Settings) -> dict[str, WebViewerRem
         display_name = str(item.get("displayName") or username).strip()
         password_hash = str(item.get("passwordHash") or "").strip()
         privilege_set = str(item.get("privilegeSet") or "internal_remote").strip()
+        allowed_client_channels = _optional_string_list(item, "allowedClientChannels")
+        allowed_user_agent_prefixes = _optional_string_list(
+            item,
+            "allowedUserAgentPrefixes",
+        )
         if not username or not password_hash:
             raise WebViewerRemoteAuthError(
                 "Each WebViewer remote account requires username and passwordHash"
@@ -50,6 +69,8 @@ def load_webviewer_remote_accounts(settings: Settings) -> dict[str, WebViewerRem
             display_name=display_name or username,
             password_hash=password_hash,
             privilege_set=privilege_set or "internal_remote",
+            allowed_client_channels=allowed_client_channels,
+            allowed_user_agent_prefixes=allowed_user_agent_prefixes,
         )
     return accounts
 
@@ -63,6 +84,34 @@ def authenticate_webviewer_remote(
     account = accounts.get(username.strip().casefold())
     valid = verify_customer_password(password, account.password_hash) if account else False
     return account if account and valid else None
+
+
+def webviewer_remote_request_allowed(
+    account: WebViewerRemoteAccount,
+    *,
+    client_channel: str,
+    user_agent: str,
+) -> bool:
+    normalized_channel = client_channel.strip().casefold()
+    allowed_channels = {
+        value.casefold()
+        for value in account.allowed_client_channels
+    }
+    if allowed_channels and normalized_channel not in allowed_channels:
+        return False
+    if (
+        account.allowed_user_agent_prefixes
+        and not any(user_agent.startswith(prefix) for prefix in account.allowed_user_agent_prefixes)
+    ):
+        return False
+    return True
+
+
+def is_webviewer_mobile_request(*, client_channel: str, user_agent: str) -> bool:
+    return (
+        client_channel.strip().casefold() == "ios-pda"
+        and user_agent.startswith("StarRCPDA/")
+    )
 
 
 def validate_webviewer_remote_configuration(settings: Settings) -> list[str]:

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="dms-mark-title">
+  <title id="dms-mark-title">DMS</title>
+  <defs>
+    <linearGradient id="dms-mark-gradient" x1="7" y1="5" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2F8B81"/>
+      <stop offset="1" stop-color="#155E59"/>
+    </linearGradient>
+    <linearGradient id="dms-mark-sheen" x1="12" y1="10" x2="36" y2="38" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="46" height="46" rx="13" fill="url(#dms-mark-gradient)"/>
+  <path d="M2 21C10 13 20 8 35 7C28 3 19 2 12 5C6 8 2 14 2 21Z" fill="url(#dms-mark-sheen)"/>
+  <path d="M14.5 12.5V35.5H23.5C30.6 35.5 35.5 31 35.5 24C35.5 17 30.6 12.5 23.5 12.5H14.5Z" fill="none" stroke="#FFFFFF" stroke-width="3.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 18.5H26M20 24H29M20 29.5H26" fill="none" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round"/>
+  <circle cx="27.5" cy="18.5" r="1.4" fill="#BFF5EA"/>
+  <circle cx="30.5" cy="24" r="1.4" fill="#BFF5EA"/>
+  <circle cx="27.5" cy="29.5" r="1.4" fill="#BFF5EA"/>
+</svg>

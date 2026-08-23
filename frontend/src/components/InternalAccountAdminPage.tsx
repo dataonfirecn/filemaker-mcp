@@ -13,6 +13,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Smartphone,
   Trash2,
   UserPlus,
   UsersRound
@@ -35,7 +36,7 @@ type InternalAccountAdminPageProps = {
 };
 
 type PermissionKey = keyof WebViewerPermissions;
-type AccountFilter = "all" | "enabled" | "disabled" | "price";
+type AccountFilter = "all" | "enabled" | "disabled" | "mobile" | "price";
 type AdminScreen =
   | "accounts"
   | "privilegeSets"
@@ -49,6 +50,7 @@ type AccountDraft = {
   displayName: string;
   filemakerPrivilegeSet: string;
   enabled: boolean;
+  mobileOnly: boolean;
   permissions: WebViewerPermissions;
   partPermissions: PartPermissionMap;
   inheritPrivilegeSet: boolean;
@@ -88,7 +90,7 @@ const permissionOptions: Array<{
   {
     key: "canManageAccounts",
     label: "账号管理",
-    description: "查看和修改 StarRC 账号与权限集"
+    description: "查看和修改 DMS 账号与权限集"
   },
   {
     key: "canViewProducts",
@@ -405,6 +407,7 @@ export default function InternalAccountAdminPage({
         accountFilter === "all" ||
         (accountFilter === "enabled" && account.enabled) ||
         (accountFilter === "disabled" && !account.enabled) ||
+        (accountFilter === "mobile" && account.mobileOnly) ||
         (accountFilter === "price" &&
           account.enabled &&
           account.permissions.canViewPrice);
@@ -459,6 +462,7 @@ export default function InternalAccountAdminPage({
       displayName: account.displayName,
       filemakerPrivilegeSet: account.filemakerPrivilegeSet,
       enabled: account.enabled,
+      mobileOnly: account.mobileOnly,
       permissions: { ...account.permissions },
       partPermissions: { ...account.partPermissions },
       inheritPrivilegeSet: account.inheritsPrivilegeSet,
@@ -495,6 +499,7 @@ export default function InternalAccountAdminPage({
       displayName: "",
       filemakerPrivilegeSet: "",
       enabled: true,
+      mobileOnly: false,
       permissions: { ...blankPermissions },
       partPermissions: emptyPartPermissions(catalog),
       inheritPrivilegeSet: true,
@@ -581,6 +586,7 @@ export default function InternalAccountAdminPage({
             displayName: accountDraft.displayName,
             filemakerPrivilegeSet: accountDraft.filemakerPrivilegeSet,
             enabled: accountDraft.enabled,
+            mobileOnly: accountDraft.mobileOnly,
             permissions: accountDraft.permissions,
             partPermissions: accountDraft.partPermissions,
             inheritPrivilegeSet: accountDraft.inheritPrivilegeSet,
@@ -723,9 +729,9 @@ export default function InternalAccountAdminPage({
           <span className="internal-access-eyebrow">
             <ShieldCheck size={15} /> 管理员权限中心
           </span>
-          <h2>FileMaker 账号与 StarRC 细粒度权限</h2>
+          <h2>FileMaker 账号与 DMS 细粒度权限</h2>
           <p>
-            FileMaker 只负责账号认证与数据库基础权限；StarRC 管理网页功能、6
+            FileMaker 只负责账号认证与数据库基础权限；DMS 管理网页功能、6
             个业务权限组、模块和每个操作动作。所有变更在下一次接口请求生效。
           </p>
         </div>
@@ -855,13 +861,14 @@ export default function InternalAccountAdminPage({
               <option value="all">全部用户</option>
               <option value="enabled">允许登录</option>
               <option value="disabled">已停用</option>
+              <option value="mobile">仅移动端</option>
               <option value="price">可查看价格</option>
             </select>
             <small>显示 {filteredAccounts.length} / {data.accounts.length}</small>
           </div>
           <div className="internal-access-table-card">
             <div className="internal-access-table-head">
-              <div><UsersRound size={17} /><strong>StarRC 内部用户</strong></div>
+              <div><UsersRound size={17} /><strong>DMS 内部用户</strong></div>
               <small>列表只显示摘要；查看页与编辑页已分开</small>
             </div>
             <div className="internal-access-table-wrap">
@@ -915,6 +922,9 @@ export default function InternalAccountAdminPage({
                             <Power size={13} />
                             {account.enabled ? "允许登录" : "已停用"}
                           </span>
+                          {account.mobileOnly && (
+                            <small><Smartphone size={12} />仅移动端</small>
+                          )}
                         </td>
                         <td>
                           <strong>{legacyCount} / {permissionOptions.length}</strong>
@@ -1084,13 +1094,14 @@ export default function InternalAccountAdminPage({
           <div className="internal-access-identity-grid">
             <article><small>FileMaker 权限集</small><strong>{selectedAccount.filemakerPrivilegeSet}</strong></article>
             <article><small>登录状态</small><strong>{selectedAccount.enabled ? "允许登录" : "已停用"}</strong></article>
+            <article><small>登录入口</small><strong>{selectedAccount.mobileOnly ? "仅移动端" : "Web 与移动端"}</strong></article>
             <article><small>同步来源</small><strong>{selectedAccount.origin === "filemaker" ? "FileMaker 会话" : "后台建立"}</strong></article>
             <article><small>最后同步</small><strong>{formatDateTime(selectedAccount.lastSeenAt)}</strong></article>
           </div>
           <section className="internal-access-section">
             <header>
               <div>
-                <h4>StarRC 基础功能</h4>
+                <h4>DMS 基础功能</h4>
                 <p>
                   {selectedAccount.inheritsPrivilegeSet
                     ? "完全继承 FileMaker 权限集默认值"
@@ -1149,7 +1160,7 @@ export default function InternalAccountAdminPage({
               <span>{screen === "accountCreate" ? "用户新增页" : "用户编辑页"}</span>
               <h3>
                 {screen === "accountCreate"
-                  ? "新增 StarRC 用户"
+                  ? "新增 DMS 用户"
                   : `编辑 ${accountDraft.displayName}`}
               </h3>
               <p>身份、状态、基础功能和 6 组业务权限在此统一配置。</p>
@@ -1228,7 +1239,23 @@ export default function InternalAccountAdminPage({
                     )
                   }
                 />
-                <span>允许登录 StarRC</span>
+                <span>允许登录 DMS</span>
+              </label>
+              <label className="internal-access-enabled form-switch">
+                <input
+                  type="checkbox"
+                  checked={accountDraft.mobileOnly}
+                  disabled={isSelf}
+                  onChange={(event) =>
+                    setAccountDraft((current) =>
+                      current
+                        ? { ...current, mobileOnly: event.target.checked }
+                        : current
+                    )
+                  }
+                />
+                <span>仅移动端登录</span>
+                <small>启用后禁止登录和访问后台 Web。</small>
               </label>
             </div>
           </section>
@@ -1236,7 +1263,7 @@ export default function InternalAccountAdminPage({
           <section className="internal-access-section">
             <header>
               <div>
-                <h4>StarRC 基础功能</h4>
+                <h4>DMS 基础功能</h4>
                 <p>控制价格、产品、订单、库存、BOM、问答和管理功能。</p>
               </div>
               <label className="internal-access-inherit-toggle">
@@ -1375,7 +1402,7 @@ export default function InternalAccountAdminPage({
               </header>
             </section>
             <section className="internal-access-section">
-              <header><div><h4>StarRC 基础功能默认值</h4><p>继承用户会实时获得这些权限。</p></div></header>
+              <header><div><h4>DMS 基础功能默认值</h4><p>继承用户会实时获得这些权限。</p></div></header>
               <PermissionGrid
                 permissions={privilegeDraft.permissions}
                 onChange={(key, value) =>
@@ -1432,7 +1459,7 @@ export default function InternalAccountAdminPage({
             <span className="internal-access-delete-icon"><Trash2 size={22} /></span>
             <h3 id="delete-account-title">删除 {deleteCandidate.displayName}？</h3>
             <p>
-              将删除该用户在 StarRC 中的权限配置。
+              将删除该用户在 DMS 中的权限配置。
               {deleteCandidate.origin === "filemaker" &&
                 " 此账号来自 FileMaker，下次登录时账号映射会重新同步。"}
             </p>
