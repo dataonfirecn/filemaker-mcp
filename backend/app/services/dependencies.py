@@ -163,14 +163,6 @@ async def get_webviewer_session_context(request: Request) -> dict:
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "此账号仅允许通过移动端访问。"},
         )
-    if account["mobileOnly"] and not is_webviewer_mobile_request(
-        client_channel=request.headers.get("X-Client-Channel", ""),
-        user_agent=request.headers.get("User-Agent", ""),
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "此账号仅允许通过移动端访问。"},
-        )
 
     access = dict(account["permissions"])
     part_permissions = dict(account["partPermissions"])

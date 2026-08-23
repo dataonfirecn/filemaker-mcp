@@ -11,6 +11,7 @@ from app.services.filemaker_client import FileMakerClient
 PRODUCT_RANK_LAYOUT = "@products_rank"
 PRODUCT_RANK_SOLD_FIELD = "產品庫存::出庫數量總合"
 PRODUCT_RANK_PAGE_SIZE = 5_000
+PRODUCT_RANK_CUSTOMER_PAGE_SIZE = 500
 PRODUCT_RANK_MAX_RECORDS = 50_000
 PRODUCT_RANK_DEFAULT_LIMIT = 20
 PRODUCT_RANK_MAX_LIMIT = 50
@@ -35,6 +36,7 @@ class ProductRankResult:
     rows: list[ProductRankRow]
     eligible_count: int
     scanned_count: int
+    truncated: bool = False
 
 
 class ProductRankLimitExceeded(RuntimeError):
@@ -85,15 +87,20 @@ def parse_product_rank_plan(prompt: str) -> ProductRankPlan | None:
 async def fetch_product_rankings(
     filemaker: FileMakerClient,
     plan: ProductRankPlan,
+    *,
+    client_id: str = "",
+    page_size: int = PRODUCT_RANK_PAGE_SIZE,
 ) -> ProductRankResult:
     records: list[dict[str, object]] = []
     found_count: int | None = None
+    query = {"id_client": f"=={client_id.strip()}"} if client_id.strip() else None
+    effective_page_size = max(1, min(page_size, PRODUCT_RANK_PAGE_SIZE))
 
     while found_count is None or len(records) < found_count:
         result = await filemaker.find_records(
             PRODUCT_RANK_LAYOUT,
-            query=None,
-            limit=PRODUCT_RANK_PAGE_SIZE,
+            query=query,
+            limit=effective_page_size,
             offset=len(records) + 1,
         )
         found_count = int(result.get("foundCount") or 0)
@@ -101,7 +108,7 @@ async def fetch_product_rankings(
             raise ProductRankLimitExceeded(found_count, PRODUCT_RANK_MAX_RECORDS)
         batch = [item for item in (result.get("data") or []) if isinstance(item, dict)]
         records.extend(batch)
-        if not batch:
+        if not batch or len(records) >= PRODUCT_RANK_MAX_RECORDS:
             break
 
     ranked: list[ProductRankRow] = []
@@ -130,6 +137,7 @@ async def fetch_product_rankings(
         rows=ranked[:plan.limit],
         eligible_count=len(ranked),
         scanned_count=len(records),
+        truncated=bool(found_count is not None and len(records) < found_count),
     )
 
 

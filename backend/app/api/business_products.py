@@ -28,7 +28,8 @@ from app.services.product_api import (
 
 router = APIRouter(prefix="/business-products", tags=["business-products"])
 
-PRODUCT_PAGE_SIZE = 50
+DEFAULT_PRODUCT_PAGE_SIZE = 50
+MAX_PRODUCT_PAGE_SIZE = 200
 MAX_PRODUCT_IMAGE_BYTES = 12 * 1024 * 1024
 PRODUCT_IMAGE_MEDIA_TYPES = {
     "image/bmp",
@@ -52,6 +53,12 @@ SEARCH_FIELDS = [
 async def list_business_products(
     q: str = Query(default="", max_length=80),
     page: int = Query(default=1, ge=1),
+    page_size: int = Query(
+        default=DEFAULT_PRODUCT_PAGE_SIZE,
+        alias="pageSize",
+        ge=1,
+        le=MAX_PRODUCT_PAGE_SIZE,
+    ),
     category: str = Query(default="", max_length=80),
     model: str = Query(default="", max_length=80),
     audit: str = Query(default="", max_length=80),
@@ -67,16 +74,16 @@ async def list_business_products(
         audit=audit.strip(),
         client=client_name.strip(),
     )
-    offset = ((page - 1) * PRODUCT_PAGE_SIZE) + 1
+    offset = ((page - 1) * page_size) + 1
     query = _build_query(normalized_query, filters)
     result = await filemaker.find_records(
         PRODUCT_API_LAYOUT,
         query=query,
-        limit=PRODUCT_PAGE_SIZE,
+        limit=page_size,
         offset=offset,
     )
     found_count = int(result["foundCount"] or 0)
-    total_pages = max(1, ceil(found_count / PRODUCT_PAGE_SIZE))
+    total_pages = max(1, ceil(found_count / page_size))
     rows = [_product_row(record) for record in result["data"]]
     await audit_log.record(
         operator=operator,
@@ -87,7 +94,7 @@ async def list_business_products(
         request_payload={
             "q": normalized_query,
             "page": page,
-            "pageSize": PRODUCT_PAGE_SIZE,
+            "pageSize": page_size,
             "filters": filters.model_dump(),
         },
         response_payload={
@@ -102,7 +109,7 @@ async def list_business_products(
         foundCount=found_count,
         returnedCount=result["returnedCount"],
         page=page,
-        pageSize=PRODUCT_PAGE_SIZE,
+        pageSize=page_size,
         totalPages=total_pages,
         query=normalized_query,
         filters=filters,
@@ -183,7 +190,13 @@ async def _resolve_product_detail_record(
     filemaker: FileMakerClient,
     identifier: str,
 ) -> dict[str, Any] | None:
-    """Resolve either a Data API record id or an OData-backed product code."""
+    """Resolve either a Data API record id or an OData-backed product code.
+
+    Exact natural-language lookups can be served by OData. Those rows have a
+    stable product code but no FileMaker Data API record id, so the detail URL
+    carries the product code. Resolve it against the live product layout before
+    loading the complete field and portal payload.
+    """
     normalized = identifier.strip()
     if not normalized:
         return None
@@ -196,7 +209,8 @@ async def _resolve_product_detail_record(
             if record:
                 return record
         except FileMakerAPIError:
-            # Numeric product codes are valid, so try the business key too.
+            # Numeric product codes are valid, and stale record ids should
+            # still get an exact product-code lookup before returning 404.
             pass
 
     result = await filemaker.find_records(
@@ -333,6 +347,7 @@ def _product_row(record: dict[str, Any]) -> BusinessProductRow:
         prepaidStockUsd=fields.get("PrePaid_stock_USD"),
         bomCount=fields.get("BOM計數"),
         orderQty=fields.get("下單數量"),
+        soldTotal=fields.get("產品庫存::出庫數量總合"),
         bomDate=_text(fields.get("產品 BOM::日期")),
         vendor=_text(fields.get("產品 BOM::廠商")),
         client=_text(fields.get("Client")),

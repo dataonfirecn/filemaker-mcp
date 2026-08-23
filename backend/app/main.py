@@ -131,6 +131,7 @@ async def lifespan(app: FastAPI):
     )
     nightly_maintenance_worker = NightlyMaintenanceWorker(
         store=natural_query_conversation_store,
+        customer_history=customer_chat_history_store,
         settings=settings,
         reports=NightlyReportStore(
             settings.database_path,

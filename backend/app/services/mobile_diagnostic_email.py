@@ -41,16 +41,16 @@ def send_mobile_diagnostic_email(
     subject_event = _subject_value(event, fallback="unknown_error")
     message = EmailMessage()
     message["Subject"] = (
-        f"[StarRC PDA 错误] {subject_document} · {subject_event}"
+        f"[DMS PDA 错误] {subject_document} · {subject_event}"
     )
     message["From"] = formataddr(
-        ("StarRC PDA 错误报告", settings.customer_smtp_from_email.strip())
+        ("DMS PDA 错误报告", settings.customer_smtp_from_email.strip())
     )
     message["To"] = recipient
     message.set_content(
         "\n".join(
             [
-                "StarRC PDA 错误报告",
+                "DMS PDA 错误报告",
                 "",
                 f"操作员：{operator.name} ({operator.account})",
                 f"报告 ID：{report_id}",
@@ -68,7 +68,7 @@ def send_mobile_diagnostic_email(
         safe_report.encode("utf-8"),
         maintype="text",
         subtype="plain",
-        filename=f"starrc-pda-error-{_filename_value(report_id)}.txt",
+        filename=f"dms-pda-error-{_filename_value(report_id)}.txt",
     )
     try:
         deliver_email_message(settings, message)

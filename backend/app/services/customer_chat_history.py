@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from typing import Any
 
 import asyncpg
@@ -383,6 +384,62 @@ class CustomerChatHistoryStore:
             )
         return [_summary_record_to_dict(record) for record in records]
 
+    async def daily_quality_summary(
+        self,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+        client_name: str = "",
+        include_tests: bool = False,
+        limit: int = 50,
+        slow_threshold_ms: int = 10_000,
+    ) -> dict[str, Any]:
+        """Summarize one bounded customer-chat window for an operations report."""
+        if start_at.tzinfo is None or end_at.tzinfo is None:
+            raise ValueError("Customer chat report boundaries must be timezone-aware")
+        if start_at >= end_at:
+            raise ValueError("Customer chat report start must be before its end")
+
+        if self.database_url.startswith("memory://"):
+            rows = [
+                row
+                for row in self._memory_rows
+                if start_at <= row["createdAt"] < end_at
+                and (include_tests or not row["isTest"])
+                and (not client_name or row["clientName"] == client_name)
+            ]
+        else:
+            if not self._pool:
+                raise RuntimeError("Customer chat history store is not initialized")
+            async with self._pool.acquire() as conn:
+                records = await conn.fetch(
+                    """
+                    SELECT id, request_id, session_id, operator_account, operator_name,
+                           client_name, is_admin, channel, prompt, normalized_key,
+                           domain, intent, result_type, status, http_status,
+                           blocked_reason, answer, found_count, returned_count,
+                           duration_ms, source_layout, is_test, created_at
+                    FROM customer_chat_history
+                    WHERE created_at >= $1 AND created_at < $2
+                      AND ($3 OR NOT is_test)
+                      AND ($4 = '' OR client_name = $4)
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    start_at,
+                    end_at,
+                    include_tests,
+                    client_name,
+                )
+            rows = [_history_record_to_dict(record) for record in records]
+
+        return _build_daily_quality_summary(
+            rows,
+            start_at=start_at,
+            end_at=end_at,
+            limit=max(1, limit),
+            slow_threshold_ms=max(1, slow_threshold_ms),
+        )
+
 
 def canonical_customer_question(prompt: str) -> str:
     return re.sub(r"\s+", " ", prompt.strip())[:240] or "Empty question"
@@ -407,7 +464,20 @@ def infer_customer_question_domain(prompt: str) -> str:
         return "order"
     if any(term in lowered for term in ("零件", "part")):
         return "part"
-    if any(term in lowered for term in ("产品", "產品", "product", "sku", "inventory", "库存", "庫存")):
+    if any(
+        term in lowered
+        for term in (
+            "产品",
+            "產品",
+            "product",
+            "sku",
+            "inventory",
+            "库存",
+            "庫存",
+            "现货",
+            "現貨",
+        )
+    ):
         return "product"
     return "unknown"
 
@@ -416,7 +486,10 @@ def infer_customer_question_intent(prompt: str) -> str:
     lowered = prompt.casefold()
     if any(term in lowered for term in ("价格", "價格", "单价", "單價", "price")):
         return "price"
-    if any(term in lowered for term in ("库存", "庫存", "inventory", "stock")):
+    if any(
+        term in lowered
+        for term in ("库存", "庫存", "现货", "現貨", "inventory", "stock")
+    ):
         return "inventory"
     if any(term in lowered for term in ("追踪", "追蹤", "tracking")):
         return "tracking"
@@ -469,3 +542,183 @@ def _summary_record_to_dict(record: asyncpg.Record) -> dict[str, Any]:
         "errorCount": int(record["error_count"]),
         "lastAskedAt": record["last_asked_at"],
     }
+
+
+def _build_daily_quality_summary(
+    rows: list[dict[str, Any]],
+    *,
+    start_at: datetime,
+    end_at: datetime,
+    limit: int,
+    slow_threshold_ms: int,
+) -> dict[str, Any]:
+    status_counts = {
+        "success": 0,
+        "no_result": 0,
+        "clarification": 0,
+        "blocked": 0,
+        "error": 0,
+    }
+    domain_counts: dict[str, int] = {}
+    client_rows: dict[str, dict[str, Any]] = {}
+    issue_rows: dict[tuple[str, str, str], dict[str, Any]] = {}
+    users: set[tuple[str, str]] = set()
+    durations: list[int] = []
+    slow_count = 0
+
+    for row in rows:
+        status = _daily_report_status(row)
+        status_counts[status] = status_counts.get(status, 0) + 1
+        domain = str(row.get("domain") or "unknown")
+        client = str(row.get("clientName") or "Unassigned")
+        account = str(row.get("operatorAccount") or "")
+        users.add((client, account))
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        duration = max(0, int(row.get("durationMs") or 0))
+        durations.append(duration)
+        if duration >= slow_threshold_ms:
+            slow_count += 1
+
+        client_item = client_rows.setdefault(
+            client,
+            {
+                "clientName": client,
+                "totalCount": 0,
+                "successCount": 0,
+                "actionableCount": 0,
+                "blockedCount": 0,
+            },
+        )
+        client_item["totalCount"] += 1
+        if status == "success":
+            client_item["successCount"] += 1
+        elif status == "blocked":
+            client_item["blockedCount"] += 1
+        else:
+            client_item["actionableCount"] += 1
+
+        if status == "success":
+            continue
+        normalized_key = str(row.get("normalizedKey") or "unknown")
+        key = (client, normalized_key, domain)
+        issue = issue_rows.setdefault(
+            key,
+            {
+                "clientName": client,
+                "normalizedKey": normalized_key,
+                "domain": domain,
+                "intent": str(row.get("intent") or "lookup"),
+                "totalCount": 0,
+                "statusCounts": {},
+                "exampleQuestions": [],
+                "exampleAnswer": "",
+                "blockedReason": "",
+                "lastAskedAt": row.get("createdAt"),
+            },
+        )
+        issue["totalCount"] += 1
+        issue["statusCounts"][status] = issue["statusCounts"].get(status, 0) + 1
+        prompt = _report_text(row.get("prompt"), 240)
+        if prompt and prompt not in issue["exampleQuestions"] and len(issue["exampleQuestions"]) < 3:
+            issue["exampleQuestions"].append(prompt)
+        if not issue["exampleAnswer"]:
+            issue["exampleAnswer"] = _report_text(row.get("answer"), 320)
+        if not issue["blockedReason"]:
+            issue["blockedReason"] = _report_text(row.get("blockedReason"), 120)
+        if row.get("createdAt") and (
+            not issue["lastAskedAt"] or row["createdAt"] > issue["lastAskedAt"]
+        ):
+            issue["lastAskedAt"] = row["createdAt"]
+
+    issues = []
+    for item in issue_rows.values():
+        status = _primary_issue_status(item["statusCounts"])
+        item["primaryStatus"] = status
+        item["severity"] = "critical" if status == "error" else (
+            "info" if status == "blocked" else "warning"
+        )
+        item["suggestedAction"] = _suggested_customer_chat_action(status)
+        if isinstance(item["lastAskedAt"], datetime):
+            item["lastAskedAt"] = item["lastAskedAt"].isoformat()
+        issues.append(item)
+    severity_rank = {"critical": 0, "warning": 1, "info": 2}
+    issues.sort(
+        key=lambda item: (
+            severity_rank.get(str(item["severity"]), 3),
+            -int(item["totalCount"]),
+            str(item["clientName"]),
+            str(item["normalizedKey"]),
+        )
+    )
+
+    total = len(rows)
+    actionable_count = (
+        status_counts.get("error", 0)
+        + status_counts.get("no_result", 0)
+        + status_counts.get("clarification", 0)
+    )
+    sorted_durations = sorted(durations)
+    average_duration = round(sum(durations) / total) if total else 0
+    p95_duration = (
+        sorted_durations[max(0, ceil(len(sorted_durations) * 0.95) - 1)]
+        if sorted_durations
+        else 0
+    )
+    clients = sorted(
+        client_rows.values(),
+        key=lambda item: (-int(item["totalCount"]), str(item["clientName"])),
+    )
+    return {
+        "startAt": start_at.isoformat(),
+        "endAt": end_at.isoformat(),
+        "total": total,
+        "uniqueUsers": len(users),
+        "successRate": round(status_counts.get("success", 0) / total * 100, 1)
+        if total
+        else 100.0,
+        "actionableCount": actionable_count,
+        "actionableRate": round(actionable_count / total * 100, 1) if total else 0.0,
+        "blockedCount": status_counts.get("blocked", 0),
+        "averageDurationMs": average_duration,
+        "p95DurationMs": p95_duration,
+        "slowCount": slow_count,
+        "statuses": status_counts,
+        "domains": dict(sorted(domain_counts.items())),
+        "clients": clients,
+        "issueGroups": issues[:limit],
+    }
+
+
+def _daily_report_status(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "error")
+    http_status = int(row.get("httpStatus") or 0)
+    # Older order-permission events were stored as "error" even though the
+    # HTTP response was an expected 403. Keep those out of the failure bucket.
+    if status == "blocked" or http_status in {401, 403}:
+        return "blocked"
+    if status in {"success", "no_result", "clarification", "error"}:
+        return status
+    if status == "failed" or http_status >= 400:
+        return "error"
+    return "success"
+
+
+def _primary_issue_status(status_counts: dict[str, int]) -> str:
+    for status in ("error", "clarification", "no_result", "blocked"):
+        if status_counts.get(status, 0):
+            return status
+    return "error"
+
+
+def _suggested_customer_chat_action(status: str) -> str:
+    return {
+        "error": "立即检查接口日志、数据源连通性和失败路径，修复后回归同一问题。",
+        "clarification": "补充意图识别、同义问法或引导文案，并加入预设问题回归。",
+        "no_result": "核对客户数据范围、编号映射和查询条件；确认无数据时无需修改。",
+        "blocked": "核实权限拦截是否符合策略；符合时仅记录监控，不放宽权限。",
+    }.get(status, "人工复核该问题并决定是否增加回归用例。")
+
+
+def _report_text(value: object, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text if len(text) <= limit else text[: max(1, limit - 1)] + "…"

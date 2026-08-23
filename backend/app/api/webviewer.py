@@ -581,7 +581,7 @@ async def send_admin_credentials(
     settings: Settings = Depends(get_settings),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
 ) -> dict:
-    """Email the StarRC admin backend credentials to a trusted recipient.
+    """Email the DMS admin backend credentials to a trusted recipient.
 
     The credentials are the deployed FileMaker Data API account
     (``FILEMAKER_USERNAME`` / ``FILEMAKER_PASSWORD``); the webviewer admin

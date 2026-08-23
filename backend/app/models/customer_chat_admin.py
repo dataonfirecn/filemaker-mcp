@@ -70,6 +70,7 @@ class CustomerAccountAdminItem(BaseModel):
     username: str
     display_name: str = Field(alias="displayName")
     email: str
+    company_name: str = Field(alias="companyName")
     client_name: str = Field(alias="clientName")
     product_privilege: str = Field(alias="productPrivilege")
     part_customer_id: str = Field(alias="partCustomerId")
@@ -105,6 +106,46 @@ class CustomerAccountAdminResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class CustomerPortalConfig(BaseModel):
+    client_name: str = Field(alias="clientName")
+    catalog_customer_id: str = Field(alias="catalogCustomerId")
+    web_customer_code: str = Field(alias="webCustomerCode")
+    shipment_company_group_id: str = Field(alias="shipmentCompanyGroupId")
+    version: int
+    updated_at: datetime = Field(alias="updatedAt")
+    updated_by: str = Field(alias="updatedBy")
+
+    model_config = {"populate_by_name": True}
+
+
+class CustomerPortalConfigUpdateRequest(BaseModel):
+    client_name: str = Field(
+        alias="clientName",
+        min_length=1,
+        max_length=120,
+        pattern=r"^\S(?:.*\S)?$",
+    )
+    catalog_customer_id: str = Field(
+        alias="catalogCustomerId",
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    web_customer_code: str = Field(
+        alias="webCustomerCode",
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    shipment_company_group_id: str = Field(
+        alias="shipmentCompanyGroupId",
+        max_length=120,
+        pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9._:-]*)?$",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class CustomerCredentialsEmailLogItem(BaseModel):
     id: int
     username: str
@@ -129,6 +170,13 @@ class CustomerAccountAdminCreateRequest(BaseModel):
         min_length=5,
         max_length=254,
         pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    company_name: str | None = Field(
+        default=None,
+        alias="companyName",
+        min_length=1,
+        max_length=120,
+        pattern=r"^\S(?:.*\S)?$",
     )
     password: str = Field(min_length=12, max_length=256)
     enabled: bool = True
@@ -155,6 +203,13 @@ class CustomerAccountAdminUpdateRequest(BaseModel):
         min_length=5,
         max_length=254,
         pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    company_name: str | None = Field(
+        default=None,
+        alias="companyName",
+        min_length=1,
+        max_length=120,
+        pattern=r"^\S(?:.*\S)?$",
     )
     enabled: bool | None = None
     send_credentials: bool = Field(default=False, alias="sendCredentials")

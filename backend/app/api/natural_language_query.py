@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, time as datetime_time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -379,6 +379,16 @@ async def run_natural_language_query(
             layout_fields=layout_fields,
             settings=settings,
         )
+        parsed_plan, live_date_fields = await _verify_date_query_plan(
+            prompt_for_plan,
+            parsed_plan,
+            filemaker=filemaker,
+            settings=settings,
+        )
+        if live_date_fields is not None:
+            # Date criteria must follow the live query layout rather than a
+            # potentially wider or stale RAG field profile.
+            layout_fields = live_date_fields
         if not customer_scoped:
             _validate_internal_query_permissions(
                 parsed_plan,
@@ -560,9 +570,10 @@ async def run_natural_language_query(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
-                    "message": (
-                        f"FileMaker 日期查询字段“{field_name}”不可用。"
-                        "请把 NATURAL_QUERY_PRODUCT_CREATED_FIELDS 配置成产品资料布局里的真实新增/创建日期字段。"
+                    "message": _date_query_error_message(
+                        exc,
+                        field_name=field_name,
+                        layout=parsed_plan.layout,
                     ),
                     "payload": exc.payload,
                 },
@@ -1000,6 +1011,11 @@ async def _run_internal_product_ranking(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={"message": error_message, "payload": exc.payload},
         ) from exc
+
+    if ranking.truncated:
+        parsed_plan.warnings.append(
+            f"产品数量超过安全扫描上限，本次只扫描前 {ranking.scanned_count} 条记录。"
+        )
 
     rows = [
         BusinessProductRow(
@@ -1605,6 +1621,89 @@ async def _layout_fields_for_query(
     return [field for field in fields if isinstance(field, dict)]
 
 
+async def _verify_date_query_plan(
+    prompt: str,
+    parsed_plan: ProductNaturalQueryPlan,
+    *,
+    filemaker: FileMakerClient,
+    settings: Settings,
+) -> tuple[ProductNaturalQueryPlan, list[dict[str, object]] | None]:
+    """Rebuild temporal criteria from the live query layout when available."""
+    if not parsed_plan.date_range:
+        return parsed_plan, None
+
+    try:
+        fields = await asyncio.wait_for(
+            filemaker.get_layout_fields(parsed_plan.layout),
+            timeout=max(1.0, settings.rag_index_layout_fields_timeout_seconds),
+        )
+    except (asyncio.TimeoutError, FileMakerAPIError):
+        return parsed_plan, None
+
+    live_fields = [field for field in fields if isinstance(field, dict)]
+    if not live_fields:
+        return parsed_plan, None
+    reference_now: datetime | None = None
+    try:
+        end_date = date.fromisoformat(str(parsed_plan.date_range.get("end") or ""))
+        reference_now = datetime.combine(
+            end_date,
+            datetime_time(hour=12),
+            tzinfo=ZoneInfo(settings.natural_query_timezone),
+        )
+    except (AttributeError, TypeError, ValueError, ZoneInfoNotFoundError):
+        reference_now = None
+    return (
+        build_product_natural_query_plan(
+            prompt,
+            layout_fields=live_fields,
+            settings=settings,
+            now=reference_now,
+        ),
+        live_fields,
+    )
+
+
+def _date_query_error_message(
+    exc: FileMakerAPIError,
+    *,
+    field_name: str,
+    layout: str,
+) -> str:
+    messages = _filemaker_error_messages(exc.payload)
+    normalized = " ".join(messages).casefold()
+    if "date value does not meet validation entry options" in normalized:
+        return (
+            "FileMaker 拒绝了日期查询值：日期格式不符合字段验证规则。"
+            "请检查 NATURAL_QUERY_FILEMAKER_DATE_FORMAT 和 "
+            "NATURAL_QUERY_FILEMAKER_TIMESTAMP_FORMAT。"
+        )
+    if any(
+        term in normalized
+        for term in ("field is missing", "field not found", "unknown field")
+    ):
+        return (
+            f"FileMaker 日期查询字段“{field_name}”在“{layout}”布局中不可用。"
+            "请确认 RAG 布局与实时查询布局的字段映射。"
+        )
+    if messages:
+        return f"FileMaker 日期查询失败：{messages[0]}"
+    return f"FileMaker 日期查询失败（布局“{layout}”，字段“{field_name}”）。"
+
+
+def _filemaker_error_messages(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    return [
+        str(item.get("message") or "").strip()
+        for item in messages
+        if isinstance(item, dict) and str(item.get("message") or "").strip()
+    ]
+
+
 async def _semantic_profile_for_query(
     layout: str,
     layout_fields: list[dict[str, object]],
@@ -2196,6 +2295,8 @@ def _wants_stock_detail(text: str) -> bool:
         for term in (
             "库存",
             "庫存",
+            "现货",
+            "現貨",
             "stock",
             "inventory",
             "on hand",

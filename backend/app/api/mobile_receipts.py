@@ -31,6 +31,7 @@ from app.services.dependencies import (
     get_operator_context,
     get_receipt_attachment_store,
     get_settings,
+    get_webviewer_access,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
 from app.services.filemaker_odata_client import (
@@ -66,6 +67,7 @@ INVENTORY_TABLE = "產品庫存"
 ORDER_ITEM_TABLE = "出貨單資料"
 RECEIPT_COMPLETE_STATUS = "已入庫"
 RECEIPT_PENDING_STATUS = "未入庫"
+COMPLETED_RECEIPT_PERMISSION = "canAddCompletedReceipts"
 _receipt_line_locks: dict[str, asyncio.Lock] = {}
 _receipt_line_locks_guard = asyncio.Lock()
 
@@ -398,6 +400,7 @@ async def submit_receipt_lines(
     odata: FileMakerODataClient = Depends(get_filemaker_odata_client),
     attachment_store: ReceiptAttachmentStore = Depends(get_receipt_attachment_store),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
+    access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> ReceiptSubmissionResponse:
     if not settings.filemaker_mobile_receipt_write_enabled:
         raise HTTPException(
@@ -474,6 +477,10 @@ async def submit_receipt_lines(
                         attachments=attachment_records,
                         client_trace=client_trace,
                         audit_log=audit_log,
+                        allow_completed_receipt=(
+                            isinstance(access, dict)
+                            and access.get(COMPLETED_RECEIPT_PERMISSION, False)
+                        ),
                     )
                 )
             wrote_completed_receipt = True
@@ -1053,6 +1060,7 @@ async def _write_or_repair_line_receipt(
     attachments: dict[str, ReceiptAttachmentRecord],
     client_trace: dict[str, str],
     audit_log: AuditLogStore,
+    allow_completed_receipt: bool,
 ) -> ReceiptSubmissionLineResponse:
     existing_rows = await _line_receipts(odata, line.line_id)
     pending = _latest_receipt(existing_rows, RECEIPT_PENDING_STATUS)
@@ -1087,6 +1095,25 @@ async def _write_or_repair_line_receipt(
         for row in existing_rows
         if _text(row.get("狀態")) == RECEIPT_COMPLETE_STATUS
     )
+    expected_quantity = _integer(_field_data(source_record).get("數量"))
+    if expected_quantity <= 0:
+        expected_quantity = line.expected_quantity
+    if (
+        expected_quantity > 0
+        and completed_quantity >= expected_quantity
+        and not allow_completed_receipt
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": (
+                    f"{line.sku} 已完成订单数量入库；"
+                    "当前账号没有追加成品库存流水的权限。"
+                ),
+                "permission": COMPLETED_RECEIPT_PERMISSION,
+                "lineId": line.line_id,
+            },
+        )
 
     receipt_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     if pending:
