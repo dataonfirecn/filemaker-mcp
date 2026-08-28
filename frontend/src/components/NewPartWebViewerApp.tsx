@@ -501,8 +501,7 @@ export default function NewPartWebViewerApp() {
         setForm((current) => ({
           ...current,
           departmentDivision: nextOptions.defaults.departmentDivision,
-          statisticsCategory: nextOptions.defaults.statisticsCategory,
-          machiningCategory: nextOptions.defaults.machiningCategory
+          statisticsCategory: nextOptions.defaults.statisticsCategory
         }));
       } catch (nextError) {
         setError(parseError(nextError));
@@ -860,8 +859,7 @@ export default function NewPartWebViewerApp() {
     setForm({
       ...emptyForm,
       departmentDivision: options?.defaults.departmentDivision ?? "",
-      statisticsCategory: options?.defaults.statisticsCategory ?? "",
-      machiningCategory: options?.defaults.machiningCategory ?? ""
+      statisticsCategory: options?.defaults.statisticsCategory ?? ""
     });
     setGenerator(emptyGenerator);
     setGeneratorResult(null);
@@ -1268,7 +1266,7 @@ export default function NewPartWebViewerApp() {
           <div className="npw-classification-grid">
             <div className="npw-field-column">
               <SelectField label="仓库分工" value={form.warehouseDivision} options={options.warehouseDivisions} placeholder="选择发料分类" required error={fieldErrors.warehouseDivision} onChange={(warehouseDivision) => patchForm({ warehouseDivision })} />
-              <SelectField label="加工分类" value={form.machiningCategory} options={options.machiningCategories} placeholder="选择加工分类" error={fieldErrors.machiningCategory} onChange={(machiningCategory) => patchForm({ machiningCategory })} />
+              <SelectField label="加工分类" value={form.machiningCategory} options={options.machiningCategories} placeholder="选择加工分类" required error={fieldErrors.machiningCategory} onChange={(machiningCategory) => patchForm({ machiningCategory })} />
               <SelectField label="统计分类" value={form.statisticsCategory} options={options.statisticsCategories} placeholder="选择统计分类" error={fieldErrors.statisticsCategory} onChange={(statisticsCategory) => patchForm({ statisticsCategory })} />
               <SelectField label="使用部门" value={form.useDepartment} options={options.useDepartments} placeholder="选择使用部门" error={fieldErrors.useDepartment} onChange={(useDepartment) => patchForm({ useDepartment })} />
               <SelectField label="量产状况" value={form.lifecycleStatus} options={options.lifecycleStatuses} placeholder="选择量产状况" error={fieldErrors.lifecycleStatus} onChange={(lifecycleStatus) => patchForm({ lifecycleStatus })} />

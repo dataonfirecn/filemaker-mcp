@@ -75,7 +75,7 @@ class PartCreationRequest(BaseModel):
     external_name: str = Field(alias="externalName", max_length=2000)
     inventory_notice: bool = Field(default=False, alias="inventoryNotice")
     warehouse_division: str = Field(alias="warehouseDivision", max_length=80)
-    machining_category: str = Field(default="", alias="machiningCategory", max_length=80)
+    machining_category: str = Field(alias="machiningCategory", max_length=80)
     statistics_category: str = Field(default="", alias="statisticsCategory", max_length=80)
     use_department: str = Field(default="", alias="useDepartment", max_length=120)
     lifecycle_status: str = Field(default="", alias="lifecycleStatus", max_length=80)

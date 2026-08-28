@@ -55,7 +55,7 @@ ENUM_REQUEST_FIELDS = {
 DEFAULTS = {
     "departmentDivision": "采购",
     "statisticsCategory": "统计",
-    "machiningCategory": "外购",
+    "machiningCategory": "",
 }
 
 PART_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,319}$")
@@ -440,6 +440,8 @@ def _validate_fields(
         errors["externalName"] = "请填写正确的对外中文名称和详细信息。"
     if not body.warehouse_division.strip():
         errors["warehouseDivision"] = "仓库分工为必选项。"
+    if not body.machining_category.strip():
+        errors["machiningCategory"] = "加工分类为必选项。"
     if not body.material_category.strip():
         errors["materialCategory"] = "零件性质为必选项。"
 

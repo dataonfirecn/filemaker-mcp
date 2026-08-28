@@ -11,9 +11,9 @@ from typing import Any
 import aiosqlite
 
 from app.core.config import Settings
-from app.models.part_creation import PartCreationOptionsResponse
+from app.models.part_creation import PartCreationDefaults, PartCreationOptionsResponse
 from app.services.filemaker_client import FileMakerClient
-from app.services.part_creation import load_part_creation_options
+from app.services.part_creation import DEFAULTS, load_part_creation_options
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +316,8 @@ class PartCreationOptionsCache:
                 "asset_uploads_enabled": (
                     self.settings.filemaker_part_assets_enabled
                     and self.settings.cos_configured
-                )
+                ),
+                "defaults": PartCreationDefaults(**DEFAULTS),
             },
         )
 

@@ -1,4 +1,6 @@
 import asyncio
+import json
+import sqlite3
 
 import pytest
 from fastapi import HTTPException
@@ -140,8 +142,44 @@ async def test_cache_survives_restart_without_reading_filemaker(tmp_path) -> Non
     second = await restarted.get()
 
     assert second == first
+    assert second.defaults.machining_category == ""
     assert restarted.status()["available"] is True
     assert restarted.status()["source"] == "persistent-web-cache"
+
+
+@pytest.mark.asyncio
+async def test_cached_defaults_are_replaced_with_current_service_defaults(tmp_path) -> None:
+    database_path = str(tmp_path / "app.db")
+    settings = _settings(database_path)
+    cache = PartCreationOptionsCache(
+        database_path=database_path,
+        filemaker=FakeFileMaker(),
+        settings=settings,
+    )
+    await cache.init()
+    await cache.ensure_seeded()
+
+    with sqlite3.connect(database_path) as db:
+        row = db.execute(
+            "SELECT payload_json FROM filemaker_reference_cache WHERE cache_key = ?",
+            ("part-creation-options",),
+        ).fetchone()
+        assert row is not None
+        payload = json.loads(row[0])
+        payload["defaults"]["machiningCategory"] = "外购"
+        db.execute(
+            "UPDATE filemaker_reference_cache SET payload_json = ? WHERE cache_key = ?",
+            (json.dumps(payload, ensure_ascii=False), "part-creation-options"),
+        )
+
+    restarted = PartCreationOptionsCache(
+        database_path=database_path,
+        filemaker=FailingFileMaker(),
+        settings=settings,
+    )
+    await restarted.init()
+
+    assert (await restarted.get()).defaults.machining_category == ""
 
 
 @pytest.mark.asyncio

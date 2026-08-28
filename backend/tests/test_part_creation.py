@@ -235,6 +235,7 @@ async def test_options_are_loaded_from_native_new_part_layout() -> None:
     assert options.exclusive_customers[0].code == "0840"
     assert options.exclusive_customers[0].label == "Army Racing"
     assert options.defaults.department_division == "采购"
+    assert options.defaults.machining_category == ""
     assert options.generator.customers[0].code == "007"
 
 
@@ -265,6 +266,20 @@ async def test_validation_rejects_placeholder_duplicate_and_stale_option() -> No
     assert "internalName" in response.errors
     assert "warehouseDivision" in response.errors
     assert "partNumber" in response.errors
+
+
+@pytest.mark.asyncio
+async def test_validation_requires_warehouse_and_machining_categories() -> None:
+    response = await validate_part_creation(
+        FakeFileMaker(),
+        _settings(),
+        _request(warehouseDivision="", machiningCategory=""),
+        odata=FakeOData(),
+    )
+
+    assert response.valid is False
+    assert response.errors["warehouseDivision"] == "仓库分工为必选项。"
+    assert response.errors["machiningCategory"] == "加工分类为必选项。"
 
 
 @pytest.mark.asyncio
