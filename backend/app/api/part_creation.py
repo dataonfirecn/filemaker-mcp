@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.config import Settings
 from app.models.part_creation import (
     PartCreationCacheStatus,
+    PartCreationOption,
     PartCreationOptionsResponse,
     PartCreationRequest,
     PartCreationResponse,
@@ -26,6 +27,7 @@ from app.services.part_creation import (
     PartCreationError,
     create_part,
     part_creation_audit_payload,
+    resolve_selectable_customer,
     search_part_vendors,
     validate_part_creation,
 )
@@ -104,6 +106,37 @@ async def get_part_vendors(
         return await search_part_vendors(filemaker, q, limit=limit)
     except FileMakerAPIError as exc:
         raise _filemaker_http_error(exc) from exc
+
+
+@router.get("/customers/resolve", response_model=PartCreationOption)
+async def resolve_part_creation_customer(
+    code: str = Query(min_length=1, max_length=120),
+    filemaker: FileMakerClient = Depends(get_filemaker_client),
+    odata: FileMakerODataClient = Depends(get_filemaker_odata_client),
+    settings: Settings = Depends(get_settings),
+    _: OperatorContext = Depends(get_operator_context),
+) -> PartCreationOption:
+    """Resolve one customer against the live value list and OData mapping."""
+    try:
+        customer = await resolve_selectable_customer(
+            filemaker,
+            settings,
+            odata,
+            code,
+        )
+    except FileMakerAPIError as exc:
+        raise _filemaker_http_error(exc) from exc
+    except FileMakerODataError as exc:
+        raise _odata_http_error(exc) from exc
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "CUSTOMER_NOT_SELECTABLE",
+                "message": "该客户当前不能用于新建零件，或内部主键不可用。",
+            },
+        )
+    return PartCreationOption(code=customer.code, label=customer.name)
 
 
 @router.post("/validate", response_model=PartValidationResponse)

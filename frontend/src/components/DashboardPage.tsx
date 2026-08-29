@@ -64,7 +64,7 @@ export default function DashboardPage({
     <div className="dashboard-page">
       <section className="dashboard-hero" aria-labelledby="dashboard-welcome">
         <div className="dashboard-hero-copy">
-          <span className="dashboard-eyebrow">DMS 工作台</span>
+          <span className="dashboard-eyebrow">StarRC 工作台</span>
           <h2 id="dashboard-welcome">欢迎回来，{operatorName || "同事"}</h2>
           <p>从这里进入订单、BOM、产品、零件和 FileMaker 智能查询。</p>
         </div>

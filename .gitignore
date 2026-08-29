@@ -38,3 +38,8 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Local browser and OS diagnostics
+.playwright-mcp/
+.com.apple.backupd.*
+part-detail-current.jpeg

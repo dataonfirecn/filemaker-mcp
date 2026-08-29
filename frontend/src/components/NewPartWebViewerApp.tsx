@@ -416,6 +416,7 @@ export default function NewPartWebViewerApp() {
   const [photoPreparing, setPhotoPreparing] = useState(false);
   const [starting, setStarting] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [confirmingGenerated, setConfirmingGenerated] = useState(false);
   const [validating, setValidating] = useState(false);
   const [creating, setCreating] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -447,7 +448,7 @@ export default function NewPartWebViewerApp() {
       if (event.key !== "Escape") return;
       if (resetConfirmOpen) {
         setResetConfirmOpen(false);
-      } else if (!generating) {
+      } else if (!generating && !confirmingGenerated) {
         setGeneratorModalOpen(false);
       }
     }
@@ -457,7 +458,7 @@ export default function NewPartWebViewerApp() {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [generating, generatorModalOpen, resetConfirmOpen]);
+  }, [confirmingGenerated, generating, generatorModalOpen, resetConfirmOpen]);
 
   useEffect(() => {
     function closeVendorOnOutsideClick(event: MouseEvent) {
@@ -633,8 +634,8 @@ export default function NewPartWebViewerApp() {
     }
   }
 
-  function confirmGeneratedPartNumber() {
-    if (!generatorResult) {
+  async function confirmGeneratedPartNumber() {
+    if (!session || !generatorResult || confirmingGenerated) {
       setGeneratorError("请先生成编号，再确认使用。");
       return;
     }
@@ -642,24 +643,38 @@ export default function NewPartWebViewerApp() {
       setGeneratorError("这个编号已经存在，请重新生成。");
       return;
     }
-    const customer = options?.exclusiveCustomers.find(
-      (item) => item.code === generator.customer
-    );
-    if (!customer) {
-      setGeneratorError("此编号客户没有可用的 FileMaker 客户资料，请重新选择客户。");
-      return;
+    setConfirmingGenerated(true);
+    setGeneratorError(null);
+    try {
+      const params = new URLSearchParams({ code: generator.customer });
+      const customer = await requestJson<Option>(
+        `/api/part-creation/customers/resolve?${params.toString()}`,
+        {},
+        session.token
+      );
+      setOptions((current) => current ? {
+        ...current,
+        exclusiveCustomers: [
+          customer,
+          ...current.exclusiveCustomers.filter((item) => item.code !== customer.code)
+        ]
+      } : current);
+      patchForm({
+        partNumber: generatorResult.partNumber,
+        customerCode: customer.code,
+        customerName: customer.label,
+        ...(options?.materialCategories.some(
+          (item) => item.code === generator.material
+        )
+          ? { materialCategory: generator.material }
+          : {})
+      });
+      setGeneratorModalOpen(false);
+    } catch (nextError) {
+      setGeneratorError(`无法确认客户资料：${parseError(nextError)}`);
+    } finally {
+      setConfirmingGenerated(false);
     }
-    patchForm({
-      partNumber: generatorResult.partNumber,
-      customerCode: customer.code,
-      customerName: customer.label,
-      ...(options?.materialCategories.some(
-        (item) => item.code === generator.material
-      )
-        ? { materialCategory: generator.material }
-        : {})
-    });
-    setGeneratorModalOpen(false);
   }
 
   function payload(photoUploadId = "") {
@@ -864,6 +879,7 @@ export default function NewPartWebViewerApp() {
     setGenerator(emptyGenerator);
     setGeneratorResult(null);
     setGeneratorError(null);
+    setConfirmingGenerated(false);
     setGeneratorModalOpen(false);
     setResetConfirmOpen(false);
     setPhoto(null);
@@ -1522,7 +1538,11 @@ export default function NewPartWebViewerApp() {
         <div
           className="npw-modal-overlay npw-generator-overlay"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !generating) {
+            if (
+              event.target === event.currentTarget
+              && !generating
+              && !confirmingGenerated
+            ) {
               setGeneratorModalOpen(false);
             }
           }}
@@ -1543,7 +1563,7 @@ export default function NewPartWebViewerApp() {
                 type="button"
                 aria-label="关闭编号生成"
                 onClick={() => setGeneratorModalOpen(false)}
-                disabled={generating}
+                disabled={generating || confirmingGenerated}
               >
                 <X size={18} />
               </button>
@@ -1668,7 +1688,7 @@ export default function NewPartWebViewerApp() {
 
                 <footer className="mid-source-note">
                   <Database size={14} />
-                  <span>选项来自 Web 缓存；流水号与重复检查实时读取 FileMaker</span>
+                  <span>选项来自 Web 缓存；客户、流水号与重复检查实时复核 FileMaker</span>
                 </footer>
               </aside>
             </div>
@@ -1678,7 +1698,7 @@ export default function NewPartWebViewerApp() {
                 className="npw-btn npw-btn-reset"
                 type="button"
                 onClick={() => setGeneratorModalOpen(false)}
-                disabled={generating}
+                disabled={generating || confirmingGenerated}
               >
                 取消
               </button>
@@ -1686,7 +1706,12 @@ export default function NewPartWebViewerApp() {
                 className="npw-btn npw-btn-generate"
                 type="button"
                 onClick={() => void generatePartNumber()}
-                disabled={generating || !generator.material || !generator.customer}
+                disabled={
+                  generating
+                  || confirmingGenerated
+                  || !generator.material
+                  || !generator.customer
+                }
               >
                 {generating ? <Loader2 className="npw-spin" size={17} /> : <Sparkles size={17} />}
                 {generating ? "正在计算…" : generatorResult ? "重新生成" : "生成编号"}
@@ -1694,11 +1719,18 @@ export default function NewPartWebViewerApp() {
               <button
                 className="npw-btn npw-btn-create"
                 type="button"
-                onClick={confirmGeneratedPartNumber}
-                disabled={!generatorResult || generatorResult.exists || generating}
+                onClick={() => void confirmGeneratedPartNumber()}
+                disabled={
+                  !generatorResult
+                  || generatorResult.exists
+                  || generating
+                  || confirmingGenerated
+                }
               >
-                <Check size={17} />
-                确认使用此编号
+                {confirmingGenerated
+                  ? <Loader2 className="npw-spin" size={17} />
+                  : <Check size={17} />}
+                {confirmingGenerated ? "正在确认客户…" : "确认使用此编号"}
               </button>
             </footer>
           </section>

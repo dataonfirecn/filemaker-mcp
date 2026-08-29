@@ -276,7 +276,7 @@ export default function InternalSettingsPage({
             </div>
           </div>
           <div className="internal-settings-security-footer">
-            <p>密码由 DMS 管理员或 FileMaker“安全性”统一维护。</p>
+            <p>密码由 StarRC 管理员或 FileMaker“安全性”统一维护。</p>
             <button type="button" onClick={onSignOut}>
               <LogOut size={17} />
               退出当前账号

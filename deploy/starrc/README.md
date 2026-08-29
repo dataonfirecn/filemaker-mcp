@@ -1,6 +1,6 @@
 # StarRC 独立公网部署
 
-本目录只用于 `https://starrc.dataonfire.cn`，不得与 `deploy/mayako` 的容器、环境文件、数据库或数据卷混用。
+本目录只用于 `https://starrc.dataonfire.cn` 的内部工作台。外部客户门户已迁移到独立的 `DMS` 项目，不得共用容器、环境文件、数据库或数据卷。
 
 生产环境安全基线：
 

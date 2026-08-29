@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "DMS FileMaker Service"
+    app_name: str = "StarRC FileMaker Service"
     app_env: str = "local"
     api_prefix: str = "/api"
     cors_origins: str = (

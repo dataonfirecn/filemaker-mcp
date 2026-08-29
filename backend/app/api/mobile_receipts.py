@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from uuid import NAMESPACE_URL, uuid5
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -63,10 +64,13 @@ ReceiptDocumentID = Path(
 ORDER_LAYOUT = "@出貨單"
 ORDER_ITEM_LAYOUT = "@出貨單資料"
 RECEIPT_TABLE = "出貨單資料入庫"
+INBOUND_ORDER_TABLE = "入庫單"
+INBOUND_ORDER_LINE_TABLE = "入庫單資料"
 INVENTORY_TABLE = "產品庫存"
 ORDER_ITEM_TABLE = "出貨單資料"
 RECEIPT_COMPLETE_STATUS = "已入庫"
 RECEIPT_PENDING_STATUS = "未入庫"
+SUPPLEMENTAL_INBOUND_SUMMARY_PREFIX = "PDA追加成品入库"
 COMPLETED_RECEIPT_PERMISSION = "canAddCompletedReceipts"
 _receipt_line_locks: dict[str, asyncio.Lock] = {}
 _receipt_line_locks_guard = asyncio.Lock()
@@ -461,13 +465,14 @@ async def submit_receipt_lines(
 
     claim_owned = True
     wrote_completed_receipt = False
+    supplemental_batch: dict[str, str] = {}
     try:
         line_results: list[ReceiptSubmissionLineResponse] = []
         for line in body.lines:
             lock = await _line_lock(line.line_id)
             async with lock:
                 line_results.append(
-                    await _write_or_repair_line_receipt(
+                    await _write_routed_line_receipt(
                         odata,
                         line=line,
                         source_record=source_records[line.line_id],
@@ -481,6 +486,7 @@ async def submit_receipt_lines(
                             isinstance(access, dict)
                             and access.get(COMPLETED_RECEIPT_PERMISSION, False)
                         ),
+                        supplemental_batch=supplemental_batch,
                     )
                 )
             wrote_completed_receipt = True
@@ -564,8 +570,13 @@ async def submit_receipt_lines(
                     "recordId": line.record_id,
                     "sku": line.sku,
                     "quantity": line.received_quantity,
+                    "routingMode": result.routing_mode,
+                    "orderReceiptQuantity": result.order_receipt_quantity,
+                    "supplementalQuantity": result.supplemental_quantity,
+                    "inboundOrderId": result.inbound_order_id,
+                    "inboundOrderLineId": result.inbound_order_line_id,
                 }
-                for line in body.lines
+                for line, result in zip(body.lines, response.lines)
             ],
         },
         response_payload=response.model_dump(mode="json", by_alias=True),
@@ -664,6 +675,21 @@ def _confirmed_receipt_detail(row: dict) -> ConfirmedReceiptDetail:
                 ),
                 receivedBy=(
                     _text(result_line.get("receivedBy")) or summary.operator_name
+                ),
+                routingMode=(
+                    _text(result_line.get("routingMode")) or "order_receipt"
+                ),
+                orderReceiptQuantity=(
+                    _integer(result_line.get("orderReceiptQuantity"))
+                    if "orderReceiptQuantity" in result_line
+                    else _integer(request_line.get("receivedQuantity"))
+                ),
+                supplementalQuantity=_integer(
+                    result_line.get("supplementalQuantity")
+                ),
+                inboundOrderId=_text(result_line.get("inboundOrderId")),
+                inboundOrderLineId=_text(
+                    result_line.get("inboundOrderLineId")
                 ),
             )
         )
@@ -844,6 +870,10 @@ async def _sync_bound_attachment_to_filemaker_trace(
     for request_line in target_lines:
         line_id = _text(request_line.get("lineId"))
         result_line = response_by_line.get(line_id, {})
+        if _text(result_line.get("routingMode")) == "supplemental_inbound":
+            # 入庫單資料 has no configured JSON trace field. The full trace
+            # remains in the Web audit record and the COS attachment binding.
+            continue
         receipt_id = _text(result_line.get("receiptId"))
         if not receipt_id:
             continue
@@ -1049,6 +1079,142 @@ async def _validate_submission_attachments(
     return records
 
 
+async def _write_routed_line_receipt(
+    odata: FileMakerODataClient,
+    *,
+    line: ReceiptSubmissionLine,
+    source_record: dict,
+    body: ReceiptSubmissionRequest,
+    operator: OperatorContext,
+    settings: Settings,
+    attachments: dict[str, ReceiptAttachmentRecord],
+    client_trace: dict[str, str],
+    audit_log: AuditLogStore,
+    allow_completed_receipt: bool,
+    supplemental_batch: dict[str, str],
+) -> ReceiptSubmissionLineResponse:
+    """Route one submitted line without letting extra stock change the order.
+
+    The portion still owed by the source order keeps the existing
+    出貨單資料入庫 flow. Any quantity beyond that balance is written to one
+    shared 入庫單 for this PDA batch and receives its own 入庫單資料 row.
+    """
+    existing_rows = await _line_receipts(odata, line.line_id)
+    completed_quantity = sum(
+        _integer(row.get("數量"))
+        for row in existing_rows
+        if _text(row.get("狀態")) == RECEIPT_COMPLETE_STATUS
+    )
+    expected_quantity = _integer(_field_data(source_record).get("數量"))
+    if expected_quantity <= 0:
+        expected_quantity = line.expected_quantity
+
+    if expected_quantity > 0:
+        remaining_quantity = max(expected_quantity - completed_quantity, 0)
+        order_receipt_quantity = min(line.received_quantity, remaining_quantity)
+        supplemental_quantity = max(
+            line.received_quantity - order_receipt_quantity,
+            0,
+        )
+    else:
+        order_receipt_quantity = line.received_quantity
+        supplemental_quantity = 0
+
+    if supplemental_quantity > 0 and not allow_completed_receipt:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": (
+                    f"{line.sku} 本次有 {supplemental_quantity} 件需要走追加入库单；"
+                    "当前账号没有追加成品库存流水的权限。"
+                ),
+                "permission": COMPLETED_RECEIPT_PERMISSION,
+                "lineId": line.line_id,
+                "supplementalQuantity": supplemental_quantity,
+            },
+        )
+    if supplemental_quantity > 0 and not (
+        line.remark.strip() or body.receipt_remark.strip()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": f"{line.sku} 的追加入库需要填写原因或整单备注。",
+                "lineId": line.line_id,
+                "supplementalQuantity": supplemental_quantity,
+            },
+        )
+
+    order_result: ReceiptSubmissionLineResponse | None = None
+    if order_receipt_quantity > 0:
+        order_line = line.model_copy(
+            update={"received_quantity": order_receipt_quantity}
+        )
+        order_result = await _write_or_repair_line_receipt(
+            odata,
+            line=order_line,
+            source_record=source_record,
+            body=body,
+            operator=operator,
+            settings=settings,
+            attachments=attachments,
+            client_trace=client_trace,
+            audit_log=audit_log,
+            allow_completed_receipt=False,
+        )
+
+    supplemental_result: ReceiptSubmissionLineResponse | None = None
+    if supplemental_quantity > 0:
+        supplemental_line = line.model_copy(
+            update={"received_quantity": supplemental_quantity}
+        )
+        supplemental_result = await _write_supplemental_inbound_line(
+            odata,
+            line=supplemental_line,
+            source_record=source_record,
+            body=body,
+            operator=operator,
+            supplemental_batch=supplemental_batch,
+            submitted_quantity=line.received_quantity,
+            order_receipt_quantity=order_receipt_quantity,
+        )
+
+    if order_result and supplemental_result:
+        return ReceiptSubmissionLineResponse(
+            lineId=line.line_id,
+            receiptId=order_result.receipt_id,
+            quantity=line.received_quantity,
+            status=RECEIPT_COMPLETE_STATUS,
+            receivedAt=max(
+                order_result.received_at,
+                supplemental_result.received_at,
+            ),
+            receivedBy=operator.name or operator.account,
+            alreadyReceived=False,
+            traceSyncStatus=order_result.trace_sync_status,
+            traceSyncError=order_result.trace_sync_error,
+            routingMode="split",
+            orderReceiptQuantity=order_receipt_quantity,
+            supplementalQuantity=supplemental_quantity,
+            inboundOrderId=supplemental_result.inbound_order_id,
+            inboundOrderLineId=supplemental_result.inbound_order_line_id,
+        )
+    if supplemental_result:
+        return supplemental_result
+    if order_result:
+        return order_result.model_copy(
+            update={
+                "routing_mode": "order_receipt",
+                "order_receipt_quantity": order_receipt_quantity,
+                "supplemental_quantity": 0,
+            }
+        )
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"message": f"{line.sku} 没有可写入的入库数量。"},
+    )
+
+
 async def _write_or_repair_line_receipt(
     odata: FileMakerODataClient,
     *,
@@ -1248,6 +1414,296 @@ async def _write_or_repair_line_receipt(
         trace_sync_status=trace_sync_status,
         trace_sync_error=trace_sync_error,
     )
+
+
+async def _write_supplemental_inbound_line(
+    odata: FileMakerODataClient,
+    *,
+    line: ReceiptSubmissionLine,
+    source_record: dict,
+    body: ReceiptSubmissionRequest,
+    operator: OperatorContext,
+    supplemental_batch: dict[str, str],
+    submitted_quantity: int,
+    order_receipt_quantity: int,
+) -> ReceiptSubmissionLineResponse:
+    receipt_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    received_at = datetime.now(timezone.utc)
+    inbound_order_id = await _ensure_supplemental_inbound_order(
+        odata,
+        body=body,
+        operator=operator,
+        receipt_date=receipt_date,
+        supplemental_batch=supplemental_batch,
+    )
+    inbound_order_line_id = _stable_filemaker_uuid(
+        f"supplemental-inbound-line:{body.draft_id}:{line.line_id}"
+    )
+    existing_line = await _optional_odata_record(
+        odata,
+        INBOUND_ORDER_LINE_TABLE,
+        inbound_order_line_id,
+    )
+    source_fields = _field_data(source_record)
+    product_name = next(
+        (
+            _text(source_fields.get(field))
+            for field in (
+                "中文產品名稱",
+                "產品名稱",
+                "英文產品名稱",
+                "English Name",
+            )
+            if _text(source_fields.get(field))
+        ),
+        line.sku,
+    )
+    line_payload = {
+        "ID": inbound_order_line_id,
+        "ID_入庫單": inbound_order_id,
+        "零件編號": line.sku,
+        "零件名稱": product_name,
+        "數量": line.received_quantity,
+        "審核": "已審核",
+        "ID_採購單資料": f"PDA:{line.line_id}",
+        "倉庫日期": receipt_date,
+        "到貨數量": line.received_quantity,
+        "到貨日期": receipt_date,
+    }
+    if existing_line:
+        if not _supplemental_line_matches(existing_line, line_payload):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": f"{line.sku} 的追加入库单明细与原批次内容不一致。",
+                    "lineId": line.line_id,
+                    "inboundOrderLineId": inbound_order_line_id,
+                },
+            )
+    else:
+        created_line = await odata.create_record(
+            INBOUND_ORDER_LINE_TABLE,
+            line_payload,
+        )
+        created_line_id = _text(created_line.get("ID"))
+        if created_line_id and created_line_id != inbound_order_line_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"message": f"{line.sku} 追加入库单明细 ID 回读不一致。"},
+            )
+
+    inventory_marker = f"PDA_INBOUND_LINE={inbound_order_line_id}"
+    routing_markers = (
+        f"PDA_DRAFT={body.draft_id}",
+        f"PDA_SUBMITTED={submitted_quantity}",
+        f"PDA_ORDER={order_receipt_quantity}",
+        f"PDA_SUPPLEMENTAL={line.received_quantity}",
+    )
+    existing_inventory = await _supplemental_inventory_rows(
+        odata,
+        line_id=line.line_id,
+        marker=inventory_marker,
+    )
+    description = " · ".join(
+        value
+        for value in (
+            inventory_marker,
+            *routing_markers,
+            (
+                f"原始录入 {submitted_quantity}；"
+                f"订单入库 {order_receipt_quantity}；"
+                f"追加入库 {line.received_quantity}"
+            ),
+            "追加入库",
+            line.remark.strip(),
+            body.receipt_remark.strip(),
+        )
+        if value
+    )
+    if existing_inventory:
+        if not any(
+            _text(row.get("ID_產品編號")) == line.sku
+            and _integer(row.get("入庫數量")) == line.received_quantity
+            for row in existing_inventory
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": f"{line.sku} 的追加入库库存流水与原批次内容不一致。",
+                    "lineId": line.line_id,
+                    "inboundOrderLineId": inbound_order_line_id,
+                },
+            )
+    else:
+        await odata.create_record(
+            INVENTORY_TABLE,
+            {
+                "ID_出貨單資料": line.line_id,
+                "批號": body.document_number,
+                "描述": description,
+                "ID_產品編號": line.sku,
+                "入庫數量": line.received_quantity,
+                "日期": receipt_date,
+                "記錄人": operator.name or operator.account,
+            },
+        )
+        verified_inventory = await _supplemental_inventory_rows(
+            odata,
+            line_id=line.line_id,
+            marker=inventory_marker,
+        )
+        if not any(
+            _text(row.get("ID_產品編號")) == line.sku
+            and _integer(row.get("入庫數量")) == line.received_quantity
+            for row in verified_inventory
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"message": f"{line.sku} 追加入库库存流水回读验证失败。"},
+            )
+
+    return ReceiptSubmissionLineResponse(
+        lineId=line.line_id,
+        receiptId=inbound_order_id,
+        quantity=line.received_quantity,
+        status=RECEIPT_COMPLETE_STATUS,
+        receivedAt=received_at,
+        receivedBy=operator.name or operator.account,
+        alreadyReceived=False,
+        traceSyncStatus="audit_only",
+        routingMode="supplemental_inbound",
+        orderReceiptQuantity=0,
+        supplementalQuantity=line.received_quantity,
+        inboundOrderId=inbound_order_id,
+        inboundOrderLineId=inbound_order_line_id,
+    )
+
+
+async def _ensure_supplemental_inbound_order(
+    odata: FileMakerODataClient,
+    *,
+    body: ReceiptSubmissionRequest,
+    operator: OperatorContext,
+    receipt_date: str,
+    supplemental_batch: dict[str, str],
+) -> str:
+    cached_id = supplemental_batch.get("inbound_order_id", "")
+    if cached_id:
+        return cached_id
+    inbound_order_id = _stable_filemaker_uuid(
+        f"supplemental-inbound-order:{body.draft_id}"
+    )
+    existing = await _optional_odata_record(
+        odata,
+        INBOUND_ORDER_TABLE,
+        inbound_order_id,
+    )
+    summary = (
+        f"{SUPPLEMENTAL_INBOUND_SUMMARY_PREFIX} · "
+        f"{body.document_number or body.shipment_id}"
+    )
+    header_payload = {
+        "ID": inbound_order_id,
+        "修改人": operator.name or operator.account,
+        "概要": summary,
+        "類型": "入庫單",
+        "日期": receipt_date,
+        "核對狀態": "未核對",
+        "採購單_ID": f"PDA:{body.draft_id}",
+        "對應需求單": body.shipment_id,
+    }
+    if existing:
+        if (
+            _text(existing.get("對應需求單")) != body.shipment_id
+            or _text(existing.get("採購單_ID")) != f"PDA:{body.draft_id}"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": "追加入库单批次 ID 已用于其他来源单据。"},
+            )
+    else:
+        created = await odata.create_record(INBOUND_ORDER_TABLE, header_payload)
+        created_id = _text(created.get("ID"))
+        if created_id and created_id != inbound_order_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"message": "追加入库单建立后返回了不同的单据 ID。"},
+            )
+    supplemental_batch["inbound_order_id"] = inbound_order_id
+    return inbound_order_id
+
+
+async def _optional_odata_record(
+    odata: FileMakerODataClient,
+    table: str,
+    key: str,
+) -> dict:
+    # 入庫單 and 入庫單資料 expose a numeric OData entity key even though
+    # their business `ID` field contains text/UUID values. FileMaker also
+    # treats bare ID as a reserved expression token, so it must be quoted.
+    escaped_key = key.replace("'", "''")
+    result = await odata.records(
+        table,
+        filter_expr=f'"ID" eq \'{escaped_key}\'',
+        top=2,
+        count=False,
+    )
+    rows = [row for row in result.get("rows", []) if isinstance(row, dict)]
+    if len(rows) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": f"{table} 中存在重复的业务 ID，无法安全继续写入。",
+                "businessId": key,
+            },
+        )
+    return rows[0] if rows else {}
+
+
+def _supplemental_line_matches(existing: dict, expected: dict) -> bool:
+    return (
+        _text(existing.get("ID_入庫單")) == _text(expected.get("ID_入庫單"))
+        and _text(existing.get("零件編號")) == _text(expected.get("零件編號"))
+        and _integer(existing.get("數量")) == _integer(expected.get("數量"))
+        and _text(existing.get("ID_採購單資料"))
+        == _text(expected.get("ID_採購單資料"))
+    )
+
+
+async def _supplemental_inventory_rows(
+    odata: FileMakerODataClient,
+    *,
+    line_id: str,
+    marker: str,
+) -> list[dict]:
+    escaped = line_id.replace("'", "''")
+    rows: list[dict] = []
+    skip = 0
+    while True:
+        result = await odata.records(
+            INVENTORY_TABLE,
+            filter_expr=f"ID_出貨單資料 eq '{escaped}'",
+            top=10,
+            skip=skip,
+            count=True,
+        )
+        page = [row for row in result.get("rows", []) if isinstance(row, dict)]
+        rows.extend(page)
+        if any(marker in _text(row.get("描述")) for row in page):
+            break
+        found_count = _integer(result.get("foundCount"))
+        if (
+            not page
+            or len(page) < 10
+            or (found_count > 0 and len(rows) >= found_count)
+        ):
+            break
+        skip += len(page)
+    return [row for row in rows if marker in _text(row.get("描述"))]
+
+
+def _stable_filemaker_uuid(value: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"starrc:{value}")).upper()
 
 
 async def _sync_receipt_trace(

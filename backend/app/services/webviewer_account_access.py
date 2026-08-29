@@ -46,6 +46,7 @@ CONFIG_POLICY_OWNERS = {
     "configuration",
     "filemaker-security-audit",
 }
+PLACEHOLDER_PRIVILEGE_SETS = frozenset({"filemaker"})
 
 
 def default_permissions_for_privilege_set(privilege_set: str) -> dict[str, bool]:
@@ -341,10 +342,27 @@ class WebViewerAccountAccessStore:
         display_name: str,
         privilege_set: str,
     ) -> dict[str, Any]:
+        normalized_privilege = privilege_set.strip() or "unknown"
+        if normalized_privilege.casefold() in PLACEHOLDER_PRIVILEGE_SETS:
+            # Some legacy FileMaker WebViewer URLs identify the session source as
+            # "filemaker" instead of sending Get(AccountPrivilegeSetName). Do not
+            # let that placeholder erase a real privilege-set mapping that an
+            # administrator or a corrected signed context already established.
+            current = await self.get_account(username)
+            current_privilege = (
+                str(current.get("filemakerPrivilegeSet") or "").strip()
+                if current
+                else ""
+            )
+            if (
+                current_privilege
+                and current_privilege.casefold() not in PLACEHOLDER_PRIVILEGE_SETS
+            ):
+                normalized_privilege = current_privilege
         return await self.register_account(
             username=username,
             display_name=display_name,
-            privilege_set=privilege_set,
+            privilege_set=normalized_privilege,
             origin="filemaker",
             seen=True,
         )

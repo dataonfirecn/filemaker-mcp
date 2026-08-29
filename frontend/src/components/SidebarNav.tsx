@@ -54,10 +54,10 @@ export default function SidebarNav({ groups, activePage, onNavigate, onGoHome }:
       <div className="sidebar-header">
         <div className="sidebar-brand">
           <div className="sidebar-logo" aria-hidden="true">
-            <img src="/dms-mark.svg" alt="" />
+            <img src="/starrc-mark.svg" alt="" />
           </div>
           <div className="sidebar-brand-text">
-            <strong>DMS</strong>
+            <strong>StarRC</strong>
             <span>运营导航中心</span>
           </div>
         </div>

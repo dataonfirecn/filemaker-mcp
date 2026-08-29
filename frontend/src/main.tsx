@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import "./styles.css";
 
 const App = lazy(() => import("./App"));
-const CustomerChatApp = lazy(() => import("./components/CustomerChatApp"));
 const MaterialIdWebViewerApp = lazy(
   () => import("./components/MaterialIdWebViewerApp")
 );
@@ -14,12 +13,9 @@ const ReceiptHistoryWebViewerApp = lazy(
   () => import("./components/ReceiptHistoryWebViewerApp")
 );
 
-const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const requestedPage = new URLSearchParams(window.location.search).get("page");
 const RootApp =
-  normalizedPath === "/customer-chat"
-    ? CustomerChatApp
-    : requestedPage === "materialIdWebViewer"
+  requestedPage === "materialIdWebViewer"
       ? MaterialIdWebViewerApp
     : requestedPage === "newPartWebViewer"
       ? NewPartWebViewerApp

@@ -43,6 +43,7 @@ from app.services.internal_order_merge import (
     merge_internal_orders_via_data_api,
     preview_internal_orders_via_data_api,
 )
+from app.services.mobile_receipt_trace import parse_mobile_receipt_trace
 from app.services.product_api import PRODUCT_LAYOUT, PRODUCT_STOCK_FIELD, enrich_product_record
 from app.services.part_assets import (
     asset_fields as part_asset_fields,
@@ -67,6 +68,9 @@ PRODUCT_ASSET_LAYOUT = "ProductAssets"
 PRODUCT_ASSET_BATCH_SIZE = 200
 PRODUCT_PACKAGING_LAYOUT = "產品 資料_包裝"
 PART_ASSET_SOURCE_LAYOUT = "@零件"
+INBOUND_ORDER_TABLE = "入庫單"
+INBOUND_ORDER_LINE_TABLE = "入庫單資料"
+SUPPLEMENTAL_INBOUND_SUMMARY_PREFIX = "PDA追加成品入库"
 
 
 class PartDetailsRequest(BaseModel):
@@ -929,6 +933,12 @@ async def get_order_detail(
         receipt_catalog = await _order_receipt_catalog(
             odata,
             [_text(item.get("id")) for item in items],
+            line_skus={
+                _text(item.get("id")): _text(item.get("sku"))
+                for item in items
+                if _text(item.get("id"))
+            },
+            shipment_id=normalized_order_id,
         )
     except FileMakerODataError as exc:
         raise HTTPException(
@@ -1039,22 +1049,41 @@ def _number(value: Any) -> float:
 async def _order_receipt_catalog(
     odata: FileMakerODataClient,
     line_ids: list[str],
+    *,
+    line_skus: dict[str, str] | None = None,
+    shipment_id: str = "",
 ) -> dict[str, dict[str, Any]]:
     normalized_ids = list(dict.fromkeys(line_id for line_id in line_ids if line_id))
     rows_by_line = await asyncio.gather(
         *(_completed_receipt_rows(odata, line_id) for line_id in normalized_ids)
     )
+    supplemental_catalog = (
+        await _supplemental_receipt_catalog(
+            odata,
+            shipment_id=shipment_id,
+            line_ids=normalized_ids,
+            line_skus=line_skus or {},
+        )
+        if shipment_id
+        else {}
+    )
     catalog: dict[str, dict[str, Any]] = {}
     for line_id, rows in zip(normalized_ids, rows_by_line):
-        if not rows:
+        supplemental_history = supplemental_catalog.get(line_id, [])
+        if not rows and not supplemental_history:
             continue
         sorted_receipts = sorted(
             rows,
             key=lambda row: _receipt_timestamp(row.get("创建时间戳")),
             reverse=True,
         )
-        history = await asyncio.gather(
+        order_history = await asyncio.gather(
             *(_receipt_history_item(odata, receipt) for receipt in sorted_receipts)
+        )
+        history = sorted(
+            [*order_history, *supplemental_history],
+            key=lambda item: _receipt_timestamp(item.get("receivedAt")),
+            reverse=True,
         )
         latest = history[0]
         received_quantity = sum(_number(row.get("數量")) for row in rows)
@@ -1067,6 +1096,135 @@ async def _order_receipt_catalog(
             "history": history,
         }
     return catalog
+
+
+async def _supplemental_receipt_catalog(
+    odata: FileMakerODataClient,
+    *,
+    shipment_id: str,
+    line_ids: list[str],
+    line_skus: dict[str, str],
+) -> dict[str, list[dict[str, Any]]]:
+    escaped_shipment_id = shipment_id.replace("'", "''")
+    header_rows = await _paged_odata_rows(
+        odata,
+        INBOUND_ORDER_TABLE,
+        filter_expr=f"對應需求單 eq '{escaped_shipment_id}'",
+    )
+    headers = [
+        row
+        for row in header_rows
+        if isinstance(row, dict)
+        and _text(row.get("概要")).startswith(
+            SUPPLEMENTAL_INBOUND_SUMMARY_PREFIX
+        )
+        and _text(row.get("採購單_ID")).startswith("PDA:")
+    ]
+    if not headers:
+        return {}
+
+    header_by_id = {
+        _text(header.get("ID")): header
+        for header in headers
+        if _text(header.get("ID"))
+    }
+    details_by_header = await asyncio.gather(
+        *(
+            _supplemental_inbound_lines(odata, header_id)
+            for header_id in header_by_id
+        )
+    )
+    valid_line_ids = set(line_ids)
+    catalog: dict[str, list[dict[str, Any]]] = {}
+    for header_id, details in zip(header_by_id, details_by_header):
+        header = header_by_id[header_id]
+        for detail in details:
+            source_reference = _text(detail.get("ID_採購單資料"))
+            source_line_id = (
+                source_reference.removeprefix("PDA:")
+                if source_reference.startswith("PDA:")
+                else ""
+            )
+            if source_line_id not in valid_line_ids:
+                matching_ids = [
+                    line_id
+                    for line_id, sku in line_skus.items()
+                    if sku and sku == _text(detail.get("零件編號"))
+                ]
+                source_line_id = matching_ids[0] if len(matching_ids) == 1 else ""
+            if source_line_id not in valid_line_ids:
+                continue
+            catalog.setdefault(source_line_id, []).append(
+                await _supplemental_history_item(
+                    odata,
+                    header=header,
+                    detail=detail,
+                    source_line_id=source_line_id,
+                )
+            )
+    return catalog
+
+
+async def _supplemental_inbound_lines(
+    odata: FileMakerODataClient,
+    inbound_order_id: str,
+) -> list[dict[str, Any]]:
+    escaped = inbound_order_id.replace("'", "''")
+    return await _paged_odata_rows(
+        odata,
+        INBOUND_ORDER_LINE_TABLE,
+        filter_expr=f"ID_入庫單 eq '{escaped}'",
+    )
+
+
+async def _supplemental_history_item(
+    odata: FileMakerODataClient,
+    *,
+    header: dict[str, Any],
+    detail: dict[str, Any],
+    source_line_id: str,
+) -> dict[str, Any]:
+    inbound_order_id = _text(header.get("ID"))
+    inbound_order_line_id = _text(detail.get("ID"))
+    marker = f"PDA_INBOUND_LINE={inbound_order_line_id}"
+    escaped_line_id = source_line_id.replace("'", "''")
+    inventory_rows = await _paged_odata_rows(
+        odata,
+        "產品庫存",
+        filter_expr=f"ID_出貨單資料 eq '{escaped_line_id}'",
+    )
+    inventory_row = next(
+        (
+            row
+            for row in inventory_rows
+            if marker in _text(row.get("描述"))
+        ),
+        {},
+    )
+    description = _text(inventory_row.get("描述"))
+    routing_trace = _supplemental_routing_trace(
+        description,
+        fallback_quantity=_number(detail.get("數量")),
+    )
+    description = _supplemental_display_remark(description)
+    quantity = _number(detail.get("數量"))
+    routing_batch_id = _text(header.get("採購單_ID")).removeprefix("PDA:")
+    return {
+        "receiptId": inbound_order_id,
+        "quantity": quantity,
+        "status": "追加入库单",
+        "receivedAt": format_filemaker_timestamp(header.get("日期")),
+        "receivedBy": _text(header.get("修改人")),
+        "documentNumber": _text(inventory_row.get("批號")),
+        "remark": description or _text(header.get("概要")),
+        "routingMode": "supplemental_inbound",
+        "orderReceiptQuantity": 0,
+        "supplementalQuantity": quantity,
+        "inboundOrderId": inbound_order_id,
+        "inboundOrderLineId": inbound_order_line_id,
+        "routingBatchId": routing_batch_id,
+        **routing_trace,
+    }
 
 
 async def _receipt_history_item(
@@ -1092,9 +1250,21 @@ async def _receipt_history_item(
         ),
         inventory_rows[0] if inventory_rows else {},
     )
+    trace = parse_mobile_receipt_trace(receipt.get("log") or receipt.get("Log"))
+    identifiers = (
+        trace.get("identifiers")
+        if trace and isinstance(trace.get("identifiers"), dict)
+        else {}
+    )
+    routing = (
+        trace.get("routing")
+        if trace and isinstance(trace.get("routing"), dict)
+        else {}
+    )
+    receipt_quantity = _number(receipt.get("數量"))
     return {
         "receiptId": receipt_id,
-        "quantity": _number(receipt.get("數量")),
+        "quantity": receipt_quantity,
         "status": _text(receipt.get("狀態")),
         "receivedAt": format_filemaker_timestamp(receipt.get("创建时间戳")),
         "receivedBy": (
@@ -1103,13 +1273,94 @@ async def _receipt_history_item(
         ),
         "documentNumber": _text(inventory_row.get("批號")),
         "remark": _text(inventory_row.get("描述")),
+        "routingMode": "order_receipt",
+        "orderReceiptQuantity": receipt_quantity,
+        "supplementalQuantity": 0,
+        "inboundOrderId": "",
+        "inboundOrderLineId": "",
+        "routingBatchId": _text(identifiers.get("draftId")),
+        "submittedQuantity": _number(
+            routing.get("submittedQuantity")
+        ) or receipt_quantity,
+        "splitOrderReceiptQuantity": _number(
+            routing.get("orderReceiptQuantity")
+        ) or receipt_quantity,
+        "splitSupplementalQuantity": _number(
+            routing.get("supplementalQuantity")
+        ),
     }
+
+
+def _supplemental_routing_trace(
+    description: str,
+    *,
+    fallback_quantity: float,
+) -> dict[str, float]:
+    def marker_value(name: str) -> float:
+        match = re.search(rf"(?:^| · ){re.escape(name)}=([0-9]+(?:\.[0-9]+)?)", description)
+        return _number(match.group(1)) if match else 0
+
+    supplemental = marker_value("PDA_SUPPLEMENTAL") or fallback_quantity
+    submitted = marker_value("PDA_SUBMITTED") or supplemental
+    order = marker_value("PDA_ORDER")
+    return {
+        "submittedQuantity": submitted,
+        "splitOrderReceiptQuantity": order,
+        "splitSupplementalQuantity": supplemental,
+    }
+
+
+def _supplemental_display_remark(description: str) -> str:
+    parts = [part.strip() for part in description.split(" · ") if part.strip()]
+    visible = [
+        part
+        for part in parts
+        if not part.startswith(
+            (
+                "PDA_INBOUND_LINE=",
+                "PDA_DRAFT=",
+                "PDA_SUBMITTED=",
+                "PDA_ORDER=",
+                "PDA_SUPPLEMENTAL=",
+            )
+        )
+        and not part.startswith("原始录入 ")
+    ]
+    return " · ".join(visible)
 
 
 def _receipt_timestamp(value: Any) -> datetime:
     return parse_filemaker_timestamp(value) or datetime.min.replace(
         tzinfo=FILEMAKER_TIMEZONE
     )
+
+
+async def _paged_odata_rows(
+    odata: FileMakerODataClient,
+    table: str,
+    *,
+    filter_expr: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    skip = 0
+    while True:
+        result = await odata.records(
+            table,
+            filter_expr=filter_expr,
+            top=10,
+            skip=skip,
+            count=True,
+        )
+        page = [row for row in result.get("rows", []) if isinstance(row, dict)]
+        rows.extend(page)
+        found_count = int(result.get("foundCount") or 0)
+        if (
+            not page
+            or len(page) < 10
+            or (found_count > 0 and len(rows) >= found_count)
+        ):
+            return rows
+        skip += len(page)
 
 
 async def _completed_receipt_rows(

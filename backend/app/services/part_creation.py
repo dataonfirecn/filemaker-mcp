@@ -238,14 +238,38 @@ async def validate_part_creation(
         if existing:
             errors["partNumber"] = "此零件编号已存在，请重新生成或修改。"
 
-    if (
-        check_customer_mapping
-        and body.customer_code.strip()
-        and "customerCode" not in errors
-    ):
-        customer = await _resolve_customer(odata, body.customer_code.strip())
-        if not customer:
-            errors["customerCode"] = "无法把客户代号映射到 FileMaker 客户主键，请重新选择。"
+    customer_code = body.customer_code.strip()
+    if check_customer_mapping and customer_code:
+        cached_customer_error = errors.get("customerCode")
+        if cached_customer_error:
+            # A customer can be added to FileMaker after the daily options cache
+            # was populated. Re-check the live value list before treating a cache
+            # miss (or stale label) as a business-rule rejection.
+            customer = await resolve_selectable_customer(
+                filemaker,
+                settings,
+                odata,
+                customer_code,
+            )
+            if not customer:
+                errors["customerCode"] = (
+                    "该客户当前不能用于新建零件，或内部主键不可用，请重新选择。"
+                )
+            elif (
+                body.customer_name.strip()
+                and body.customer_name.strip() != customer.name
+            ):
+                errors["customerCode"] = (
+                    "专属客户名称与 FileMaker 当前资料不一致，请重新选择。"
+                )
+            else:
+                errors.pop("customerCode", None)
+        else:
+            customer = await _resolve_customer(odata, customer_code)
+            if not customer:
+                errors["customerCode"] = (
+                    "无法把客户代号映射到 FileMaker 客户主键，请重新选择。"
+                )
 
     if check_vendor_mapping and body.vendor_id.strip() and "vendorId" not in errors:
         vendor = await _resolve_vendor(filemaker, body.vendor_id.strip())
@@ -604,6 +628,43 @@ async def _resolve_customer(
     if len(matches) != 1:
         return None
     return matches[0]
+
+
+async def resolve_selectable_customer(
+    filemaker: FileMakerClient,
+    settings: Settings,
+    odata: FileMakerODataClient,
+    customer_code: str,
+) -> ResolvedCustomer | None:
+    """Resolve a customer only when the live new-part value list allows it."""
+    code = customer_code.strip()
+    if not code:
+        return None
+
+    metadata = await filemaker.get_layout_metadata(settings.filemaker_part_read_layout)
+    value_lists = {
+        str(item.get("name") or ""): item
+        for item in metadata.get("valueLists", [])
+        if isinstance(item, dict)
+    }
+    raw_customers = (
+        value_lists.get(VALUE_LISTS["exclusiveCustomers"]) or {}
+    ).get("values")
+    option = next(
+        (item for item in _customer_options(raw_customers) if item.code == code),
+        None,
+    )
+    if not option:
+        return None
+
+    customer = await _resolve_customer(odata, code)
+    if not customer:
+        return None
+    return ResolvedCustomer(
+        customer_id=customer.customer_id,
+        code=customer.code,
+        name=option.label,
+    )
 
 
 def _odata_literal(value: str) -> str:

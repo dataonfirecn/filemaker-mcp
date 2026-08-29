@@ -10,8 +10,6 @@ from app.api import (
     bom_changes,
     bom_documents,
     business_products,
-    customer_catalog,
-    customer_chat,
     filemaker,
     health,
     inventory,
@@ -38,10 +36,6 @@ from app.services.audit_log import AuditLogStore
 from app.services.bom_document_store import BomDocumentStore
 from app.services.callback_store import CallbackStore
 from app.services.callback_worker import CallbackWorker
-from app.services.customer_account_admin_store import CustomerAccountAdminStore
-from app.services.customer_chat_auth import CustomerLoginRateLimiter, load_customer_accounts
-from app.services.customer_chat_history import CustomerChatHistoryStore
-from app.services.customer_credential_store import CustomerCredentialStore
 from app.services.cos_storage import COSStorageService
 from app.services.filemaker_client import FileMakerClient
 from app.services.filemaker_odata_client import FileMakerODataClient
@@ -102,12 +96,6 @@ async def lifespan(app: FastAPI):
     await part_creation_options_cache.init()
     await part_creation_options_cache.ensure_seeded()
     cos_storage_service = COSStorageService(settings)
-    customer_credential_store = CustomerCredentialStore(settings.database_path)
-    await customer_credential_store.init()
-    customer_chat_history_store = CustomerChatHistoryStore(settings.audit_database_url)
-    await customer_chat_history_store.init()
-    customer_account_admin_store = CustomerAccountAdminStore(settings.audit_database_url)
-    await customer_account_admin_store.init(load_customer_accounts(settings))
     webviewer_account_access_store = WebViewerAccountAccessStore(settings.audit_database_url)
     remote_accounts = load_webviewer_remote_accounts(settings)
     await webviewer_account_access_store.init(
@@ -131,7 +119,6 @@ async def lifespan(app: FastAPI):
     )
     nightly_maintenance_worker = NightlyMaintenanceWorker(
         store=natural_query_conversation_store,
-        customer_history=customer_chat_history_store,
         settings=settings,
         reports=NightlyReportStore(
             settings.database_path,
@@ -169,10 +156,6 @@ async def lifespan(app: FastAPI):
     app.state.callback_store = callback_store
     app.state.callback_worker = callback_worker
     app.state.llm_provider_manager = llm_provider_manager
-    app.state.customer_login_rate_limiter = CustomerLoginRateLimiter()
-    app.state.customer_credential_store = customer_credential_store
-    app.state.customer_chat_history_store = customer_chat_history_store
-    app.state.customer_account_admin_store = customer_account_admin_store
     app.state.webviewer_account_access_store = webviewer_account_access_store
     app.state.receipt_attachment_store = receipt_attachment_store
     app.state.part_asset_upload_store = part_asset_upload_store
@@ -205,8 +188,6 @@ async def lifespan(app: FastAPI):
         await callback_worker.stop()
         await bom_document_store.close()
         await webviewer_account_access_store.close()
-        await customer_account_admin_store.close()
-        await customer_chat_history_store.close()
         await audit_log_store.close()
         await filemaker_odata_client.close()
         await filemaker_client.close()
@@ -305,8 +286,6 @@ app.include_router(part_directory.router, prefix=settings.api_prefix)
 app.include_router(bom_changes.router, prefix=settings.api_prefix)
 app.include_router(bom_documents.router, prefix=settings.api_prefix)
 app.include_router(business_products.router, prefix=settings.api_prefix)
-app.include_router(customer_catalog.router, prefix=settings.api_prefix)
-app.include_router(customer_chat.router, prefix=settings.api_prefix)
 app.include_router(natural_language_query.router, prefix=settings.api_prefix)
 app.include_router(natural_query_analytics.router, prefix=settings.api_prefix)
 app.include_router(odata.router, prefix=settings.api_prefix)

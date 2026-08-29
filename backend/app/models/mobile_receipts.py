@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 AttachmentSource = Literal["camera", "photo_library"]
 AttachmentStatus = Literal["PENDING", "UPLOADED", "BOUND", "FAILED", "ORPHAN"]
 ReceiptSubmissionStatus = Literal["partial", "sealed"]
+ReceiptRoutingMode = Literal["order_receipt", "supplemental_inbound", "split"]
 
 
 class AttachmentPresignRequest(BaseModel):
@@ -143,6 +144,14 @@ class ReceiptSubmissionLineResponse(BaseModel):
     already_received: bool = Field(default=False, alias="alreadyReceived")
     trace_sync_status: str = Field(default="synced", alias="traceSyncStatus")
     trace_sync_error: str | None = Field(default=None, alias="traceSyncError")
+    routing_mode: ReceiptRoutingMode = Field(
+        default="order_receipt",
+        alias="routingMode",
+    )
+    order_receipt_quantity: int = Field(default=0, alias="orderReceiptQuantity")
+    supplemental_quantity: int = Field(default=0, alias="supplementalQuantity")
+    inbound_order_id: str = Field(default="", alias="inboundOrderId")
+    inbound_order_line_id: str = Field(default="", alias="inboundOrderLineId")
 
     model_config = {"populate_by_name": True}
 
@@ -190,6 +199,14 @@ class ConfirmedReceiptLine(BaseModel):
     status: str
     received_at: datetime = Field(alias="receivedAt")
     received_by: str = Field(alias="receivedBy")
+    routing_mode: ReceiptRoutingMode = Field(
+        default="order_receipt",
+        alias="routingMode",
+    )
+    order_receipt_quantity: int = Field(default=0, alias="orderReceiptQuantity")
+    supplemental_quantity: int = Field(default=0, alias="supplementalQuantity")
+    inbound_order_id: str = Field(default="", alias="inboundOrderId")
+    inbound_order_line_id: str = Field(default="", alias="inboundOrderLineId")
 
     model_config = {"populate_by_name": True}
 

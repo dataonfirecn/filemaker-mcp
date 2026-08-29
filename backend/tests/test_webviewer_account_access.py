@@ -57,6 +57,44 @@ async def test_filemaker_privilege_set_is_inherited_and_can_be_overridden() -> N
 
 
 @pytest.mark.asyncio
+async def test_filemaker_placeholder_does_not_replace_known_privilege_set() -> None:
+    store = WebViewerAccountAccessStore("memory://webviewer-placeholder")
+    await store.init()
+    await store.observe_account(
+        username="ellen",
+        display_name="Ellen",
+        privilege_set="業務經理",
+    )
+
+    refreshed = await store.observe_account(
+        username="ellen",
+        display_name="Ellen",
+        privilege_set="filemaker",
+    )
+
+    assert refreshed["filemakerPrivilegeSet"] == "業務經理"
+    assert all(
+        item["name"] != "filemaker"
+        for item in await store.list_privilege_sets()
+    )
+
+
+@pytest.mark.asyncio
+async def test_filemaker_placeholder_is_conservative_for_unknown_account() -> None:
+    store = WebViewerAccountAccessStore("memory://webviewer-new-placeholder")
+    await store.init()
+
+    account = await store.observe_account(
+        username="new-user",
+        display_name="New User",
+        privilege_set="filemaker",
+    )
+
+    assert account["filemakerPrivilegeSet"] == "filemaker"
+    assert account["permissions"]["canMergeOrders"] is False
+
+
+@pytest.mark.asyncio
 async def test_account_override_only_freezes_permissions_that_differ_from_set() -> None:
     store = WebViewerAccountAccessStore("memory://webviewer-diff-only")
     await store.init()

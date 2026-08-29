@@ -1,9 +1,12 @@
 import base64
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.part_creation import resolve_part_creation_customer
 from app.core.config import Settings
 from app.models.part_creation import PartCreationRequest
+from app.services.audit_log import OperatorContext
 from app.services.part_creation import (
     PartCreationError,
     create_part,
@@ -30,10 +33,14 @@ class FakeFileMaker:
         duplicate=False,
         upload_error=False,
         vendor_status="已审核",
+        customer_in_value_list=True,
+        customer_name="Army Racing",
     ):
         self.duplicate = duplicate
         self.upload_error = upload_error
         self.vendor_status = vendor_status
+        self.customer_in_value_list = customer_in_value_list
+        self.customer_name = customer_name
         self.created_fields = None
         self.uploaded = None
         self.deleted = []
@@ -60,7 +67,14 @@ class FakeFileMaker:
                 _values("材料分類", ("原材料", "原材料")),
                 _values("倉庫"),
                 _values("零件材料尺寸", ("3x10", "3x10")),
-                _values("客戶", ("Army Racing", "1 Army Racing 0840")),
+                _values(
+                    "客戶",
+                    *(
+                        ((self.customer_name, f"1 {self.customer_name} 0840"),)
+                        if self.customer_in_value_list
+                        else ()
+                    ),
+                ),
             ]
         }
 
@@ -143,8 +157,14 @@ class FakeFileMaker:
 
 
 class FakeOData:
-    def __init__(self, *, customer_id="CU840"):
+    def __init__(
+        self,
+        *,
+        customer_id="CU840",
+        customer_name="Army Racing",
+    ):
         self.customer_id = customer_id
+        self.customer_name = customer_name
         self.calls = []
 
     async def records(
@@ -174,7 +194,7 @@ class FakeOData:
                 {
                     "ID": self.customer_id,
                     "客戶代號": "0840",
-                    "客戶公司簡稱": "Army Racing",
+                    "客戶公司簡稱": self.customer_name,
                 }
             ],
             "count": 1,
@@ -214,6 +234,14 @@ def _request(**overrides):
     }
     values.update(overrides)
     return PartCreationRequest(**values)
+
+
+def _operator() -> OperatorContext:
+    return OperatorContext(
+        session_id="session",
+        account="amy",
+        name="Amy",
+    )
 
 
 def test_customer_code_uses_explicit_alias_and_accepts_legacy_payload() -> None:
@@ -358,6 +386,100 @@ async def test_validation_rejects_customer_code_without_internal_id_mapping() ->
 
     assert response.valid is False
     assert "customerCode" in response.errors
+
+
+@pytest.mark.asyncio
+async def test_validation_recovers_customer_missing_from_options_cache() -> None:
+    filemaker = FakeFileMaker()
+    cached_options = await load_part_creation_options(filemaker, _settings())
+    stale_options = cached_options.model_copy(
+        deep=True,
+        update={"exclusive_customers": []},
+    )
+
+    response = await validate_part_creation(
+        filemaker,
+        _settings(),
+        _request(),
+        odata=FakeOData(),
+        options=stale_options,
+    )
+
+    assert response.valid is True
+    assert "customerCode" not in response.errors
+
+
+@pytest.mark.asyncio
+async def test_validation_does_not_bypass_live_customer_value_list() -> None:
+    cached_options = await load_part_creation_options(
+        FakeFileMaker(),
+        _settings(),
+    )
+    stale_options = cached_options.model_copy(
+        deep=True,
+        update={"exclusive_customers": []},
+    )
+
+    response = await validate_part_creation(
+        FakeFileMaker(customer_in_value_list=False),
+        _settings(),
+        _request(),
+        odata=FakeOData(),
+        options=stale_options,
+    )
+
+    assert response.valid is False
+    assert response.errors["customerCode"] == (
+        "该客户当前不能用于新建零件，或内部主键不可用，请重新选择。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_validation_uses_live_customer_name_when_cache_label_is_stale() -> None:
+    cached_options = await load_part_creation_options(
+        FakeFileMaker(customer_name="旧客户名称"),
+        _settings(),
+    )
+
+    response = await validate_part_creation(
+        FakeFileMaker(customer_name="当前客户名称"),
+        _settings(),
+        _request(customerName="当前客户名称"),
+        odata=FakeOData(customer_name="当前客户名称"),
+        options=cached_options,
+    )
+
+    assert response.valid is True
+    assert "customerCode" not in response.errors
+
+
+@pytest.mark.asyncio
+async def test_customer_resolve_endpoint_returns_live_selectable_customer() -> None:
+    customer = await resolve_part_creation_customer(
+        code="0840",
+        filemaker=FakeFileMaker(),
+        odata=FakeOData(),
+        settings=_settings(),
+        _=_operator(),
+    )
+
+    assert customer.code == "0840"
+    assert customer.label == "Army Racing"
+
+
+@pytest.mark.asyncio
+async def test_customer_resolve_endpoint_rejects_customer_not_in_live_list() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await resolve_part_creation_customer(
+            code="0840",
+            filemaker=FakeFileMaker(customer_in_value_list=False),
+            odata=FakeOData(),
+            settings=_settings(),
+            _=_operator(),
+        )
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail["code"] == "CUSTOMER_NOT_SELECTABLE"
 
 
 @pytest.mark.asyncio

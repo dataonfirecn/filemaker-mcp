@@ -22,7 +22,6 @@ docker compose up --build -d
 - 后端健康检查：`http://localhost:8000/healthz`
 - API 文档：`http://localhost:8000/docs`
 - WebViewer 本地预览：`http://localhost:8080/?productSku=821RTR-27&operatorAccount=mock.operator&operatorName=本地测试操作员`
-- 外部客户查询：`http://localhost:8080/customer-chat`
 
 ## StarRC 内部账号与 FileMaker 权限集
 
@@ -57,11 +56,17 @@ WEBVIEWER_REMOTE_ACCOUNTS_JSON='[{"username":"amy","displayName":"Amy","privileg
 
 PDA 扫描的是出货单，但提交的是已经包好的 SKU 成品入库，不会自动修改客户订单数量。
 每个 SKU 独立入库一次；欠料的 SKU 保持未入库，包好后可再次扫描同一张出货单处理。
-写入链路固定为：
+未达到订单数量的部分按原链路写入：
 
 `出貨單資料.ID` → `出貨單資料入庫.ID_出庫單資料` →
 `產品庫存.ID_出貨單資料入庫`，同时在 `產品庫存.ID_出貨單資料`
 保留来源明细 ID。这样可以按零件包回查入库数量、时间和操作人。
+
+已经完全入库、或本次数量超过订单剩余数量时，超出部分自动改写到
+`入庫單` → `入庫單資料` → `產品庫存`，不写入 `出貨單資料入庫`，也不增加
+`出貨單資料.實際包裝數量`。同一次提交的多个追加产品共用一张 `入庫單`；提交同时
+含有正常数量和追加数量时会自动拆分。追加入库必须有 `canAddCompletedReceipts`
+权限并填写原因，服务端会强制复核这两个条件。
 
 生产环境只启用 `FILEMAKER_MOBILE_RECEIPT_WRITE_ENABLED` 这条专用写入通道；
 通用 `FILEMAKER_READ_ONLY=true` 保持不变。每个 SKU 最多 6 张收货图片，
@@ -108,42 +113,6 @@ RAG 采用轻量缓存 + OData 实时回源。默认记录缓存只包含 `@prod
 产品记录只缓存产品编号和中英文名称；零件记录只缓存编号、名称、别名及备注。库存、价格、状态和 BOM 明细均不作为权威缓存：自然语言查询识别出精确产品号或零件号后优先通过 OData 读取最新数据，OData 不可用时自动回退 FileMaker Data API。RAG 只负责字段语义、关系上下文和候选召回。
 
 每次完整刷新成功后，会自动移除不在当前缓存范围内的旧 profile、记录块和 FTS 数据。默认关闭“服务启动即刷新”，worker 按每日计划刷新，也可在 RAG 控制页手动触发。`NATURAL_QUERY_USE_CACHED_RECORDS=false` 保证本地记录不会被直接当作权威查询结果。
-
-## 外部客户查询账号
-
-外部客户页使用独立登录令牌，并按账号绑定的 FileMaker `Client` 值强制限制查询范围。启用前先生成密码哈希：
-
-```bash
-cd backend
-python -m scripts.hash_customer_password
-```
-
-然后在 `.env` 配置：
-
-```dotenv
-CUSTOMER_CHAT_ENABLED=true
-CUSTOMER_CHAT_TOKEN_SECRET=<使用 openssl rand -hex 32 生成>
-CUSTOMER_CHAT_ACCOUNTS_JSON='[{"username":"acme","displayName":"ACME 客户","clientName":"ACME","productPrivilege":"0780","partCustomerId":"CU638","accessRole":"team","canViewPrice":false,"passwordHash":"pbkdf2_sha256$..."}]'
-```
-
-`clientName` 必须与 FileMaker 产品资料里的 `Client` 值精确一致。客户入口直接读取 FileMaker，
-并按账号配置限制客户、产品、零件和出货单范围；不使用 RAG 记录缓存。`accessRole`
-固定为 `admin`、`manager`、`team` 或 `agent`：Admin 可访问全部内容与账号管理；
-管理者和团队可访问订单，代理商只保留产品和零件库存查询。价格可见性由独立的
-`canViewPrice` 开关控制，不再与 4 种权限集绑定。关闭时不返回单价、订单金额或运费金额；
-成本、报价、供应商及其他内部财务字段对所有外部账号保持关闭。
-Admin 可以访问 `/customer-chat/admin/analytics`，查看保存在 PostgreSQL 中的聊天历史
-和问题汇总；回归测试流量默认不会计入运营分析。
-管理员还可以访问 `/customer-chat/admin/accounts`，在 PostgreSQL 中实时启用或停用账号、
-调整 4 种权限集及独立价格权限，并查看每个账号的最近成功登录、最近登录尝试和成功/失败次数。
-停用账号、改变权限集或价格权限会立即使该账号已有会话失效；环境文件中的账号列表只作为初始账号来源。
-当前 MayakoFM 部署把客户、产品、零件与出货公司数据范围固定在后端，账号管理页不开放
-这些技术范围字段；未来扩展多客户时再恢复可配置范围。
-
-登录后的用户可在 `/customer-chat/settings/password` 自助修改密码（旧的
-`/customer-chat/account/password` 地址仍兼容）。当前密码必须正确，
-两次新密码必须一致且至少 12 位。自助修改后的哈希保存在 `DATABASE_PATH` 指向的
-SQLite 数据库中，并优先于环境文件内的初始哈希；密码修改会立即使旧会话失效。
 
 ## MES Callback
 

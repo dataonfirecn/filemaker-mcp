@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -141,16 +142,76 @@ class FakeReceiptOData:
                         "狀態": "已入庫",
                         "创建时间戳": "01/02/2026 08:30:00",
                         "创建人": "service",
+                        "log": json.dumps(
+                            {
+                                "schema": "starrc.finished-goods-receipt",
+                                "identifiers": {"draftId": "draft-add"},
+                                "routing": {
+                                    "mode": "split",
+                                    "submittedQuantity": 305,
+                                    "orderReceiptQuantity": 300,
+                                    "supplementalQuantity": 5,
+                                },
+                            }
+                        ),
                     },
                 ]
             }
         if table == "產品庫存":
+            if (filter_expr or "").startswith("ID_出貨單資料 eq"):
+                return {
+                    "rows": [
+                        {
+                            "ID_出貨單資料": "LINE-1",
+                            "ID_產品編號": "PTK-8231",
+                            "入庫數量": 5,
+                            "批號": "NB-ADD",
+                            "描述": (
+                                "PDA_INBOUND_LINE=INBOUND-LINE-1 · "
+                                "PDA_DRAFT=draft-add · "
+                                "PDA_SUBMITTED=305 · "
+                                "PDA_ORDER=300 · "
+                                "PDA_SUPPLEMENTAL=5 · "
+                                "原始录入 305；订单入库 300；追加入库 5 · "
+                                "追加入库 · 补发到货"
+                            ),
+                            "記錄人": "PDA 测试用户",
+                        }
+                    ]
+                }
             return {
                 "rows": [
                     {
                         "ID_出貨單資料": "LINE-1",
                         "ID_出貨單資料入庫": "RECEIPT-NEW",
                         "記錄人": "PDA 测试用户",
+                    }
+                ]
+            }
+        if table == "入庫單":
+            if "PI0019694" not in (filter_expr or ""):
+                return {"rows": []}
+            return {
+                "rows": [
+                    {
+                        "ID": "INBOUND-1",
+                        "概要": "PDA追加成品入库 · NB-ADD",
+                        "採購單_ID": "PDA:draft-add",
+                        "對應需求單": "PI0019694",
+                        "日期": "2026-02-01",
+                        "修改人": "PDA 测试用户",
+                    }
+                ]
+            }
+        if table == "入庫單資料":
+            return {
+                "rows": [
+                    {
+                        "ID": "INBOUND-LINE-1",
+                        "ID_入庫單": "INBOUND-1",
+                        "ID_採購單資料": "PDA:LINE-1",
+                        "零件編號": "PTK-8231",
+                        "數量": 5,
                     }
                 ]
             }
@@ -180,6 +241,42 @@ async def test_order_receipt_catalog_returns_latest_traceable_receipt():
         "產品庫存",
         "ID_出貨單資料入庫 eq 'RECEIPT-NEW'",
     ) in odata.queries
+
+
+@pytest.mark.asyncio
+async def test_order_receipt_catalog_keeps_supplement_separate_from_order_total():
+    odata = FakeReceiptOData()
+
+    result = await _order_receipt_catalog(
+        odata,
+        ["LINE-1"],
+        line_skus={"LINE-1": "PTK-8231"},
+        shipment_id="PI0019694",
+    )
+
+    receipt = result["LINE-1"]
+    assert receipt["quantity"] == 350.0
+    assert receipt["receiptId"] == "INBOUND-1"
+    assert [item["receiptId"] for item in receipt["history"]] == [
+        "INBOUND-1",
+        "RECEIPT-NEW",
+        "RECEIPT-OLD",
+    ]
+    supplement = receipt["history"][0]
+    assert supplement["routingMode"] == "supplemental_inbound"
+    assert supplement["orderReceiptQuantity"] == 0
+    assert supplement["supplementalQuantity"] == 5.0
+    assert supplement["documentNumber"] == "NB-ADD"
+    assert supplement["remark"] == "追加入库 · 补发到货"
+    assert supplement["routingBatchId"] == "draft-add"
+    assert supplement["submittedQuantity"] == 305.0
+    assert supplement["splitOrderReceiptQuantity"] == 300.0
+    assert supplement["splitSupplementalQuantity"] == 5.0
+    order_entry = receipt["history"][1]
+    assert order_entry["routingBatchId"] == "draft-add"
+    assert order_entry["submittedQuantity"] == 305.0
+    assert order_entry["splitOrderReceiptQuantity"] == 300.0
+    assert order_entry["splitSupplementalQuantity"] == 5.0
 
 
 @pytest.mark.asyncio

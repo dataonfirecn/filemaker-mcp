@@ -83,7 +83,7 @@ const emptyBusinessProductFilters: BusinessProductFilters = {
 
 const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   home: {
-    title: "DMS",
+    title: "StarRC",
     subtitle: "企业运营导航中心"
   },
   chat: {
@@ -140,7 +140,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   accessAdmin: {
     title: "账号与权限",
-    subtitle: "将 FileMaker 权限集同步为 DMS 功能授权，单独控制价格查看。"
+    subtitle: "将 FileMaker 权限集同步为 StarRC 功能授权，单独控制价格查看。"
   },
   settings: {
     title: "个人设置",
@@ -1553,7 +1553,7 @@ export default function App() {
               {
                 id: "accessAdmin" as Page,
                 label: "账号与权限",
-                description: "FileMaker 权限集与 DMS 授权",
+                description: "FileMaker 权限集与 StarRC 授权",
                 Icon: ShieldCheck,
                 badge: access.canViewPrice ? "可看价格" : "价格受限"
               }
@@ -1610,9 +1610,9 @@ export default function App() {
       <main className="remote-login-page">
         <section className="remote-login-card" aria-labelledby="remote-login-title">
           <div className="remote-login-brand">
-            <img className="remote-login-logo" src="/dms-mark.svg" alt="" />
+            <img className="remote-login-logo" src="/starrc-mark.svg" alt="" />
             <div className="remote-login-brand-copy">
-              <span>DMS</span>
+              <span>StarRC</span>
               <small>FileMaker Web 工作台</small>
             </div>
           </div>

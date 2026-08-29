@@ -104,7 +104,7 @@ export default function InternalUserMenu({
                 <UserRound size={17} />
                 <span>
                   <strong>账号与权限</strong>
-                  <small>管理 DMS 用户</small>
+                  <small>管理 StarRC 用户</small>
                 </span>
               </button>
             )}

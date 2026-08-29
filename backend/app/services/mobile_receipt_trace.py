@@ -39,6 +39,21 @@ def build_mobile_receipt_trace(
     max_audit_entries: int = DEFAULT_MAX_AUDIT_ENTRIES,
 ) -> dict[str, Any]:
     now = processed_at or datetime.now(timezone.utc)
+    submitted_line = next(
+        (
+            item
+            for item in body.lines
+            if item.line_id == line.line_id
+        ),
+        line,
+    )
+    submitted_quantity = submitted_line.received_quantity
+    order_receipt_quantity = line.received_quantity
+    supplemental_quantity = max(
+        submitted_quantity - order_receipt_quantity,
+        0,
+    )
+    routing_mode = "split" if supplemental_quantity > 0 else "order_receipt"
     line_photos = [
         _attachment_payload(attachments[item], bound=True)
         for item in line.attachment_ids
@@ -100,6 +115,12 @@ def build_mobile_receipt_trace(
             "cumulativeAfter": cumulative_quantity,
             "remainingAfter": remaining_quantity,
             "overageAfter": overage_quantity,
+        },
+        "routing": {
+            "mode": routing_mode,
+            "submittedQuantity": submitted_quantity,
+            "orderReceiptQuantity": order_receipt_quantity,
+            "supplementalQuantity": supplemental_quantity,
         },
         "attachments": _attachments_payload(line_photos, shipment_photos),
         "clientAudit": audit,
