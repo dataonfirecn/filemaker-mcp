@@ -1,0 +1,11 @@
+[Unit]
+Description=StarRC FileMaker product asset reconciliation
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/starrc-product-asset-reconcile
+TimeoutStartSec=8h
+StandardOutput=journal
+StandardError=journal

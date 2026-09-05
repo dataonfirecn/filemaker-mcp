@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec 9>/run/lock/starrc-product-asset-reconciliation.lock
+if ! /usr/bin/flock -n 9; then
+  echo "reconciliation already running; skipped"
+  exit 0
+fi
+
+echo "product asset reconciliation started"
+/usr/bin/docker exec starrc-backend sh -lc \
+  'PYTHONPATH=/app python /app/scripts/migrate_product_assets.py --limit 0 --batch-size 100 --concurrency 2 --commit'
+/usr/bin/docker exec starrc-backend sh -lc \
+  'PYTHONPATH=/app python /app/scripts/migrate_product_assets_to_cos.py --limit 0 --batch-size 100 --concurrency 2 --commit'
+/usr/bin/docker exec starrc-backend sh -lc \
+  'PYTHONPATH=/app python /app/scripts/migrate_part_assets.py --limit 0 --batch-size 100 --concurrency 2 --commit'
+echo "product asset reconciliation completed"

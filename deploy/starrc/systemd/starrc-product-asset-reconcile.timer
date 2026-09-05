@@ -1,0 +1,11 @@
+[Unit]
+Description=Run StarRC product asset reconciliation daily
+
+[Timer]
+OnCalendar=*-*-* 21:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=0
+Unit=starrc-product-asset-reconcile.service
+
+[Install]
+WantedBy=timers.target
