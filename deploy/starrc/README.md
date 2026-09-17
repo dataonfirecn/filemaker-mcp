@@ -6,8 +6,10 @@
 
 - `APP_ENV=prod`
 - `WEBVIEWER_ALLOW_MOCK_CONTEXT=false`
-- 远程同事通过 PBKDF2 密码账号登录
+- 员工通过 PostgreSQL 中的独立 Web 账号登录，密码只保存 PBKDF2 哈希
+- 环境变量账号只用于引导管理员，员工账号在 Web 后台创建和重置密码
 - 通用 FileMaker 写接口保持 `FILEMAKER_READ_ONLY=true`
+- 来料品检只读 FileMaker，检查单和追溯事件写入 PostgreSQL；生产固定启用 `QUALITY_WRITE_ENABLED=true`
 - Web 合并通过独立开关 `FILEMAKER_WEB_MERGE_ENABLED` 控制
 - 审计日志及 Web 合并幂等记录保存在独立的 `starrc-postgres`
 - 员工问答、FileMaker 登录用户名和查询诊断保存在独立持久化 `app.db`，后台 worker 自动生成问题分析

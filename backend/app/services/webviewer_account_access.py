@@ -19,6 +19,7 @@ PERMISSION_KEYS = (
     "canManageAccounts",
     "canViewProducts",
     "canViewOrders",
+    "canViewQuality",
     "canAddCompletedReceipts",
     "canViewInventory",
     "canViewBom",
@@ -32,7 +33,8 @@ STANDARD_PERMISSIONS = {
     "canManageAccounts": False,
     "canViewProducts": True,
     "canViewOrders": True,
-    "canAddCompletedReceipts": False,
+    "canViewQuality": False,
+    "canAddCompletedReceipts": True,
     "canViewInventory": True,
     "canViewBom": True,
     "canUseNaturalQuery": True,
@@ -225,7 +227,7 @@ def _is_price_key(
 
 
 class WebViewerAccountAccessStore:
-    """Persistent StarRC account policies keyed to FileMaker privilege-set names."""
+    """Persistent StarRC web accounts, credentials, roles, and permissions."""
 
     def __init__(self, database_url: str):
         self.database_url = database_url
@@ -249,6 +251,7 @@ class WebViewerAccountAccessStore:
                     privilege_set=item.get("privilegeSet") or "internal_remote",
                     origin="environment",
                     seen=False,
+                    password_hash=item.get("passwordHash"),
                 )
             return
 
@@ -273,6 +276,7 @@ class WebViewerAccountAccessStore:
                     privilege_set_key TEXT NOT NULL DEFAULT '',
                     enabled_override BOOLEAN,
                     mobile_only BOOLEAN NOT NULL DEFAULT FALSE,
+                    password_hash TEXT NOT NULL DEFAULT '',
                     permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
                     part_permission_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
                     origin TEXT NOT NULL DEFAULT 'filemaker',
@@ -295,6 +299,9 @@ class WebViewerAccountAccessStore:
                 ALTER TABLE webviewer_account_control
                     ADD COLUMN IF NOT EXISTS mobile_only BOOLEAN
                     NOT NULL DEFAULT FALSE;
+                ALTER TABLE webviewer_account_control
+                    ADD COLUMN IF NOT EXISTS password_hash TEXT
+                    NOT NULL DEFAULT '';
                 """
             )
             empty_part_policy_rows = await conn.fetch(
@@ -328,6 +335,7 @@ class WebViewerAccountAccessStore:
                 privilege_set=item.get("privilegeSet") or "internal_remote",
                 origin="environment",
                 seen=False,
+                password_hash=item.get("passwordHash"),
             )
 
     async def close(self) -> None:
@@ -376,6 +384,7 @@ class WebViewerAccountAccessStore:
         origin: str,
         seen: bool,
         updated_by: str = "system",
+        password_hash: str | None = None,
     ) -> dict[str, Any]:
         normalized_username = username.strip()
         normalized_privilege = privilege_set.strip() or "unknown"
@@ -391,6 +400,7 @@ class WebViewerAccountAccessStore:
             if existing:
                 existing.setdefault("partPermissionOverrides", {})
                 existing.setdefault("mobileOnly", False)
+                existing.setdefault("passwordHash", "")
                 existing.update(
                     username=normalized_username,
                     displayName=display_name.strip() or normalized_username,
@@ -400,6 +410,10 @@ class WebViewerAccountAccessStore:
                 )
                 if seen:
                     existing["origin"] = "filemaker"
+                elif origin in {"admin", "web"}:
+                    existing["origin"] = origin
+                if password_hash and not existing["passwordHash"]:
+                    existing["passwordHash"] = password_hash
             else:
                 self._memory_accounts[username_key] = {
                     "usernameKey": username_key,
@@ -409,6 +423,7 @@ class WebViewerAccountAccessStore:
                     "privilegeSetKey": privilege_key,
                     "enabledOverride": None,
                     "mobileOnly": False,
+                    "passwordHash": password_hash or "",
                     "permissionOverrides": {},
                     "partPermissionOverrides": {},
                     "origin": origin,
@@ -425,9 +440,10 @@ class WebViewerAccountAccessStore:
                 """
                 INSERT INTO webviewer_account_control (
                     username_key, username, display_name, filemaker_privilege_set,
-                    privilege_set_key, origin, last_seen_at, updated_by
+                    privilege_set_key, origin, last_seen_at, updated_by,
+                    password_hash
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (username_key) DO UPDATE
                 SET username = EXCLUDED.username,
                     display_name = EXCLUDED.display_name,
@@ -435,9 +451,15 @@ class WebViewerAccountAccessStore:
                     privilege_set_key = EXCLUDED.privilege_set_key,
                     origin = CASE
                         WHEN EXCLUDED.last_seen_at IS NOT NULL THEN 'filemaker'
+                        WHEN EXCLUDED.origin IN ('admin', 'web') THEN EXCLUDED.origin
                         ELSE webviewer_account_control.origin
                     END,
-                    last_seen_at = COALESCE(EXCLUDED.last_seen_at, webviewer_account_control.last_seen_at)
+                    last_seen_at = COALESCE(EXCLUDED.last_seen_at, webviewer_account_control.last_seen_at),
+                    password_hash = CASE
+                        WHEN webviewer_account_control.password_hash = ''
+                        THEN EXCLUDED.password_hash
+                        ELSE webviewer_account_control.password_hash
+                    END
                 """,
                 username_key,
                 normalized_username,
@@ -447,11 +469,95 @@ class WebViewerAccountAccessStore:
                 origin,
                 now if seen else None,
                 updated_by,
+                password_hash or "",
             )
         state = await self.get_account(normalized_username)
         if not state:
             raise RuntimeError("Unable to read the registered WebViewer account")
         return state
+
+    async def authenticate_account(
+        self,
+        username: str,
+        password: str,
+    ) -> dict[str, Any] | None:
+        """Authenticate a database-backed web account without exposing its hash."""
+        from app.services.customer_chat_auth import verify_customer_password
+
+        key = username.strip().casefold()
+        if not key or not password:
+            return None
+        if self.database_url.startswith("memory://"):
+            row = self._memory_accounts.get(key)
+            if not row or not verify_customer_password(
+                password,
+                str(row.get("passwordHash") or ""),
+            ):
+                return None
+            row["lastSeenAt"] = datetime.now(timezone.utc)
+            return self._effective_account(row)
+        if not self._pool:
+            raise RuntimeError("WebViewer account access store is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT password_hash
+                FROM webviewer_account_control
+                WHERE username_key = $1
+                """,
+                key,
+            )
+            if not row or not verify_customer_password(
+                password,
+                str(row["password_hash"] or ""),
+            ):
+                return None
+            await conn.execute(
+                """
+                UPDATE webviewer_account_control
+                SET last_seen_at = now()
+                WHERE username_key = $1
+                """,
+                key,
+            )
+        return await self.get_account(username)
+
+    async def set_password_hash(
+        self,
+        username: str,
+        password_hash: str,
+        *,
+        updated_by: str,
+    ) -> dict[str, Any] | None:
+        key = username.strip().casefold()
+        if not password_hash:
+            raise ValueError("password_hash is required")
+        if self.database_url.startswith("memory://"):
+            row = self._memory_accounts.get(key)
+            if not row:
+                return None
+            row["passwordHash"] = password_hash
+            row["updatedAt"] = datetime.now(timezone.utc)
+            row["updatedBy"] = updated_by
+            return self._effective_account(row)
+        if not self._pool:
+            raise RuntimeError("WebViewer account access store is not initialized")
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE webviewer_account_control
+                SET password_hash = $2,
+                    updated_at = now(),
+                    updated_by = $3
+                WHERE username_key = $1
+                """,
+                key,
+                password_hash,
+                updated_by,
+            )
+        if not result.endswith(" 1"):
+            return None
+        return await self.get_account(username)
 
     async def get_account(self, username: str) -> dict[str, Any] | None:
         key = username.strip().casefold()
@@ -893,6 +999,7 @@ class WebViewerAccountAccessStore:
             "filemakerPrivilegeSet": row["filemakerPrivilegeSet"],
             "enabled": bool(privilege["enabled"]) and enabled_override is not False,
             "mobileOnly": bool(row.get("mobileOnly", False)),
+            "hasPassword": bool(row.get("passwordHash")),
             "permissions": effective,
             "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,
@@ -929,6 +1036,7 @@ class WebViewerAccountAccessStore:
             "filemakerPrivilegeSet": str(row["filemaker_privilege_set"]),
             "enabled": bool(row["privilege_enabled"]) and enabled_override is not False,
             "mobileOnly": bool(row["mobile_only"]),
+            "hasPassword": bool(row["password_hash"]),
             "permissions": effective,
             "partPermissions": effective_part_permissions,
             "inheritsPrivilegeSet": enabled_override is None and not overrides,

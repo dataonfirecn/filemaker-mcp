@@ -789,7 +789,7 @@ export default function InternalOrderMergePage({
                 className="primary web"
                 onClick={() => void performWebMerge()}
                 disabled={!canMergeOrders || !data?.webMergeEnabled || webMergePending || !mergePreview.items.length}
-                title={!canMergeOrders ? "当前 FileMaker 权限集未开放合并订单" : !data?.webMergeEnabled ? "服务器尚未启用 Web Data API 合并" : undefined}
+                title={!canMergeOrders ? "当前账号角色未开放合并订单" : !data?.webMergeEnabled ? "服务器尚未启用 Web Data API 合并" : undefined}
               >
                 <Database size={15} />
                 确认并通过 Data API 合并

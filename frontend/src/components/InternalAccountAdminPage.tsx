@@ -6,7 +6,6 @@ import {
   Eye,
   KeyRound,
   Loader2,
-  Mail,
   Pencil,
   Power,
   RefreshCw,
@@ -51,6 +50,8 @@ type AccountDraft = {
   filemakerPrivilegeSet: string;
   enabled: boolean;
   mobileOnly: boolean;
+  password: string;
+  confirmPassword: string;
   permissions: WebViewerPermissions;
   partPermissions: PartPermissionMap;
   inheritPrivilegeSet: boolean;
@@ -68,6 +69,8 @@ const blankPermissions: WebViewerPermissions = {
   canManageAccounts: false,
   canViewProducts: false,
   canViewOrders: false,
+  canViewQuality: false,
+  canAddCompletedReceipts: false,
   canViewInventory: false,
   canViewBom: false,
   canUseNaturalQuery: false,
@@ -101,6 +104,16 @@ const permissionOptions: Array<{
     key: "canViewOrders",
     label: "订单资料",
     description: "订单列表、订单详情及图片"
+  },
+  {
+    key: "canViewQuality",
+    label: "来料品检",
+    description: "扫描采购来货、创建并处理来料检查单"
+  },
+  {
+    key: "canAddCompletedReceipts",
+    label: "已完成单追加",
+    description: "允许对已完成订单继续提交追加入库"
   },
   {
     key: "canViewInventory",
@@ -148,7 +161,7 @@ async function requestJson<T>(
 }
 
 function formatDateTime(value: string | null): string {
-  if (!value) return "尚未从 FileMaker 登录";
+  if (!value) return "尚未登录";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
@@ -376,8 +389,6 @@ export default function InternalAccountAdminPage({
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] =
     useState<WebViewerAdminAccount | null>(null);
-  const [showSendCredentials, setShowSendCredentials] = useState(false);
-  const [credentialsEmail, setCredentialsEmail] = useState("");
 
   const accountMetrics = useMemo(() => {
     const accounts = data?.accounts ?? [];
@@ -463,6 +474,8 @@ export default function InternalAccountAdminPage({
       filemakerPrivilegeSet: account.filemakerPrivilegeSet,
       enabled: account.enabled,
       mobileOnly: account.mobileOnly,
+      password: "",
+      confirmPassword: "",
       permissions: { ...account.permissions },
       partPermissions: { ...account.partPermissions },
       inheritPrivilegeSet: account.inheritsPrivilegeSet,
@@ -499,7 +512,9 @@ export default function InternalAccountAdminPage({
       displayName: "",
       filemakerPrivilegeSet: "",
       enabled: true,
-      mobileOnly: false,
+      mobileOnly: true,
+      password: "",
+      confirmPassword: "",
       permissions: { ...blankPermissions },
       partPermissions: emptyPartPermissions(catalog),
       inheritPrivilegeSet: true,
@@ -568,6 +583,14 @@ export default function InternalAccountAdminPage({
     event.preventDefault();
     if (!accountDraft) return;
     const creating = screen === "accountCreate";
+    if (creating && !accountDraft.password) {
+      setError("创建账号时必须设置初始密码。");
+      return;
+    }
+    if (accountDraft.password !== accountDraft.confirmPassword) {
+      setError("两次输入的密码不一致。");
+      return;
+    }
     setSavingKey(creating ? "account:create" : `account:${accountDraft.username}`);
     setError(null);
     setNotice(null);
@@ -587,6 +610,7 @@ export default function InternalAccountAdminPage({
             filemakerPrivilegeSet: accountDraft.filemakerPrivilegeSet,
             enabled: accountDraft.enabled,
             mobileOnly: accountDraft.mobileOnly,
+            password: accountDraft.password || undefined,
             permissions: accountDraft.permissions,
             partPermissions: accountDraft.partPermissions,
             inheritPrivilegeSet: accountDraft.inheritPrivilegeSet,
@@ -600,8 +624,8 @@ export default function InternalAccountAdminPage({
       setScreen("accountView");
       setNotice(
         creating
-          ? "账号已建立。该账号仍需在 FileMaker“安全性”中存在才能登录。"
-          : `${updated.displayName} 的权限已保存。`
+          ? "Web 账号已建立，可直接使用该账号和密码登录。"
+          : `${updated.displayName} 的账号资料与权限已保存。`
       );
     } catch (err) {
       setError(parseError(err));
@@ -635,7 +659,7 @@ export default function InternalAccountAdminPage({
       await load({ quiet: true });
       setNotice(
         result.willResync
-          ? `${result.username} 的 Web 权限记录已删除。由于账号来自 FileMaker，下次登录时会重新同步。`
+          ? `${result.username} 的 Web 权限记录已删除；旧版同步登录时仍可能重新出现。`
           : `${result.username} 已删除。`
       );
     } catch (err) {
@@ -688,33 +712,6 @@ export default function InternalAccountAdminPage({
     }
   }
 
-  async function sendCredentials(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const recipient = credentialsEmail.trim();
-    if (!recipient) return;
-    setSavingKey("send-credentials");
-    setError(null);
-    setNotice(null);
-    try {
-      await requestJson<{ ok: boolean; recipient: string }>(
-        apiBase,
-        token,
-        "/api/webviewer/admin/accounts/send-credentials",
-        {
-          method: "POST",
-          body: JSON.stringify({ recipientEmail: recipient })
-        }
-      );
-      setNotice(`管理员登录信息已发送到 ${recipient}。`);
-      setCredentialsEmail("");
-      setShowSendCredentials(false);
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setSavingKey("");
-    }
-  }
-
   const isAccountForm =
     screen === "accountCreate" || screen === "accountEdit";
   const isSelf =
@@ -729,10 +726,10 @@ export default function InternalAccountAdminPage({
           <span className="internal-access-eyebrow">
             <ShieldCheck size={15} /> 管理员权限中心
           </span>
-          <h2>FileMaker 账号与 StarRC 细粒度权限</h2>
+          <h2>Web 账号与 StarRC 细粒度权限</h2>
           <p>
-            FileMaker 只负责账号认证与数据库基础权限；StarRC 管理网页功能、6
-            个业务权限组、模块和每个操作动作。所有变更在下一次接口请求生效。
+            账号、密码哈希、角色和权限保存在 Web 后端；iPad 登录后，每次操作都会
+            携带具体账号。所有变更在下一次接口请求生效。
           </p>
         </div>
         <div className="internal-access-price-card">
@@ -775,18 +772,9 @@ export default function InternalAccountAdminPage({
           </div>
           <div className="internal-access-actions">
             {screen === "accounts" && (
-              <>
-                <button className="btn primary" type="button" onClick={openCreate}>
-                  <UserPlus size={16} />新增用户
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setShowSendCredentials((value) => !value)}
-                >
-                  <Mail size={16} />发送管理员登录信息
-                </button>
-              </>
+              <button className="btn primary" type="button" onClick={openCreate}>
+                <UserPlus size={16} />新增用户
+              </button>
             )}
             <button
               className="btn"
@@ -810,36 +798,6 @@ export default function InternalAccountAdminPage({
         <div className="internal-access-loading">正在读取后台权限…</div>
       )}
 
-      {showSendCredentials && screen === "accounts" && (
-        <form className="internal-access-register" onSubmit={sendCredentials}>
-          <label>
-            <span>收件邮箱</span>
-            <input
-              type="email"
-              value={credentialsEmail}
-              onChange={(event) => setCredentialsEmail(event.target.value)}
-              placeholder="例如 someone@example.com"
-              required
-            />
-          </label>
-          <small className="internal-access-register-hint">
-            将把后端环境中配置的管理员登录信息发送到指定邮箱。
-          </small>
-          <button
-            className="btn primary"
-            type="submit"
-            disabled={savingKey === "send-credentials"}
-          >
-            {savingKey === "send-credentials" ? (
-              <Loader2 className="spin" size={16} />
-            ) : (
-              <Mail size={16} />
-            )}
-            发送登录信息
-          </button>
-        </form>
-      )}
-
       {screen === "accounts" && data && (
         <>
           <div className="internal-access-filters">
@@ -848,7 +806,7 @@ export default function InternalAccountAdminPage({
               <input
                 value={accountQuery}
                 onChange={(event) => setAccountQuery(event.target.value)}
-                placeholder="搜索账号、姓名或 FileMaker 权限集"
+                placeholder="搜索账号、姓名或角色"
                 aria-label="搜索账号"
               />
             </label>
@@ -876,7 +834,7 @@ export default function InternalAccountAdminPage({
                 <thead>
                   <tr>
                     <th>用户</th>
-                    <th>FileMaker 权限集</th>
+                    <th>账号角色</th>
                     <th>状态</th>
                     <th>基础权限</th>
                     <th>6 组细分权限</th>
@@ -942,8 +900,8 @@ export default function InternalAccountAdminPage({
                           {formatDateTime(account.lastSeenAt)}
                           <small>
                             {account.origin === "filemaker"
-                              ? "FileMaker 会话"
-                              : "后台建立"}
+                              ? "旧版同步账号"
+                              : "Web 账号"}
                           </small>
                         </td>
                         <td>
@@ -993,7 +951,7 @@ export default function InternalAccountAdminPage({
       {screen === "privilegeSets" && data && (
         <div className="internal-access-table-card">
           <div className="internal-access-table-head">
-            <div><ShieldCheck size={17} /><strong>FileMaker 权限集默认值</strong></div>
+            <div><ShieldCheck size={17} /><strong>账号角色默认值</strong></div>
             <small>用户可完全继承，也可在用户编辑页逐项覆盖</small>
           </div>
           <div className="internal-access-table-wrap">
@@ -1092,11 +1050,12 @@ export default function InternalAccountAdminPage({
             </div>
           </div>
           <div className="internal-access-identity-grid">
-            <article><small>FileMaker 权限集</small><strong>{selectedAccount.filemakerPrivilegeSet}</strong></article>
+            <article><small>账号角色</small><strong>{selectedAccount.filemakerPrivilegeSet}</strong></article>
             <article><small>登录状态</small><strong>{selectedAccount.enabled ? "允许登录" : "已停用"}</strong></article>
             <article><small>登录入口</small><strong>{selectedAccount.mobileOnly ? "仅移动端" : "Web 与移动端"}</strong></article>
-            <article><small>同步来源</small><strong>{selectedAccount.origin === "filemaker" ? "FileMaker 会话" : "后台建立"}</strong></article>
-            <article><small>最后同步</small><strong>{formatDateTime(selectedAccount.lastSeenAt)}</strong></article>
+            <article><small>密码状态</small><strong>{selectedAccount.hasPassword ? "已设置" : "未设置"}</strong></article>
+            <article><small>账号来源</small><strong>{selectedAccount.origin === "filemaker" ? "旧版同步账号" : "Web 后台"}</strong></article>
+            <article><small>最后登录</small><strong>{formatDateTime(selectedAccount.lastSeenAt)}</strong></article>
           </div>
           <section className="internal-access-section">
             <header>
@@ -1104,7 +1063,7 @@ export default function InternalAccountAdminPage({
                 <h4>StarRC 基础功能</h4>
                 <p>
                   {selectedAccount.inheritsPrivilegeSet
-                    ? "完全继承 FileMaker 权限集默认值"
+                    ? "完全继承账号角色默认值"
                     : "包含用户级覆盖"}
                 </p>
               </div>
@@ -1181,11 +1140,11 @@ export default function InternalAccountAdminPage({
 
           <section className="internal-access-section">
             <header>
-              <div><h4>用户身份与状态</h4><p>FileMaker 账号名用于登录身份匹配。</p></div>
+              <div><h4>用户身份与状态</h4><p>账号和密码由 Web 后端独立验证。</p></div>
             </header>
             <div className="internal-access-form-grid">
               <label>
-                <span>FileMaker 账号名</span>
+                <span>登录账号</span>
                 <input
                   value={accountDraft.username}
                   disabled={screen === "accountEdit"}
@@ -1212,13 +1171,46 @@ export default function InternalAccountAdminPage({
                 />
               </label>
               <label>
-                <span>FileMaker 权限集</span>
+                <span>{screen === "accountCreate" ? "初始密码" : "重置密码（选填）"}</span>
+                <input
+                  type="password"
+                  value={accountDraft.password}
+                  minLength={8}
+                  autoComplete="new-password"
+                  onChange={(event) =>
+                    setAccountDraft((current) =>
+                      current ? { ...current, password: event.target.value } : current
+                    )
+                  }
+                  required={screen === "accountCreate"}
+                />
+                <small>至少 8 位；后端只保存 PBKDF2 密码哈希。</small>
+              </label>
+              <label>
+                <span>确认密码</span>
+                <input
+                  type="password"
+                  value={accountDraft.confirmPassword}
+                  minLength={8}
+                  autoComplete="new-password"
+                  onChange={(event) =>
+                    setAccountDraft((current) =>
+                      current
+                        ? { ...current, confirmPassword: event.target.value }
+                        : current
+                    )
+                  }
+                  required={Boolean(accountDraft.password)}
+                />
+              </label>
+              <label>
+                <span>账号角色</span>
                 <select
                   value={accountDraft.filemakerPrivilegeSet}
                   onChange={(event) => choosePrivilegeSet(event.target.value)}
                   required
                 >
-                  <option value="">请选择权限集</option>
+                  <option value="">请选择角色</option>
                   {data?.privilegeSets.map((item) => (
                     <option key={item.name} value={item.name}>
                       {item.name}{item.enabled ? "" : "（已停用）"}
@@ -1240,22 +1232,6 @@ export default function InternalAccountAdminPage({
                   }
                 />
                 <span>允许登录 StarRC</span>
-              </label>
-              <label className="internal-access-enabled form-switch">
-                <input
-                  type="checkbox"
-                  checked={accountDraft.mobileOnly}
-                  disabled={isSelf}
-                  onChange={(event) =>
-                    setAccountDraft((current) =>
-                      current
-                        ? { ...current, mobileOnly: event.target.checked }
-                        : current
-                    )
-                  }
-                />
-                <span>仅移动端登录</span>
-                <small>启用后禁止登录和访问后台 Web。</small>
               </label>
               <label className="internal-access-enabled form-switch">
                 <input
@@ -1475,9 +1451,9 @@ export default function InternalAccountAdminPage({
             <span className="internal-access-delete-icon"><Trash2 size={22} /></span>
             <h3 id="delete-account-title">删除 {deleteCandidate.displayName}？</h3>
             <p>
-              将删除该用户在 StarRC 中的权限配置。
+              将删除该用户的 Web 登录密码、角色和权限配置。
               {deleteCandidate.origin === "filemaker" &&
-                " 此账号来自 FileMaker，下次登录时账号映射会重新同步。"}
+                " 此账号来自旧版同步，下次旧版登录时仍可能重新出现。"}
             </p>
             <div>
               <button

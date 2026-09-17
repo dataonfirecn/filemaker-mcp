@@ -103,6 +103,8 @@ export type WebViewerPermissions = {
   canManageAccounts: boolean;
   canViewProducts: boolean;
   canViewOrders: boolean;
+  canViewQuality: boolean;
+  canAddCompletedReceipts: boolean;
   canViewInventory: boolean;
   canViewBom: boolean;
   canUseNaturalQuery: boolean;
@@ -146,6 +148,7 @@ export type WebViewerAdminAccount = {
   filemakerPrivilegeSet: string;
   enabled: boolean;
   mobileOnly: boolean;
+  hasPassword: boolean;
   permissions: WebViewerPermissions;
   partPermissions: PartPermissionMap;
   inheritsPrivilegeSet: boolean;
@@ -297,6 +300,8 @@ export type Page =
   | "accessAdmin"
   | "settings"
   | "serviceDirectory"
+  | "qualityInspections"
+  | "diagnosticLogs"
   | "reports";
 
 export type InternalOrderRow = {

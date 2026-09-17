@@ -114,6 +114,30 @@ def is_webviewer_mobile_request(*, client_channel: str, user_agent: str) -> bool
     )
 
 
+def webviewer_device_class(*, client_channel: str, device_class: str) -> str:
+    """Return the security class used for PDA session enforcement.
+
+    Missing or unknown device metadata is deliberately treated as physical.
+    That keeps older iOS builds and stripped headers on the stricter path.
+    """
+    if client_channel.strip().casefold() != "ios-pda":
+        return "web"
+    if device_class.strip().casefold() == "simulator":
+        return "simulator"
+    return "physical"
+
+
+def is_webviewer_physical_pda_request(
+    *,
+    client_channel: str,
+    device_class: str,
+) -> bool:
+    return webviewer_device_class(
+        client_channel=client_channel,
+        device_class=device_class,
+    ) == "physical"
+
+
 def validate_webviewer_remote_configuration(settings: Settings) -> list[str]:
     if not settings.webviewer_remote_access_enabled:
         return []

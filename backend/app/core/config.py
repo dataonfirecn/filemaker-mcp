@@ -75,6 +75,21 @@ class Settings(BaseSettings):
     # Dedicated, allow-listed write path for iPad finished-goods receipts.
     # Generic FileMaker write endpoints remain governed by FILEMAKER_READ_ONLY.
     filemaker_mobile_receipt_write_enabled: bool = False
+    # Dedicated PostgreSQL write path for incoming quality inspections.
+    # The legacy env name remains accepted during rollout; FileMaker stays read-only.
+    quality_write_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "QUALITY_WRITE_ENABLED",
+            "FILEMAKER_QUALITY_WRITE_ENABLED",
+            "quality_write_enabled",
+        ),
+    )
+    filemaker_quality_max_arrivals: int = Field(default=50, ge=1, le=200)
+    # Data API preserves legacy mixed text/number values such as
+    # `檢查C尺寸公差 = 贯穿`; OData exposes those values as null because
+    # the field is declared as Number in the FileMaker schema.
+    filemaker_quality_part_layout: str = "@零件"
     # JSON trace snapshot stored on each 出貨單資料入庫 row. Keep this field on
     # the OData table occurrence so FileMaker and Web history can cross-query it.
     filemaker_mobile_receipt_log_field: str = "log"

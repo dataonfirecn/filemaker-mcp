@@ -29,6 +29,10 @@ class AuditLogStore:
         self._web_merge_lock = asyncio.Lock()
         self._memory_mobile_receipt_requests: dict[str, dict[str, Any]] = {}
         self._mobile_receipt_lock = asyncio.Lock()
+        self._memory_mobile_diagnostic_reports: dict[int, dict[str, Any]] = {}
+        self._memory_mobile_diagnostic_report_keys: dict[tuple[str, str], int] = {}
+        self._memory_mobile_diagnostic_next_id = 1
+        self._mobile_diagnostic_lock = asyncio.Lock()
 
     async def init(self) -> None:
         if self.database_url.startswith("memory://"):
@@ -99,6 +103,33 @@ class AuditLogStore:
                     ON mobile_receipt_request (updated_at DESC);
                 ALTER TABLE mobile_receipt_request
                     ADD COLUMN IF NOT EXISTS operator_name TEXT NOT NULL DEFAULT '';
+
+                CREATE TABLE IF NOT EXISTS mobile_diagnostic_report (
+                    id BIGSERIAL PRIMARY KEY,
+                    report_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    operator_account TEXT NOT NULL,
+                    operator_name TEXT NOT NULL,
+                    operator_privilege TEXT NOT NULL DEFAULT '',
+                    draft_id TEXT NOT NULL,
+                    document_number TEXT NOT NULL DEFAULT '',
+                    event TEXT NOT NULL,
+                    report TEXT NOT NULL,
+                    app_build TEXT NOT NULL DEFAULT '',
+                    app_version TEXT NOT NULL DEFAULT '',
+                    email_status TEXT NOT NULL DEFAULT 'pending',
+                    email_error TEXT,
+                    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    emailed_at TIMESTAMPTZ,
+                    UNIQUE (operator_account, report_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_mobile_diagnostic_report_received_at
+                    ON mobile_diagnostic_report (received_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_mobile_diagnostic_report_document
+                    ON mobile_diagnostic_report (document_number);
+                CREATE INDEX IF NOT EXISTS idx_mobile_diagnostic_report_email_status
+                    ON mobile_diagnostic_report (email_status, received_at DESC);
                 """
             )
 
@@ -781,6 +812,312 @@ class AuditLogStore:
             existing.update(status="pending", responsePayload=None, errorMessage=None)
             return {"status": "claimed"}
         return {"status": "retry"}
+
+    async def save_mobile_diagnostic_report(
+        self,
+        *,
+        operator: OperatorContext,
+        report_id: str,
+        draft_id: str,
+        document_number: str,
+        event: str,
+        report: str,
+        app_build: str = "",
+        app_version: str = "",
+    ) -> dict[str, Any]:
+        """Persist the redacted PDA report before attempting email delivery."""
+        account_key = operator.account.casefold()
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_diagnostic_lock:
+                key = (account_key, report_id)
+                existing_id = self._memory_mobile_diagnostic_report_keys.get(key)
+                now = datetime.now(tz=timezone.utc).isoformat()
+                if existing_id is not None:
+                    row = self._memory_mobile_diagnostic_reports[existing_id]
+                    row.update(
+                        sessionId=operator.session_id,
+                        operatorName=operator.name,
+                        operatorPrivilege=operator.privilege,
+                        draftId=draft_id,
+                        documentNumber=document_number,
+                        event=event,
+                        report=report,
+                        appBuild=app_build,
+                        appVersion=app_version,
+                        updatedAt=now,
+                    )
+                    if row["emailStatus"] != "sent":
+                        row.update(emailStatus="pending", emailError=None)
+                    return dict(row)
+
+                report_row_id = self._memory_mobile_diagnostic_next_id
+                self._memory_mobile_diagnostic_next_id += 1
+                row = {
+                    "id": report_row_id,
+                    "reportId": report_id,
+                    "sessionId": operator.session_id,
+                    "operatorAccount": operator.account,
+                    "operatorName": operator.name,
+                    "operatorPrivilege": operator.privilege,
+                    "draftId": draft_id,
+                    "documentNumber": document_number,
+                    "event": event,
+                    "report": report,
+                    "appBuild": app_build,
+                    "appVersion": app_version,
+                    "emailStatus": "pending",
+                    "emailError": None,
+                    "receivedAt": now,
+                    "updatedAt": now,
+                    "emailedAt": None,
+                }
+                self._memory_mobile_diagnostic_reports[report_row_id] = row
+                self._memory_mobile_diagnostic_report_keys[key] = report_row_id
+                return dict(row)
+
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO mobile_diagnostic_report (
+                    report_id, session_id, operator_account, operator_name,
+                    operator_privilege, draft_id, document_number, event,
+                    report, app_build, app_version
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT (operator_account, report_id) DO UPDATE
+                SET session_id = EXCLUDED.session_id,
+                    operator_name = EXCLUDED.operator_name,
+                    operator_privilege = EXCLUDED.operator_privilege,
+                    draft_id = EXCLUDED.draft_id,
+                    document_number = EXCLUDED.document_number,
+                    event = EXCLUDED.event,
+                    report = EXCLUDED.report,
+                    app_build = EXCLUDED.app_build,
+                    app_version = EXCLUDED.app_version,
+                    email_status = CASE
+                        WHEN mobile_diagnostic_report.email_status = 'sent' THEN 'sent'
+                        ELSE 'pending'
+                    END,
+                    email_error = CASE
+                        WHEN mobile_diagnostic_report.email_status = 'sent'
+                            THEN mobile_diagnostic_report.email_error
+                        ELSE NULL
+                    END,
+                    updated_at = now()
+                RETURNING *
+                """,
+                report_id,
+                operator.session_id,
+                operator.account,
+                operator.name,
+                operator.privilege,
+                draft_id,
+                document_number,
+                event,
+                report,
+                app_build,
+                app_version,
+            )
+        return self._mobile_diagnostic_row_to_dict(row)
+
+    async def update_mobile_diagnostic_email_status(
+        self,
+        *,
+        operator_account: str,
+        report_id: str,
+        email_status: str,
+        email_error: str | None = None,
+        emailed_at: datetime | None = None,
+    ) -> dict[str, Any] | None:
+        account_key = operator_account.casefold()
+        if self.database_url.startswith("memory://"):
+            async with self._mobile_diagnostic_lock:
+                row_id = self._memory_mobile_diagnostic_report_keys.get(
+                    (account_key, report_id)
+                )
+                if row_id is None:
+                    return None
+                row = self._memory_mobile_diagnostic_reports[row_id]
+                row.update(
+                    emailStatus=email_status,
+                    emailError=email_error,
+                    emailedAt=emailed_at.isoformat() if emailed_at else None,
+                    updatedAt=datetime.now(tz=timezone.utc).isoformat(),
+                )
+                return dict(row)
+
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE mobile_diagnostic_report
+                SET email_status = $3,
+                    email_error = $4,
+                    emailed_at = $5,
+                    updated_at = now()
+                WHERE lower(operator_account) = $1 AND report_id = $2
+                RETURNING *
+                """,
+                account_key,
+                report_id,
+                email_status,
+                email_error,
+                emailed_at,
+            )
+        return self._mobile_diagnostic_row_to_dict(row) if row else None
+
+    async def list_mobile_diagnostic_reports(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        query: str | None = None,
+        email_status: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_query = (query or "").strip().casefold()
+        normalized_status = (email_status or "").strip().casefold()
+        if self.database_url.startswith("memory://"):
+            rows = sorted(
+                self._memory_mobile_diagnostic_reports.values(),
+                key=lambda item: item["receivedAt"],
+                reverse=True,
+            )
+            if normalized_query:
+                rows = [
+                    row
+                    for row in rows
+                    if normalized_query
+                    in "\n".join(
+                        str(row.get(key) or "")
+                        for key in (
+                            "reportId",
+                            "draftId",
+                            "documentNumber",
+                            "event",
+                            "operatorAccount",
+                            "operatorName",
+                            "report",
+                        )
+                    ).casefold()
+                ]
+            if normalized_status:
+                rows = [
+                    row
+                    for row in rows
+                    if str(row.get("emailStatus") or "").casefold()
+                    == normalized_status
+                ]
+            total = len(rows)
+            return {
+                "items": [
+                    self._mobile_diagnostic_list_item(row)
+                    for row in rows[offset : offset + limit]
+                ],
+                "total": total,
+            }
+
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        conditions: list[str] = []
+        values: list[Any] = []
+        if normalized_query:
+            values.append(f"%{normalized_query}%")
+            index = len(values)
+            conditions.append(
+                "(" + " OR ".join(
+                    f"lower({field}) LIKE ${index}"
+                    for field in (
+                        "report_id",
+                        "draft_id",
+                        "document_number",
+                        "event",
+                        "operator_account",
+                        "operator_name",
+                        "report",
+                    )
+                ) + ")"
+            )
+        if normalized_status:
+            values.append(normalized_status)
+            conditions.append(f"email_status = ${len(values)}")
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        async with self._pool.acquire() as conn:
+            total = await conn.fetchval(
+                f"SELECT count(*) FROM mobile_diagnostic_report {where_sql}",
+                *values,
+            )
+            paged_values = [*values, limit, offset]
+            limit_index = len(values) + 1
+            offset_index = len(values) + 2
+            rows = await conn.fetch(
+                f"""
+                SELECT *
+                FROM mobile_diagnostic_report
+                {where_sql}
+                ORDER BY received_at DESC
+                LIMIT ${limit_index}
+                OFFSET ${offset_index}
+                """,
+                *paged_values,
+            )
+        return {
+            "items": [
+                self._mobile_diagnostic_list_item(
+                    self._mobile_diagnostic_row_to_dict(row)
+                )
+                for row in rows
+            ],
+            "total": int(total or 0),
+        }
+
+    async def get_mobile_diagnostic_report(
+        self,
+        report_row_id: int,
+    ) -> dict[str, Any] | None:
+        if self.database_url.startswith("memory://"):
+            row = self._memory_mobile_diagnostic_reports.get(report_row_id)
+            return dict(row) if row else None
+        if not self._pool:
+            raise RuntimeError("AuditLogStore is not initialized")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM mobile_diagnostic_report WHERE id = $1",
+                report_row_id,
+            )
+        return self._mobile_diagnostic_row_to_dict(row) if row else None
+
+    def _mobile_diagnostic_row_to_dict(
+        self,
+        row: asyncpg.Record,
+    ) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "reportId": row["report_id"],
+            "sessionId": row["session_id"],
+            "operatorAccount": row["operator_account"],
+            "operatorName": row["operator_name"],
+            "operatorPrivilege": row["operator_privilege"],
+            "draftId": row["draft_id"],
+            "documentNumber": row["document_number"],
+            "event": row["event"],
+            "report": row["report"],
+            "appBuild": row["app_build"],
+            "appVersion": row["app_version"],
+            "emailStatus": row["email_status"],
+            "emailError": row["email_error"],
+            "receivedAt": row["received_at"].isoformat(),
+            "updatedAt": row["updated_at"].isoformat(),
+            "emailedAt": (
+                row["emailed_at"].isoformat() if row["emailed_at"] else None
+            ),
+        }
+
+    @staticmethod
+    def _mobile_diagnostic_list_item(row: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in row.items() if key != "report"}
 
     async def list_logs(
         self,

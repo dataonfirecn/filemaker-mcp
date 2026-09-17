@@ -26,6 +26,7 @@ from app.api import (
     part_creation,
     part_directory,
     qrcode,
+    quality,
     rag_index,
     receipt_history,
     reports,
@@ -48,6 +49,7 @@ from app.services.mobile_app_version import IOSPDABuildGateMiddleware
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
 from app.services.product_photo_upload_store import ProductPhotoUploadStore
+from app.services.quality_inspection_store import QualityInspectionStore
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
 from app.services.synthetic_query_monitor import SyntheticQueryMonitor
@@ -78,6 +80,8 @@ async def lifespan(app: FastAPI):
     filemaker_odata_client = FileMakerODataClient(settings)
     audit_log_store = AuditLogStore(settings.audit_database_url)
     await audit_log_store.init()
+    quality_inspection_store = QualityInspectionStore(settings.audit_database_url)
+    await quality_inspection_store.init()
     bom_document_store = BomDocumentStore(settings.audit_database_url)
     await bom_document_store.init()
     callback_store = CallbackStore(settings.database_path)
@@ -104,6 +108,7 @@ async def lifespan(app: FastAPI):
                 "username": account.username,
                 "displayName": account.display_name,
                 "privilegeSet": account.privilege_set,
+                "passwordHash": account.password_hash,
             }
             for account in remote_accounts.values()
         ),
@@ -152,6 +157,7 @@ async def lifespan(app: FastAPI):
     app.state.filemaker_client = filemaker_client
     app.state.filemaker_odata_client = filemaker_odata_client
     app.state.audit_log_store = audit_log_store
+    app.state.quality_inspection_store = quality_inspection_store
     app.state.bom_document_store = bom_document_store
     app.state.callback_store = callback_store
     app.state.callback_worker = callback_worker
@@ -187,6 +193,7 @@ async def lifespan(app: FastAPI):
         await rag_index_worker.stop()
         await callback_worker.stop()
         await bom_document_store.close()
+        await quality_inspection_store.close()
         await webviewer_account_access_store.close()
         await audit_log_store.close()
         await filemaker_odata_client.close()
@@ -295,6 +302,7 @@ app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(rag_index.router, prefix=settings.api_prefix)
 app.include_router(mes_callbacks.router, prefix=settings.api_prefix)
 app.include_router(qrcode.router, prefix=settings.api_prefix)
+app.include_router(quality.router, prefix=settings.api_prefix)
 app.include_router(mobile_app.router, prefix=settings.api_prefix)
 app.include_router(mobile_receipts.router, prefix=settings.api_prefix)
 app.include_router(mobile_products.router, prefix=settings.api_prefix)

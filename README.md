@@ -23,32 +23,31 @@ docker compose up --build -d
 - API 文档：`http://localhost:8000/docs`
 - WebViewer 本地预览：`http://localhost:8080/?productSku=821RTR-27&operatorAccount=mock.operator&operatorName=本地测试操作员`
 
-## StarRC 内部账号与 FileMaker 权限集
+## StarRC Web 独立账号与角色
 
-StarRC 内部工作台会从 FileMaker 签名上下文读取账号名和
-`Get ( AccountPrivilegeSetName )`，并把实际权限集同步到 PostgreSQL。英文
-`[Full Access]` 与中文 `[完全访问权限]` 都会映射为 StarRC 管理员。2026-07-24 已从
-FileMaker 安全性同步 97 个账号和 39 个实际权限集；默认策略维护在
+PDA 员工账号由 StarRC Web 后端独立认证，账号、PBKDF2 密码哈希、角色、启用状态和
+细粒度权限都保存在 PostgreSQL，不要求存在同名 FileMaker 账号。旧版 FileMaker 签名
+上下文仍可兼容接入。角色默认策略维护在
 `backend/config/webviewer_privilege_sets.json`。管理员可在“系统管理 → 账号与权限”中：
 
-- 启用或停用账号及整个 FileMaker 权限集。
-- 按权限集设置默认权限，也可为单个账号覆盖。
+- 直接创建 Web 登录账号、设置或重置密码。
+- 启用或停用账号及整个账号角色。
+- 按角色设置默认权限，也可为单个账号覆盖。
 - 单独控制价格、产品、订单、库存、BOM、智能问答、RAG 与订单合并。
 - 可将单个账号设为“仅移动端登录”，后台会同时阻止该账号登录和访问 Web 管理页面。
-- 预先绑定 FileMaker 账号；账号本身和密码仍需在 FileMaker“安全性”中建立和维护。
 
 价格权限在后端强制执行。没有 `canViewPrice` 的会话询价会返回 HTTP 403，普通业务响应中的
 售价、单价、订单金额、批次价格、成本、报价及相关原始字段会在发给浏览器前剔除。停用账号
 或修改权限后，旧会话的下一次请求就会按新权限重新校验，不需要等待令牌过期。
 
-远程账号配置也应标明与 FileMaker 对应的权限集：
+环境变量账号只用于引导管理员；日常员工账号应在 Web 后台创建：
 
 ```dotenv
 WEBVIEWER_REMOTE_ACCOUNTS_JSON='[{"username":"amy","displayName":"Amy","privilegeSet":"Sales","passwordHash":"pbkdf2_sha256$..."}]'
 ```
 
 移动端使用同一套远程账号登录：`POST /api/webviewer/session` 签发会话，
-`GET /api/webviewer/session/me` 返回当前用户姓名、FileMaker 权限集和实时权限。
+`GET /api/webviewer/session/me` 返回当前账号、显示名称、账号角色和实时权限。
 订单与移动到货接口都会在后端强制检查 `canViewOrders`；停用账号或调整权限后，
 下一次请求立即生效。
 

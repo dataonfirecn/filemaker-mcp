@@ -356,7 +356,7 @@ export default function HomePage({
               <p className="home-chat-retention">
                 {canUseNaturalQuery
                   ? `输入产品、零件、采购、库存或日期等查询。${canViewPrice ? "本账号已获价格查看权限。" : "本账号的价格字段已由后台屏蔽。"}`
-                  : "当前 FileMaker 权限集未开放智能问答。"}
+                  : "当前账号角色未开放智能问答。"}
               </p>
               <div className="home-query-examples" aria-label="预设问题">
                 {visibleExamples.map((example) => (

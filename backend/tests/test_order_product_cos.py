@@ -4,9 +4,12 @@ from datetime import datetime, timezone
 import pytest
 
 from app.api.orders import (
+    _item_payload,
     _order_receipt_catalog,
     _product_asset_category,
     _product_cos_image_catalog,
+    _warehouse_issued_quantity,
+    _warehouse_issued_quantity_catalog,
 )
 from app.services.cos_storage import (
     COSObjectMetadata,
@@ -216,6 +219,111 @@ class FakeReceiptOData:
                 ]
             }
         raise AssertionError(f"Unexpected table: {table}")
+
+
+def test_order_item_payload_does_not_use_legacy_partial_issue_quantity():
+    item = _item_payload(
+        {"recordId": "42001"},
+        {
+            "ID": "LINE-1",
+            "產品編號": "TZ0031-BL",
+            "中文產品名稱": "轮胎转接座螺母",
+        },
+        {
+            "產品編號": "TZ0031-BL",
+            "數量": 150,
+            "部分發料數量": 165,
+        },
+        {},
+        1,
+    )
+
+    assert item["quantity"] == 150.0
+    assert item["warehouseIssuedQuantity"] == 0.0
+
+
+def test_warehouse_issued_quantity_uses_bom_bottleneck_product_equivalent():
+    records = [
+        {
+            "fieldData": {
+                "零件_BOM::倉庫分工": "发料",
+                "實發数量": 1368,
+                "額定數量": 4,
+            }
+        },
+        {
+            "fieldData": {
+                "零件_BOM::倉庫分工": "发料",
+                "實發数量": 1400,
+                "額定數量": 4,
+            }
+        },
+        {
+            "fieldData": {
+                "零件_BOM::倉庫分工": "不发料",
+                "實發数量": 0,
+                "額定數量": 1,
+            }
+        },
+    ]
+
+    assert _warehouse_issued_quantity(records) == 342.0
+
+
+def test_warehouse_issued_quantity_ignores_bom_rows_without_actual_issue():
+    records = [
+        {
+            "fieldData": {
+                "產品 BOM_BOM::倉庫分工": "發料",
+                "實發数量": 200,
+                "額定數量": 2,
+            }
+        },
+        {
+            "fieldData": {
+                "零件_BOM::倉庫分工": "发料",
+                "實發数量": "",
+                "額定數量": 1,
+            }
+        },
+    ]
+
+    assert _warehouse_issued_quantity(records) == 100.0
+
+
+@pytest.mark.asyncio
+async def test_warehouse_issued_quantity_catalog_queries_each_order_line_id():
+    class FakeIssueFileMaker:
+        def __init__(self) -> None:
+            self.queries: list[tuple[str, dict[str, str]]] = []
+
+        async def find_records(self, layout, *, query, **_kwargs):
+            self.queries.append((layout, query))
+            actual = 591 if "LINE-1" in query["ID_出貨單資料"] else 660
+            return {
+                "data": [
+                    {
+                        "fieldData": {
+                            "零件_BOM::倉庫分工": "发料",
+                            "實發数量": actual,
+                            "額定數量": 4,
+                        }
+                    }
+                ],
+                "foundCount": 1,
+            }
+
+    filemaker = FakeIssueFileMaker()
+    result = await _warehouse_issued_quantity_catalog(
+        filemaker,
+        ["LINE-1", "LINE-2", "LINE-1"],
+    )
+
+    assert result == {"LINE-1": 147.0, "LINE-2": 165.0}
+    assert filemaker.queries == [
+        ("零件包 發料分类", {"ID_出貨單資料": "==LINE-1"}),
+        ("零件包 發料分类", {"ID_出貨單資料": "==LINE-2"}),
+    ]
 
 
 @pytest.mark.asyncio

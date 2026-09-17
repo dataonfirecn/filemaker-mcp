@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 import asyncio
 
@@ -10,9 +10,10 @@ from app.models.webviewer_admin import (
     WebViewerAccountRegisterRequest,
     LlmProviderStatusResponse,
     LlmProviderSwitchRequest,
+    MobileDiagnosticReportDetail,
+    MobileDiagnosticReportListResponse,
     WebViewerPrivilegeSetAdminItem,
     WebViewerPrivilegeSetAdminUpdateRequest,
-    WebViewerSendAdminCredentialsRequest,
 )
 from app.models.webviewer import (
     WebViewerCurrentSessionResponse,
@@ -21,10 +22,9 @@ from app.models.webviewer import (
     WebViewerSessionResponse,
 )
 from app.services.audit_log import AuditLogStore, OperatorContext
-from app.services.customer_chat_auth import CustomerLoginRateLimiter
-from app.services.customer_email import (
-    CustomerEmailError,
-    send_admin_credentials_email,
+from app.services.customer_chat_auth import (
+    CustomerLoginRateLimiter,
+    hash_customer_password,
 )
 from app.services.part_permission_catalog import permission_catalog
 from app.services.service_directory import api_service_directory
@@ -50,7 +50,9 @@ from app.services.webviewer_session import (
 )
 from app.services.webviewer_remote_auth import (
     authenticate_webviewer_remote,
+    is_webviewer_physical_pda_request,
     is_webviewer_mobile_request,
+    webviewer_device_class,
     webviewer_remote_request_allowed,
 )
 
@@ -71,7 +73,19 @@ async def create_webviewer_session(
         # independent from FastAPI's dependency injection container.
         account_access = WebViewerAccountAccessStore("memory://direct-webviewer-session")
         await account_access.init()
+    client_channel = request.headers.get("X-Client-Channel", "")
+    device_class = request.headers.get("X-Device-Class", "")
+    physical_pda_request = is_webviewer_physical_pda_request(
+        client_channel=client_channel,
+        device_class=device_class,
+    )
+    web_account_state: dict | None = None
     if body.ctx and body.sig:
+        if physical_pda_request:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "物理设备必须使用员工账号和密码登录。"},
+            )
         try:
             context = verify_external_context(body.ctx, body.sig, settings)
         except WebViewerSessionError as exc:
@@ -79,6 +93,7 @@ async def create_webviewer_session(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"message": str(exc)},
             ) from exc
+        context["authenticationMethod"] = "signedContext"
     elif settings.webviewer_remote_access_enabled and body.username and body.password:
         limiter_key = body.username.strip().casefold()
         retry_after = await remote_login_limiter.retry_after(
@@ -92,12 +107,17 @@ async def create_webviewer_session(
                 detail={"message": "登录尝试过多，请稍后再试", "retryAfter": retry_after},
                 headers={"Retry-After": str(retry_after)},
             )
-        account = authenticate_webviewer_remote(
+        password = body.password.get_secret_value()
+        web_account_state = await account_access.authenticate_account(
             body.username,
-            body.password.get_secret_value(),
+            password,
+        )
+        environment_account = authenticate_webviewer_remote(
+            body.username,
+            password,
             settings,
         )
-        if not account:
+        if not web_account_state and not environment_account:
             await remote_login_limiter.record_failure(
                 limiter_key,
                 window_seconds=settings.webviewer_remote_login_window_seconds,
@@ -106,8 +126,8 @@ async def create_webviewer_session(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"message": "用户名或密码不正确"},
             )
-        if not webviewer_remote_request_allowed(
-            account,
+        if environment_account and not webviewer_remote_request_allowed(
+            environment_account,
             client_channel=request.headers.get("X-Client-Channel", ""),
             user_agent=request.headers.get("User-Agent", ""),
         ):
@@ -117,11 +137,25 @@ async def create_webviewer_session(
                 detail={"message": "该账号仅允许通过指定的 PDA 应用登录"},
             )
         await remote_login_limiter.clear(limiter_key)
+        if not web_account_state and environment_account:
+            web_account_state = await account_access.register_account(
+                username=environment_account.username,
+                display_name=environment_account.display_name,
+                privilege_set=environment_account.privilege_set,
+                origin="environment",
+                seen=False,
+                password_hash=environment_account.password_hash,
+            )
+        if not web_account_state:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"message": "用户名或密码不正确"},
+            )
         context = create_mock_context(
-            operator_account=account.username,
-            operator_name=account.display_name,
-            operator_privilege=account.privilege_set,
-            persistent_id=account.username,
+            operator_account=str(web_account_state["username"]),
+            operator_name=str(web_account_state["displayName"]),
+            operator_privilege=str(web_account_state["filemakerPrivilegeSet"]),
+            persistent_id=str(web_account_state["username"]),
             product_sku=body.product_sku,
             order_id=body.order_id,
             line_id=body.line_id,
@@ -130,7 +164,18 @@ async def create_webviewer_session(
             customer_name=body.customer_name,
             currency=body.currency,
         )
-    elif body.mock and settings.webviewer_allow_mock_context:
+        context["authenticationMethod"] = "webPassword"
+    elif body.mock:
+        if physical_pda_request:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "物理设备必须使用员工账号和密码登录。"},
+            )
+        if not settings.webviewer_allow_mock_context:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"message": "Signed ctx/sig is required"},
+            )
         operator = body.operator
         context = create_mock_context(
             operator_account=operator.account if operator else "mock.operator",
@@ -144,6 +189,7 @@ async def create_webviewer_session(
             customer_name=body.customer_name,
             currency=body.currency,
         )
+        context["authenticationMethod"] = "mock"
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -151,7 +197,7 @@ async def create_webviewer_session(
         )
 
     context_operator = context.get("operator") or {}
-    account_state = await account_access.observe_account(
+    account_state = web_account_state or await account_access.observe_account(
         username=str(context_operator.get("account") or "unknown"),
         display_name=str(
             context_operator.get("name")
@@ -163,7 +209,7 @@ async def create_webviewer_session(
     if not account_state["enabled"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "此 DMS 账号或其 FileMaker 权限集已停用。"},
+            detail={"message": "此 Web 账号或其角色已停用。"},
         )
     if account_state["mobileOnly"] and not is_webviewer_mobile_request(
         client_channel=request.headers.get("X-Client-Channel", ""),
@@ -175,7 +221,11 @@ async def create_webviewer_session(
         )
     context["access"] = dict(account_state["permissions"])
     context["partPermissions"] = dict(account_state["partPermissions"])
-    client_channel = request.headers.get("X-Client-Channel", "").strip().lower()
+    context["deviceClass"] = webviewer_device_class(
+        client_channel=client_channel,
+        device_class=device_class,
+    )
+    client_channel = client_channel.strip().lower()
     session_ttl_seconds = (
         settings.ios_pda_session_ttl_seconds
         if client_channel == "ios-pda"
@@ -205,6 +255,8 @@ async def create_webviewer_session(
             "remoteLogin": bool(body.username),
             "hasSignedContext": bool(body.ctx and body.sig),
             "clientChannel": client_channel or "web",
+            "deviceClass": context["deviceClass"],
+            "authenticationMethod": context["authenticationMethod"],
             "sessionTtlSeconds": session_ttl_seconds,
         },
         response_payload={
@@ -277,6 +329,52 @@ async def get_service_directory(
     _access: dict[str, bool] = Depends(get_webviewer_access),
 ) -> dict:
     return api_service_directory()
+
+
+@router.get(
+    "/admin/mobile-diagnostic-reports",
+    response_model=MobileDiagnosticReportListResponse,
+)
+async def list_mobile_diagnostic_reports(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
+    query: str = Query(default="", alias="q", max_length=160),
+    email_status: str = Query(default="", alias="emailStatus", max_length=40),
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> MobileDiagnosticReportListResponse:
+    payload = await audit_log.list_mobile_diagnostic_reports(
+        limit=page_size,
+        offset=(page - 1) * page_size,
+        query=query,
+        email_status=email_status,
+    )
+    total = int(payload["total"])
+    return MobileDiagnosticReportListResponse(
+        items=payload["items"],
+        total=total,
+        page=page,
+        pageSize=page_size,
+        totalPages=max(1, (total + page_size - 1) // page_size),
+    )
+
+
+@router.get(
+    "/admin/mobile-diagnostic-reports/{report_row_id}",
+    response_model=MobileDiagnosticReportDetail,
+)
+async def get_mobile_diagnostic_report(
+    report_row_id: int,
+    _access: dict[str, bool] = Depends(get_webviewer_access),
+    audit_log: AuditLogStore = Depends(get_audit_log_store),
+) -> MobileDiagnosticReportDetail:
+    report = await audit_log.get_mobile_diagnostic_report(report_row_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "找不到这份 PDA 错误报告。"},
+        )
+    return MobileDiagnosticReportDetail.model_validate(report)
 
 
 @router.get(
@@ -360,6 +458,20 @@ async def register_webviewer_account(
         seen=False,
         updated_by=operator.account,
     )
+    password_hash = await asyncio.to_thread(
+        hash_customer_password,
+        body.password.get_secret_value(),
+    )
+    account = await store.set_password_hash(
+        body.username,
+        password_hash,
+        updated_by=operator.account,
+    )
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": "账号创建后无法保存密码。"},
+        )
     requested_permissions = (
         body.permissions.model_dump(by_alias=True)
         if body.permissions is not None
@@ -389,7 +501,13 @@ async def register_webviewer_account(
         operator=operator,
         action_type="WEBVIEWER_ACCOUNT_REGISTER",
         status="success",
-        request_payload=body.model_dump(by_alias=True),
+        request_payload={
+            "username": body.username,
+            "displayName": body.display_name,
+            "role": body.filemaker_privilege_set,
+            "enabled": body.enabled,
+            "mobileOnly": body.mobile_only,
+        },
         response_payload={
             "username": account["username"],
             "filemakerPrivilegeSet": account["filemakerPrivilegeSet"],
@@ -468,6 +586,18 @@ async def update_webviewer_account(
     )
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if body.password is not None:
+        password_hash = await asyncio.to_thread(
+            hash_customer_password,
+            body.password.get_secret_value(),
+        )
+        updated = await store.set_password_hash(
+            username,
+            password_hash,
+            updated_by=operator.account,
+        )
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     await audit_log.record(
         operator=operator,
         action_type="WEBVIEWER_ACCOUNT_POLICY_UPDATE",
@@ -550,7 +680,7 @@ async def update_webviewer_privilege_set(
     if not before:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "找不到此 FileMaker 权限集。"},
+            detail={"message": "找不到此账号角色。"},
         )
     updated = await store.update_privilege_set(
         privilege_set,
@@ -569,55 +699,3 @@ async def update_webviewer_privilege_set(
         after_data=updated,
     )
     return WebViewerPrivilegeSetAdminItem.model_validate(updated)
-
-
-@router.post(
-    "/admin/accounts/send-credentials",
-    status_code=status.HTTP_200_OK,
-)
-async def send_admin_credentials(
-    body: WebViewerSendAdminCredentialsRequest,
-    operator: OperatorContext = Depends(get_operator_context),
-    settings: Settings = Depends(get_settings),
-    audit_log: AuditLogStore = Depends(get_audit_log_store),
-) -> dict:
-    """Email the DMS admin backend credentials to a trusted recipient.
-
-    The credentials are the deployed FileMaker Data API account
-    (``FILEMAKER_USERNAME`` / ``FILEMAKER_PASSWORD``); the webviewer admin
-    account store does not keep passwords locally.
-    """
-    username = settings.filemaker_username.strip()
-    password = settings.filemaker_password
-    if not username or not password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "后端未配置 FileMaker 管理员账号，无法发送。"},
-        )
-    try:
-        await asyncio.to_thread(
-            send_admin_credentials_email,
-            settings,
-            recipient_email=body.recipient_email,
-            username=username,
-            password=password,
-        )
-    except CustomerEmailError as exc:
-        await audit_log.record(
-            operator=operator,
-            action_type="WEBVIEWER_ADMIN_CREDENTIALS_EMAIL",
-            status="failure",
-            request_payload={"recipientEmail": body.recipient_email},
-            response_payload={"error": str(exc)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"message": f"邮件发送失败：{exc}"},
-        ) from exc
-    await audit_log.record(
-        operator=operator,
-        action_type="WEBVIEWER_ADMIN_CREDENTIALS_EMAIL",
-        status="success",
-        request_payload={"recipientEmail": body.recipient_email},
-    )
-    return {"ok": True, "recipient": body.recipient_email}

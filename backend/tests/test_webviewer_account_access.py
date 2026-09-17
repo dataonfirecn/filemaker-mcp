@@ -5,6 +5,7 @@ from app.api.natural_language_query import run_natural_language_query
 from app.core.config import Settings
 from app.models.natural_language_query import NaturalLanguageQueryRequest
 from app.services.audit_log import OperatorContext
+from app.services.customer_chat_auth import hash_customer_password
 from app.services.dependencies import assert_webviewer_part_permission
 from app.services.part_permission_catalog import (
     PART_PERMISSION_KEYS,
@@ -161,6 +162,54 @@ async def test_mobile_only_is_an_independent_account_policy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_web_account_password_is_persisted_and_authenticated() -> None:
+    store = WebViewerAccountAccessStore("memory://web-account-password")
+    await store.init()
+    await store.register_account(
+        username="304",
+        display_name="品检员 304",
+        privilege_set="品檢員",
+        origin="admin",
+        seen=False,
+    )
+    saved = await store.set_password_hash(
+        "304",
+        hash_customer_password("Quality-304", iterations=100_000),
+        updated_by="admin",
+    )
+
+    assert saved is not None
+    assert saved["hasPassword"] is True
+    assert await store.authenticate_account("304", "wrong-password") is None
+    authenticated = await store.authenticate_account("304", "Quality-304")
+    assert authenticated is not None
+    assert authenticated["username"] == "304"
+    assert authenticated["origin"] == "admin"
+    assert authenticated["lastSeenAt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_existing_legacy_account_can_be_adopted_as_web_account() -> None:
+    store = WebViewerAccountAccessStore("memory://adopt-web-account")
+    await store.init()
+    await store.observe_account(
+        username="528",
+        display_name="528",
+        privilege_set="filemaker",
+    )
+    adopted = await store.register_account(
+        username="528",
+        display_name="包裝員 528",
+        privilege_set="包裝員",
+        origin="admin",
+        seen=False,
+    )
+
+    assert adopted["origin"] == "admin"
+    assert adopted["filemakerPrivilegeSet"] == "包裝員"
+
+
+@pytest.mark.asyncio
 async def test_full_access_privilege_bootstraps_account_admin() -> None:
     store = WebViewerAccountAccessStore("memory://webviewer-full")
     await store.init()
@@ -267,6 +316,14 @@ async def test_audited_filemaker_privilege_sets_seed_conservative_price_policy()
     assert not privilege_sets["設計部"]["permissions"]["canViewPrice"]
     assert not privilege_sets["倉庫_組長"]["permissions"]["canViewPrice"]
     assert not privilege_sets["採購助理_一般權限"]["permissions"]["canViewPrice"]
+    quality = privilege_sets["品檢員"]["permissions"]
+    assert quality["canViewQuality"] is True
+    assert quality["canViewOrders"] is False
+    assert quality["canAddCompletedReceipts"] is False
+    packing = privilege_sets["包裝員"]["permissions"]
+    assert packing["canViewQuality"] is False
+    assert packing["canViewOrders"] is True
+    assert packing["canAddCompletedReceipts"] is True
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import { BookOpen, Boxes, BrainCircuit, ClipboardList, Database, Eye, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { BookOpen, Boxes, BrainCircuit, Bug, ClipboardCheck, ClipboardList, Database, Eye, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -32,6 +32,8 @@ import InternalOrderMergePage from "./components/InternalOrderMergePage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
 import InternalSettingsPage from "./components/InternalSettingsPage";
 import InternalServiceDirectoryPage from "./components/InternalServiceDirectoryPage";
+import InternalDiagnosticLogsPage from "./components/InternalDiagnosticLogsPage";
+import InternalQualityInspectionsPage from "./components/InternalQualityInspectionsPage";
 import ReportsPage from "./components/ReportsPage";
 import InternalUserMenu from "./components/InternalUserMenu";
 import GenerateDialog from "./components/GenerateDialog";
@@ -140,7 +142,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   accessAdmin: {
     title: "账号与权限",
-    subtitle: "将 FileMaker 权限集同步为 StarRC 功能授权，单独控制价格查看。"
+    subtitle: "管理 Web 员工账号、账号角色与 StarRC 功能授权。"
   },
   settings: {
     title: "个人设置",
@@ -149,6 +151,14 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   serviceDirectory: {
     title: "应用与接口目录",
     subtitle: "区分浏览器入口、FileMaker 内嵌页面与受控集成 API。"
+  },
+  qualityInspections: {
+    title: "来料品检记录",
+    subtitle: "查看保存在网站数据库中的检查单、FileMaker 来源快照与完整追溯事件。"
+  },
+  diagnosticLogs: {
+    title: "PDA 错误日志",
+    subtitle: "查看 iPad 自动上报的脱敏错误、设备构建和邮件送达状态。"
   },
   reports: {
     title: "报告中心",
@@ -204,6 +214,8 @@ function pageFromSearchParams(params: URLSearchParams): Page {
     case "settings":
     case "accessAdmin":
     case "serviceDirectory":
+    case "qualityInspections":
+    case "diagnosticLogs":
     case "reports":
       return requestedPage;
     case "product":
@@ -974,7 +986,7 @@ export default function App() {
   useEffect(() => {
     if (
       session
-      && (page === "accessAdmin" || page === "serviceDirectory")
+      && (page === "accessAdmin" || page === "serviceDirectory" || page === "qualityInspections" || page === "diagnosticLogs")
       && !session.context.access.canManageAccounts
     ) {
       setPage("home");
@@ -1438,7 +1450,7 @@ export default function App() {
             description: "出货单明细与整单 BOM 计算",
             Icon: ShoppingCart,
             disabled: access ? !access.canViewOrders : false,
-            disabledReason: "当前 FileMaker 权限集未开放订单资料"
+            disabledReason: "当前账号角色未开放订单资料"
           }
         ]
       },
@@ -1452,7 +1464,7 @@ export default function App() {
             description: "选产品 → 读 BOM → 计算 → 微调 → 确认",
             Icon: ClipboardList,
             disabled: access ? !access.canViewBom : false,
-            disabledReason: "当前 FileMaker 权限集未开放 BOM / 发料",
+            disabledReason: "当前账号角色未开放 BOM / 发料",
             badge: productBom
               ? bomStep === "done"
                 ? "已确认"
@@ -1473,7 +1485,7 @@ export default function App() {
             description: "@products 列表与详情",
             Icon: Boxes,
             disabled: access ? !access.canViewProducts : false,
-            disabledReason: "当前 FileMaker 权限集未开放产品资料",
+            disabledReason: "当前账号角色未开放产品资料",
             badge: businessProductsData ? `${businessProductsData.foundCount} 条` : undefined
           },
           {
@@ -1482,7 +1494,7 @@ export default function App() {
             description: "零件主表、关联资料与 COS 多图详情",
             Icon: Boxes,
             disabled: access ? !access.canViewProducts : false,
-            disabledReason: "当前 FileMaker 权限集未开放产品资料",
+            disabledReason: "当前账号角色未开放产品资料",
             badge: "筛选查询"
           }
         ]
@@ -1510,7 +1522,7 @@ export default function App() {
             description: "用自然语言查询 FileMaker 数据",
             Icon: MessageCircle,
             disabled: access ? !access.canUseNaturalQuery : false,
-            disabledReason: "当前 FileMaker 权限集未开放智能问答"
+            disabledReason: "当前账号角色未开放智能问答"
           },
           {
             id: "ragControl",
@@ -1518,7 +1530,7 @@ export default function App() {
             description: "索引状态、刷新与搜索调试",
             Icon: BrainCircuit,
             disabled: access ? !access.canManageRag : false,
-            disabledReason: "当前 FileMaker 权限集未开放 RAG 管理",
+            disabledReason: "当前账号角色未开放 RAG 管理",
             badge: ragStatus?.running ? "刷新中" : ragStatus ? `${ragStatus.recordCount} 条` : undefined
           }
         ]
@@ -1533,7 +1545,7 @@ export default function App() {
             description: "FileMaker 发料分类明细",
             Icon: Database,
             disabled: access ? !access.canViewBom : false,
-            disabledReason: "当前 FileMaker 权限集未开放 BOM / 发料",
+            disabledReason: "当前账号角色未开放 BOM / 发料",
             badge: kitIssueData ? `${kitIssueData.foundCount} 条` : "100/页"
           }
         ]
@@ -1553,9 +1565,23 @@ export default function App() {
               {
                 id: "accessAdmin" as Page,
                 label: "账号与权限",
-                description: "FileMaker 权限集与 StarRC 授权",
+                description: "Web 账号角色与 StarRC 授权",
                 Icon: ShieldCheck,
                 badge: access.canViewPrice ? "可看价格" : "价格受限"
+              },
+              {
+                id: "qualityInspections" as Page,
+                label: "来料品检记录",
+                description: "检查单、来源快照与完整追溯",
+                Icon: ClipboardCheck,
+                badge: "只读"
+              },
+              {
+                id: "diagnosticLogs" as Page,
+                label: "PDA 错误日志",
+                description: "自动上报、邮件状态与完整脱敏报告",
+                Icon: Bug,
+                badge: "管理员"
               }
             ]
           }]
@@ -2011,6 +2037,14 @@ export default function App() {
 
             {page === "serviceDirectory" && session?.context.access.canManageAccounts && (
               <InternalServiceDirectoryPage apiBase={apiBase} session={session} />
+            )}
+
+            {page === "diagnosticLogs" && session?.context.access.canManageAccounts && (
+              <InternalDiagnosticLogsPage apiBase={apiBase} token={session.token} />
+            )}
+
+            {page === "qualityInspections" && session?.context.access.canManageAccounts && (
+              <InternalQualityInspectionsPage apiBase={apiBase} token={session.token} />
             )}
 
             {page === "reports" && session && (

@@ -57,6 +57,9 @@ ORDER_ID_FIELD = "id"
 ORDER_INTERNAL_ID_FIELD = "internal_id"
 ORDER_ITEM_LAYOUT = "@出貨單資料"
 ORDER_ITEM_QTY_LAYOUT = "出貨單資料_List_業務"
+ORDER_ITEM_ISSUE_LAYOUT = "零件包 發料分类"
+ORDER_ITEM_ISSUE_LINK_FIELD = "ID_出貨單資料"
+ORDER_ITEM_ISSUE_CONCURRENCY = 12
 PART_LAYOUT = "零件 資料_業務"
 INTERNAL_ORDER_LIST_LAYOUT = "訂單 清單_業務"
 INTERNAL_ORDER_SUMMARY_LAYOUT = "訂單 清單"
@@ -915,6 +918,22 @@ async def get_order_detail(
             continue
         items.append(_item_payload({}, qty_fields, qty_fields, {}, len(items) + 1))
 
+    try:
+        issued_quantity_catalog = await _warehouse_issued_quantity_catalog(
+            client,
+            [_text(item.get("id")) for item in items],
+        )
+    except FileMakerAPIError as exc:
+        raise HTTPException(
+            status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "读取仓库发料数量失败。", "payload": exc.payload},
+        ) from exc
+    for item in items:
+        item["warehouseIssuedQuantity"] = issued_quantity_catalog.get(
+            _text(item.get("id")),
+            0.0,
+        )
+
     image_catalog = await _product_cos_image_catalog(
         client,
         storage,
@@ -1020,6 +1039,7 @@ def _item_payload(
         "vendor": _text(product_fields.get("產品 BOM::廠商")),
         "specification": _text(fields.get("SC編號")) or _text(fields.get("分類包")),
         "quantity": _number(qty_fields.get("數量")),
+        "warehouseIssuedQuantity": 0.0,
         "unit": "件",
         "shipDate": "",
     }
@@ -1044,6 +1064,55 @@ def _number(value: Any) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _warehouse_issued_quantity(records: list[dict[str, Any]]) -> float:
+    # 實發数量 is a part count. Convert each recorded warehouse-issued BOM row
+    # back to complete-product units; the bottleneck row is the comparable total.
+    completed_product_quantities: list[float] = []
+    for record in records:
+        fields = _fields(record)
+        issue_category = (
+            _text(fields.get("零件_BOM::倉庫分工"))
+            or _text(fields.get("產品 BOM_BOM::倉庫分工"))
+        ).replace(" ", "")
+        if issue_category not in {"发料", "發料"}:
+            continue
+
+        rated_quantity = _number(fields.get("額定數量"))
+        if rated_quantity <= 0:
+            continue
+        if _text(fields.get("實發数量")) == "":
+            continue
+        actual_quantity = max(0.0, _number(fields.get("實發数量")))
+        completed_product_quantities.append(actual_quantity / rated_quantity)
+
+    if not completed_product_quantities:
+        return 0.0
+    return float(int(min(completed_product_quantities)))
+
+
+async def _warehouse_issued_quantity_catalog(
+    client: FileMakerClient,
+    line_ids: list[str],
+) -> dict[str, float]:
+    normalized_ids = list(dict.fromkeys(line_id for line_id in line_ids if line_id))
+    catalog: dict[str, float] = {}
+
+    async def load_line(line_id: str) -> tuple[str, float]:
+        records, _found_count = await _find_all_order_records(
+            client,
+            ORDER_ITEM_ISSUE_LAYOUT,
+            query={ORDER_ITEM_ISSUE_LINK_FIELD: f"=={line_id}"},
+        )
+        return line_id, _warehouse_issued_quantity(records)
+
+    for start in range(0, len(normalized_ids), ORDER_ITEM_ISSUE_CONCURRENCY):
+        batch = normalized_ids[start : start + ORDER_ITEM_ISSUE_CONCURRENCY]
+        results = await asyncio.gather(*(load_line(line_id) for line_id in batch))
+        for line_id, quantity in results:
+            catalog[line_id] = quantity
+    return catalog
 
 
 async def _order_receipt_catalog(

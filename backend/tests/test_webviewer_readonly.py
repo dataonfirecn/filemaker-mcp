@@ -24,6 +24,8 @@ from app.services.dependencies import (
     get_webviewer_session_context,
 )
 from app.services.webviewer_session import (
+    _b64encode,
+    _sign,
     create_mock_context,
     issue_session_token,
     operator_from_session,
@@ -197,6 +199,161 @@ async def test_remote_webviewer_login_issues_audited_internal_session() -> None:
     assert response.context["operator"]["privilege"] == "internal_remote"
     assert response.context["customerId"] == "CU004"
     assert len(audit._memory_rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_database_web_account_logs_in_without_filemaker_account() -> None:
+    password = "Quality-304"
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=False,
+        webviewer_remote_access_enabled=True,
+        webviewer_remote_accounts_json="[]",
+    )
+    audit = AuditLogStore("memory://")
+    store = WebViewerAccountAccessStore("memory://database-web-login")
+    await store.init()
+    account = await store.register_account(
+        username="304",
+        display_name="品检员 304",
+        privilege_set="品檢員",
+        origin="admin",
+        seen=False,
+    )
+    await store.set_password_hash(
+        "304",
+        hash_customer_password(password, iterations=100_000),
+        updated_by="admin",
+    )
+    await store.update_account(
+        "304",
+        enabled=True,
+        mobile_only=True,
+        permissions=account["permissions"],
+        updated_by="admin",
+    )
+
+    response = await create_webviewer_session(
+        WebViewerSessionRequest(username="304", password=password),
+        Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/webviewer/session",
+                "headers": [
+                    (b"x-client-channel", b"ios-pda"),
+                    (b"user-agent", b"StarRCPDA/4 CFNetwork/3860 Darwin/25"),
+                ],
+            }
+        ),
+        settings,
+        audit,
+        store,
+    )
+
+    assert response.context["operator"] == {
+        "account": "304",
+        "name": "品检员 304",
+        "privilege": "品檢員",
+        "persistentId": "304",
+    }
+    assert response.context["access"]["canManageAccounts"] is False
+    assert response.context["authenticationMethod"] == "webPassword"
+    assert response.context["deviceClass"] == "physical"
+
+
+@pytest.mark.asyncio
+async def test_physical_pda_rejects_mock_login() -> None:
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=False,
+    )
+
+    with pytest.raises(HTTPException) as denied:
+        await create_webviewer_session(
+            WebViewerSessionRequest(mock=True),
+            Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/api/webviewer/session",
+                    "headers": [
+                        (b"x-client-channel", b"ios-pda"),
+                        (b"x-device-class", b"physical"),
+                        (b"user-agent", b"StarRCPDA/1.0.0 build/13"),
+                    ],
+                }
+            ),
+            settings,
+            AuditLogStore("memory://physical-mock-login"),
+        )
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail["message"] == "物理设备必须使用员工账号和密码登录。"
+
+
+@pytest.mark.asyncio
+async def test_physical_pda_rejects_signed_filemaker_context_login() -> None:
+    settings = Settings(webviewer_context_secret="unit-test-secret")
+    signed_context = create_mock_context(
+        operator_account="filemaker-user",
+        operator_name="FileMaker User",
+    )
+    ctx = _b64encode(json.dumps(signed_context).encode("utf-8"))
+
+    with pytest.raises(HTTPException) as denied:
+        await create_webviewer_session(
+            WebViewerSessionRequest(
+                ctx=ctx,
+                sig=_sign(ctx, settings.webviewer_context_secret),
+            ),
+            Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/api/webviewer/session",
+                    "headers": [
+                        (b"x-client-channel", b"ios-pda"),
+                        (b"x-device-class", b"physical"),
+                        (b"user-agent", b"StarRCPDA/1.0.0 build/13"),
+                    ],
+                }
+            ),
+            settings,
+            AuditLogStore("memory://physical-signed-context-login"),
+        )
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail["message"] == "物理设备必须使用员工账号和密码登录。"
+
+
+@pytest.mark.asyncio
+async def test_simulator_can_use_explicitly_enabled_local_mock_login() -> None:
+    settings = Settings(
+        webviewer_context_secret="unit-test-secret",
+        webviewer_allow_mock_context=True,
+    )
+
+    response = await create_webviewer_session(
+        WebViewerSessionRequest(mock=True),
+        Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/webviewer/session",
+                "headers": [
+                    (b"x-client-channel", b"ios-pda"),
+                    (b"x-device-class", b"simulator"),
+                    (b"user-agent", b"StarRCPDA/1.0.0 build/13"),
+                ],
+            }
+        ),
+        settings,
+        AuditLogStore("memory://simulator-mock-login"),
+    )
+
+    assert response.context["authenticationMethod"] == "mock"
+    assert response.context["deviceClass"] == "simulator"
 
 
 @pytest.mark.asyncio
@@ -386,6 +543,30 @@ async def test_mobile_only_account_rejects_existing_session_from_web() -> None:
     assert denied.value.status_code == 403
     assert denied.value.detail["message"] == "此账号仅允许通过移动端访问。"
 
+    with pytest.raises(HTTPException) as physical_denied:
+        await get_webviewer_session_context(
+            Request(
+                {
+                    "type": "http",
+                    "method": "GET",
+                    "path": "/api/webviewer/session/me",
+                    "headers": [
+                        (b"authorization", f"Bearer {token}".encode()),
+                        (b"x-client-channel", b"ios-pda"),
+                        (b"x-device-class", b"physical"),
+                        (b"user-agent", b"StarRCPDA/1.0.0 build/13"),
+                    ],
+                    "app": app,
+                }
+            )
+        )
+
+    assert physical_denied.value.status_code == 403
+    assert (
+        physical_denied.value.detail["message"]
+        == "物理设备必须使用员工账号和密码登录。"
+    )
+
     mobile_context = await get_webviewer_session_context(
         Request(
             {
@@ -395,6 +576,7 @@ async def test_mobile_only_account_rejects_existing_session_from_web() -> None:
                 "headers": [
                     (b"authorization", f"Bearer {token}".encode()),
                     (b"x-client-channel", b"ios-pda"),
+                    (b"x-device-class", b"simulator"),
                     (b"user-agent", b"StarRCPDA/4 CFNetwork/3860 Darwin/25"),
                 ],
                 "app": app,
@@ -403,6 +585,32 @@ async def test_mobile_only_account_rejects_existing_session_from_web() -> None:
     )
 
     assert mobile_context["operator"]["account"] == "pda"
+
+    password_context = create_mock_context(
+        operator_account="pda",
+        operator_name="PDA 测试员",
+        operator_privilege="倉庫_組員",
+    )
+    password_context["authenticationMethod"] = "webPassword"
+    password_token, _ = issue_session_token(password_context, settings)
+    physical_context = await get_webviewer_session_context(
+        Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/webviewer/session/me",
+                "headers": [
+                    (b"authorization", f"Bearer {password_token}".encode()),
+                    (b"x-client-channel", b"ios-pda"),
+                    (b"x-device-class", b"physical"),
+                    (b"user-agent", b"StarRCPDA/1.0.0 build/13"),
+                ],
+                "app": app,
+            }
+        )
+    )
+
+    assert physical_context["operator"]["account"] == "pda"
 
 
 @pytest.mark.asyncio

@@ -84,6 +84,8 @@ def issue_session_token(
         "currency": context.get("currency") or "",
         "access": context.get("access") or {},
         "partPermissions": context.get("partPermissions") or {},
+        "authenticationMethod": context.get("authenticationMethod") or "",
+        "deviceClass": context.get("deviceClass") or "",
         "iat": now,
         "exp": now + effective_ttl_seconds,
     }

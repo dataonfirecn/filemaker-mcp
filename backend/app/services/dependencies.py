@@ -23,6 +23,7 @@ from app.services.nightly_report_store import NightlyReportStore
 from app.services.part_asset_upload_store import PartAssetUploadStore
 from app.services.part_creation_options_cache import PartCreationOptionsCache
 from app.services.product_photo_upload_store import ProductPhotoUploadStore
+from app.services.quality_inspection_store import QualityInspectionStore
 from app.services.part_permission_catalog import PART_PERMISSION_KEY_SET
 from app.services.rag_index import RagIndexStore, RagIndexWorker
 from app.services.receipt_attachment_store import ReceiptAttachmentStore
@@ -32,7 +33,10 @@ from app.services.webviewer_session import (
     verify_session_token,
 )
 from app.services.webviewer_account_access import WebViewerAccountAccessStore
-from app.services.webviewer_remote_auth import is_webviewer_mobile_request
+from app.services.webviewer_remote_auth import (
+    is_webviewer_mobile_request,
+    is_webviewer_physical_pda_request,
+)
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -65,6 +69,10 @@ def get_audit_log_store(request: Request) -> AuditLogStore:
 
 def get_bom_document_store(request: Request) -> BomDocumentStore:
     return request.app.state.bom_document_store
+
+
+def get_quality_inspection_store(request: Request) -> QualityInspectionStore:
+    return request.app.state.quality_inspection_store
 
 
 def get_rag_index_store(request: Request) -> RagIndexStore:
@@ -144,16 +152,33 @@ async def get_webviewer_session_context(request: Request) -> dict:
             detail={"message": str(exc)},
         ) from exc
 
+    if is_webviewer_physical_pda_request(
+        client_channel=request.headers.get("X-Client-Channel", ""),
+        device_class=request.headers.get("X-Device-Class", ""),
+    ) and context.get("authenticationMethod") != "webPassword":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "物理设备必须使用员工账号和密码登录。"},
+        )
+
     operator = context.get("operator") or {}
-    account = await request.app.state.webviewer_account_access_store.observe_account(
-        username=str(operator.get("account") or "unknown"),
-        display_name=str(operator.get("name") or operator.get("account") or "unknown"),
-        privilege_set=str(operator.get("privilege") or "unknown"),
-    )
+    account_store = request.app.state.webviewer_account_access_store
+    username = str(operator.get("account") or "unknown")
+    existing_account = await account_store.get_account(username)
+    if existing_account and existing_account["origin"] != "filemaker":
+        account = existing_account
+    else:
+        account = await account_store.observe_account(
+            username=username,
+            display_name=str(
+                operator.get("name") or operator.get("account") or "unknown"
+            ),
+            privilege_set=str(operator.get("privilege") or "unknown"),
+        )
     if not account["enabled"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "此 DMS 账号或其 FileMaker 权限集已停用。"},
+            detail={"message": "此 Web 账号或其角色已停用。"},
         )
     if account["mobileOnly"] and not is_webviewer_mobile_request(
         client_channel=request.headers.get("X-Client-Channel", ""),
@@ -272,6 +297,8 @@ def _permission_for_request(request: Request) -> str | None:
         if "/merge/" in path and method == "POST":
             return "canMergeOrders"
         return "canViewOrders"
+    if path == "/api/scan/resolve" or path.startswith("/api/qc/"):
+        return "canViewQuality"
     if path.startswith("/api/mobile/v1/receipts"):
         return "canViewOrders"
     if path.startswith("/api/mobile/v1/products"):

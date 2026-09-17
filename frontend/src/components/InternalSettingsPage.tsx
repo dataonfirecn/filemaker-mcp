@@ -187,7 +187,7 @@ export default function InternalSettingsPage({
           <dl className="internal-settings-facts">
             <div><dt>显示名称</dt><dd>{user.displayName || "—"}</dd></div>
             <div><dt>用户名</dt><dd>{user.username || "—"}</dd></div>
-            <div><dt>FileMaker 权限集</dt><dd>{user.privilegeSet || "—"}</dd></div>
+            <div><dt>账号角色</dt><dd>{user.privilegeSet || "—"}</dd></div>
             <div><dt>数据访问</dt><dd>{readOnly ? "只读模式" : "受控写入"}</dd></div>
           </dl>
           {permissions.canManageAccounts && onOpenAccountAdmin && (

@@ -13,6 +13,7 @@ from app.services.dependencies import (
 )
 from app.services.mobile_diagnostic_email import (
     MobileDiagnosticEmailError,
+    redact_diagnostic_report,
     send_mobile_diagnostic_email,
 )
 from app.services.mobile_app_version import (
@@ -121,6 +122,8 @@ async def get_mobile_diagnostic_operator(
 )
 async def email_mobile_diagnostic_report(
     body: MobileDiagnosticEmailRequest,
+    app_build: str | None = Header(default=None, alias=APP_BUILD_HEADER),
+    app_version: str | None = Header(default=None, alias=APP_VERSION_HEADER),
     operator: OperatorContext = Depends(get_mobile_diagnostic_operator),
     settings: Settings = Depends(get_settings_from_app),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
@@ -129,6 +132,22 @@ async def email_mobile_diagnostic_report(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail={"message": "错误报告内容超过服务器允许的大小。"},
+        )
+    saved_report = await audit_log.save_mobile_diagnostic_report(
+        operator=operator,
+        report_id=body.report_id,
+        draft_id=body.draft_id,
+        document_number=body.document_number,
+        event=body.event,
+        report=redact_diagnostic_report(body.report),
+        app_build=(app_build or "").strip(),
+        app_version=(app_version or "").strip(),
+    )
+    if saved_report["emailStatus"] == "sent":
+        return MobileDiagnosticEmailResponse(
+            reportId=body.report_id,
+            status="already_sent",
+            sentAt=saved_report["emailedAt"] or saved_report["updatedAt"],
         )
     delivery_key = (operator.account.casefold(), body.report_id)
     now = datetime.now(timezone.utc)
@@ -150,6 +169,12 @@ async def email_mobile_diagnostic_report(
             [],
         )
         if len(attempts) >= settings.ios_pda_diagnostic_email_max_per_hour:
+            await audit_log.update_mobile_diagnostic_email_status(
+                operator_account=operator.account,
+                report_id=body.report_id,
+                email_status="failed",
+                email_error="错误报告发送过于频繁，邮件未发送。",
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={"message": "错误报告发送过于频繁，请稍后再试或先复制报告。"},
@@ -171,6 +196,12 @@ async def email_mobile_diagnostic_report(
         )
         delivered_at = datetime.now(timezone.utc)
     except MobileDiagnosticEmailError as exc:
+        await audit_log.update_mobile_diagnostic_email_status(
+            operator_account=operator.account,
+            report_id=body.report_id,
+            email_status="failed",
+            email_error=str(exc),
+        )
         await audit_log.record(
             operator=operator,
             action_type="PDA_DIAGNOSTIC_EMAIL",
@@ -198,6 +229,12 @@ async def email_mobile_diagnostic_report(
 
     assert delivered_at is not None
     sent_at = delivered_at
+    await audit_log.update_mobile_diagnostic_email_status(
+        operator_account=operator.account,
+        report_id=body.report_id,
+        email_status="sent",
+        emailed_at=sent_at,
+    )
     await audit_log.record(
         operator=operator,
         action_type="PDA_DIAGNOSTIC_EMAIL",

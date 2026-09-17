@@ -147,7 +147,7 @@ const browserPages: PageEntry[] = [
   },
   {
     name: "账号与权限",
-    description: "管理 FileMaker 账号映射、权限集与功能授权。",
+    description: "管理 Web 账号、账号角色与功能授权。",
     route: "/?page=accessAdmin",
     access: "系统管理员",
     Icon: ShieldCheck
@@ -333,7 +333,7 @@ export default function InternalServiceDirectoryPage({
           <div>
             <span>CHANNEL 01</span>
             <h2>浏览器登录工作台</h2>
-            <p>直接打开 StarRC，由内部员工账号登录；功能仍按 FileMaker 权限集开放。</p>
+            <p>直接打开 StarRC，由内部 Web 员工账号登录；功能按账号角色开放。</p>
           </div>
           <strong>{browserPages.length} 个入口</strong>
         </header>
