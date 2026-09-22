@@ -1,9 +1,13 @@
+import asyncio
+from collections import OrderedDict
+from io import BytesIO
 from math import ceil
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import Request, APIRouter, Depends, HTTPException, Query, Response, status
+from PIL import Image
 
 from app.models.business_products import (
     BusinessProductDetailResponse,
@@ -20,6 +24,11 @@ from app.services.dependencies import (
     get_operator_context,
 )
 from app.services.filemaker_client import FileMakerAPIError, FileMakerClient
+from app.services.image_tickets import (
+    TICKET_TTL_SECONDS,
+    sign_thumbnail_ticket,
+    verify_thumbnail_ticket,
+)
 from app.services.product_api import (
     PRODUCT_LAYOUT as PRODUCT_API_LAYOUT,
     PRODUCT_STOCK_FIELD,
@@ -38,6 +47,16 @@ PRODUCT_IMAGE_MEDIA_TYPES = {
     "image/png",
     "image/webp",
 }
+PRODUCT_IMAGE_FIELD = "image_main"
+THUMBNAIL_MAX_EDGE = 160
+THUMBNAIL_MEDIA_TYPE = "image/webp"
+THUMBNAIL_QUALITY = 72
+# Browsers may cache for the ticket's lifetime; a new asset version changes the
+# URL, so a stale thumbnail can never outlive the image it was rendered from.
+THUMBNAIL_CACHE_CONTROL = f"private, max-age={TICKET_TTL_SECONDS}, immutable"
+THUMBNAIL_CACHE_ENTRIES = 512
+_thumbnail_cache: "OrderedDict[tuple[str, str], bytes]" = OrderedDict()
+
 SEARCH_FIELDS = [
     "product_sku",
     "系統產品編號",
@@ -66,6 +85,7 @@ async def list_business_products(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
     operator: OperatorContext = Depends(get_operator_context),
+    request: Request = None,
 ) -> BusinessProductsResponse:
     normalized_query = q.strip()
     filters = BusinessProductFilters(
@@ -76,15 +96,29 @@ async def list_business_products(
     )
     offset = ((page - 1) * page_size) + 1
     query = _build_query(normalized_query, filters)
-    result = await filemaker.find_records(
-        PRODUCT_API_LAYOUT,
-        query=query,
-        limit=page_size,
-        offset=offset,
-    )
+    store = _web_product_store(request)
+    if store:
+        from app.services.product_master.store import unpack
+        filter_data = {key:value for key,value in {"類別":category.strip(),"車款":model.strip(),"審核":audit.strip(),"Client":client_name.strip()}.items() if value}
+        import json
+        predicate = "source=$1 AND ($2='' OR strpos(lower(concat_ws(' ',fields->>'product_sku',fields->>'product_name',fields->>'產品名稱_中文')),lower($2))>0) AND fields @> $3::jsonb"
+        count = await store.pool.fetchval('SELECT count(*) FROM pm_product WHERE '+predicate,store.source,normalized_query,json.dumps(filter_data))
+        snapshots = [unpack(r) for r in await store.pool.fetch('SELECT * FROM pm_product WHERE '+predicate+' ORDER BY id LIMIT $4 OFFSET $5',store.source,normalized_query,json.dumps(filter_data),page_size,offset-1)]
+        records = [_master_record(await store.hydrate(r,store.pool), request, operator) for r in snapshots]
+        result = {"data":records,"foundCount":count,"returnedCount":len(records)}
+    else:
+        result = await filemaker.find_records(
+            PRODUCT_API_LAYOUT,
+            query=query,
+            limit=page_size,
+            offset=offset,
+        )
     found_count = int(result["foundCount"] or 0)
     total_pages = max(1, ceil(found_count / page_size))
-    rows = [_product_row(record) for record in result["data"]]
+    thumb_secret = _thumbnail_secret(request)
+    rows = [
+        _product_row(record, thumb_secret=thumb_secret) for record in result["data"]
+    ]
     await audit_log.record(
         operator=operator,
         action_type="READ_BUSINESS_PRODUCTS",
@@ -104,7 +138,7 @@ async def list_business_products(
         },
     )
     return BusinessProductsResponse(
-        layout=PRODUCT_API_LAYOUT,
+        layout="Web 产品库" if store else PRODUCT_API_LAYOUT,
         rows=rows,
         foundCount=found_count,
         returnedCount=result["returnedCount"],
@@ -122,7 +156,13 @@ async def get_business_product(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
     operator: OperatorContext = Depends(get_operator_context),
+    request: Request = None,
 ) -> BusinessProductDetailResponse:
+    store = _web_product_store(request)
+    if store:
+        snapshot = await store.get(record_id)
+        if not snapshot: raise HTTPException(404, "产品不存在")
+        return BusinessProductDetailResponse(layout="Web products",product=_product_row(_master_record(snapshot,request,operator),thumb_secret=_thumbnail_secret(request)))
     try:
         record = await _resolve_product_detail_record(filemaker, record_id)
     except FileMakerAPIError as exc:
@@ -135,7 +175,10 @@ async def get_business_product(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Product record not found"},
         )
-    product = _product_row(await enrich_product_record(filemaker, record))
+    product = _product_row(
+        await enrich_product_record(filemaker, record),
+        thumb_secret=_thumbnail_secret(request),
+    )
     await audit_log.record(
         operator=operator,
         action_type="READ_BUSINESS_PRODUCT_DETAIL",
@@ -159,7 +202,17 @@ async def get_business_product_image(
     record_id: str,
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     _: OperatorContext = Depends(get_operator_context),
+    request: Request = None,
 ) -> Response:
+    store = _web_product_store(request)
+    if store:
+        snapshot = await store.get(record_id)
+        if not snapshot: raise HTTPException(404, "产品不存在")
+        asset = next((a for a in snapshot['assets'] if a['field'] == 'image_main' and a['mimeType'].startswith('image/')), None)
+        if not asset: raise HTTPException(404, "产品没有图片")
+        from app.api.product_master import download
+        from uuid import UUID
+        return await download(UUID(str(snapshot['id'])),UUID(asset['id']),request,{'access':_.permissions or {}})
     try:
         record = await _resolve_product_detail_record(filemaker, record_id)
     except FileMakerAPIError as exc:
@@ -168,7 +221,7 @@ async def get_business_product_image(
             detail={"message": "FileMaker 产品图片读取失败，请稍后重试。"},
         ) from exc
     fields = record.get("fieldData", {}) if isinstance(record, dict) else {}
-    image_url = str(fields.get("檔案 1 | 容器") or "").strip()
+    image_url = str(fields.get("image_main") or "").strip()
     if not image_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -184,6 +237,141 @@ async def get_business_product_image(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/{record_id}/thumbnail")
+async def get_business_product_thumbnail(
+    record_id: str,
+    v: str = Query(default="", max_length=80),
+    exp: int = Query(default=0),
+    sig: str = Query(default="", max_length=64),
+    filemaker: FileMakerClient = Depends(get_filemaker_client),
+    request: Request = None,
+) -> Response:
+    """Serve a small WebP thumbnail against a signed ticket instead of a session.
+
+    The ticket was minted for a caller who had already passed the product
+    visibility check, so this route performs no further permission lookup -- it
+    must therefore never serve anything but the downscaled image.
+    """
+    secret = _thumbnail_secret(request)
+    if not verify_thumbnail_ticket(record_id, v, exp, sig, secret):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "缩略图链接无效或已过期。"},
+        )
+
+    cache_key = (record_id, v)
+    cached = _thumbnail_cache.get(cache_key)
+    if cached is not None:
+        _thumbnail_cache.move_to_end(cache_key)
+        return _thumbnail_response(cached, record_id, v)
+
+    content, _content_type = await _load_product_image_bytes(record_id, filemaker, request)
+    thumbnail = await asyncio.to_thread(_downscale_image, content)
+    _thumbnail_cache[cache_key] = thumbnail
+    _thumbnail_cache.move_to_end(cache_key)
+    while len(_thumbnail_cache) > THUMBNAIL_CACHE_ENTRIES:
+        _thumbnail_cache.popitem(last=False)
+    return _thumbnail_response(thumbnail, record_id, v)
+
+
+def _thumbnail_response(content: bytes, record_id: str, version: str) -> Response:
+    return Response(
+        content=content,
+        media_type=THUMBNAIL_MEDIA_TYPE,
+        headers={
+            "Cache-Control": THUMBNAIL_CACHE_CONTROL,
+            "ETag": f'"{record_id}-{version}-thumb"',
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+        },
+    )
+
+
+def _downscale_image(content: bytes) -> bytes:
+    with Image.open(BytesIO(content)) as image:
+        image.load()
+        if image.mode not in {"RGB", "RGBA"}:
+            image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+        image.thumbnail((THUMBNAIL_MAX_EDGE, THUMBNAIL_MAX_EDGE), Image.LANCZOS)
+        buffer = BytesIO()
+        image.save(buffer, format="WEBP", quality=THUMBNAIL_QUALITY, method=4)
+    return buffer.getvalue()
+
+
+async def _load_product_image_bytes(
+    record_id: str,
+    filemaker: FileMakerClient,
+    request: Request,
+) -> tuple[bytes, str]:
+    """Return the full-resolution main image bytes for a product."""
+    store = _web_product_store(request)
+    if store:
+        snapshot = await store.get(record_id)
+        if not snapshot:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "产品不存在"},
+            )
+        asset = next(
+            (
+                item
+                for item in snapshot["assets"]
+                if item["field"] == PRODUCT_IMAGE_FIELD
+                and str(item["mimeType"]).startswith("image/")
+            ),
+            None,
+        )
+        if not asset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "产品没有图片"},
+            )
+        storage = request.app.state.cos_storage_service
+        content = await asyncio.to_thread(
+            storage.get_object_bytes,
+            asset["objectKey"],
+            max_bytes=MAX_PRODUCT_IMAGE_BYTES,
+        )
+        return content, str(asset["mimeType"])
+
+    try:
+        record = await _resolve_product_detail_record(filemaker, record_id)
+    except FileMakerAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "FileMaker 产品图片读取失败，请稍后重试。"},
+        ) from exc
+    fields = record.get("fieldData", {}) if isinstance(record, dict) else {}
+    image_url = str(fields.get(PRODUCT_IMAGE_FIELD) or "").strip()
+    if not image_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "产品没有可显示的主图。"},
+        )
+    return await _download_product_image(filemaker, image_url)
+
+
+def _thumbnail_secret(request: Request | None) -> str:
+    state = getattr(getattr(request, "app", None), "state", None)
+    settings = getattr(state, "settings", None)
+    return str(getattr(settings, "webviewer_context_secret", "") or "")
+
+
+def _thumbnail_url(
+    record_id: str,
+    version: str,
+    *,
+    has_image: bool,
+    secret: str,
+) -> str:
+    """Mint a signed thumbnail URL, or "" when there is nothing to show."""
+    if not has_image or not record_id or not secret:
+        return ""
+    expires_at, signature = sign_thumbnail_ticket(record_id, version, secret)
+    query = urlencode({"v": version, "exp": expires_at, "sig": signature})
+    return f"/api/business-products/{record_id}/thumbnail?{query}"
 
 
 async def _resolve_product_detail_record(
@@ -322,19 +510,31 @@ def _first_record(data: Any) -> dict[str, Any] | None:
     return None
 
 
-def _product_row(record: dict[str, Any]) -> BusinessProductRow:
+def _product_row(
+    record: dict[str, Any],
+    *,
+    thumb_secret: str = "",
+) -> BusinessProductRow:
     fields = record.get("fieldData", {})
     main_fields = _main_fields(fields)
     related_field_groups = _related_field_groups(fields)
     portals = _portal_groups(record.get("portalData", {}))
+    record_id = str(record.get("recordId") or "")
+    version = str(record.get("modId") or "")
     return BusinessProductRow(
-        recordId=str(record.get("recordId") or ""),
-        modId=str(record.get("modId") or ""),
+        recordId=record_id,
+        modId=version,
         productSku=_text(fields.get("product_sku")),
         systemProductSku=_text(fields.get("系統產品編號")),
         productName=_text(fields.get("product_name")),
         productNameCn=_text(fields.get("產品名稱_中文")),
-        imageUrl=_text(fields.get("檔案 1 | 容器")),
+        imageUrl=_text(fields.get(PRODUCT_IMAGE_FIELD)),
+        thumbnailUrl=_thumbnail_url(
+            record_id,
+            version,
+            has_image=bool(_text(fields.get(PRODUCT_IMAGE_FIELD)).strip()),
+            secret=thumb_secret,
+        ),
         selectedFileUrl=_text(fields.get("選取的文件 | 容器")),
         qrCodeUrl=_text(fields.get("qrcode")),
         modelName=_text(fields.get("車款")),
@@ -420,3 +620,24 @@ def _text(value: Any) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+def _master_record(snapshot, request, operator):
+    schema = request.app.state.product_master_schema
+    fields = schema.filter_fields(snapshot['fields'], operator.permissions or {})
+    for asset in snapshot['assets']:
+        if asset['field'] in {f['name'] for f in schema.visible(operator.permissions or {})}:
+            fields[asset['field']] = f"/api/product-master/products/{snapshot['id']}/assets/{asset['id']}"
+    return {'recordId':str(snapshot['id']),'modId':str(snapshot['version']),'fieldData':fields}
+
+
+def _web_product_store(request):
+    if request is None:
+        return None
+    state=request.app.state
+    store=getattr(state, 'product_master_store', None)
+    if getattr(getattr(state, 'settings', None), 'product_master_web_only', False):
+        store=store or getattr(state, 'product_master_preview_store', None)
+        if not store:
+            raise HTTPException(503, 'Web 产品测试库未就绪')
+    return store

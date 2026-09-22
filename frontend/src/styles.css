@@ -9519,6 +9519,335 @@ body.resizing-customer-columns * {
   border-color: #9cc7e4;
 }
 
+/* ---------- Product catalog grid ---------- */
+.card-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Product number doubles as the affordance that opens the detail page,
+   replacing a dedicated action column. */
+.grid-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-link:hover,
+.grid-link:focus-visible {
+  text-decoration: underline;
+}
+
+.ag-theme-quartz .product-thumb-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.product-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: calc(100% - 8px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  overflow: hidden;
+  cursor: zoom-in;
+  color: var(--muted-light);
+}
+
+.product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.product-thumb.empty {
+  cursor: default;
+  border-style: dashed;
+}
+
+.product-thumb-zoom {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(15, 20, 25, 0.66);
+  color: #fff;
+}
+
+.product-thumb:hover .product-thumb-zoom,
+.product-thumb:focus-visible .product-thumb-zoom {
+  display: flex;
+}
+
+/* Chinese and English names share one column as two lines: the widest pair of
+   columns in the old layout, and the reason everything else got squeezed. */
+.ag-theme-quartz .product-name-cell {
+  line-height: 1.25;
+}
+
+.product-name-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.product-name-primary,
+.product-name-secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-name-primary {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.product-name-secondary {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.product-directory-grid.density-compact .product-name-secondary {
+  display: none;
+}
+
+.grid-scope-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 22px 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.column-menu-wrap {
+  position: relative;
+}
+
+.column-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.column-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  max-height: min(420px, 60vh);
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-elevated);
+  box-shadow: 0 12px 30px rgba(15, 20, 25, 0.16);
+}
+
+/* Only the checkbox list scrolls, so "恢复默认" and the autosize action stay
+   reachable however many columns the grid grows. */
+.column-menu-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.column-menu-head,
+.column-menu-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px 8px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.column-menu-head,
+.column-menu-foot {
+  flex: none;
+}
+
+.column-menu-foot {
+  padding: 8px 6px 2px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 6px;
+}
+
+.column-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.column-menu-item:hover {
+  background: var(--surface-muted);
+}
+
+.page-size-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.page-size-select select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.product-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 20, 25, 0.62);
+}
+
+.product-preview {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: 100%;
+  border-radius: 12px;
+  background: var(--surface-elevated);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 20, 25, 0.35);
+}
+
+.product-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.product-preview-head div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-preview-head strong {
+  font-size: 14px;
+  color: var(--ink-strong);
+}
+
+.product-preview-head span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.product-preview-body {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  padding: 16px;
+  background: var(--surface-muted);
+}
+
+.product-preview-body img {
+  max-width: 100%;
+  max-height: min(60vh, 520px);
+  object-fit: contain;
+}
+
+/* The cached thumbnail stands in, blurred, until the full image arrives. */
+.product-preview-body img.placeholder {
+  filter: blur(6px);
+  transform: scale(1.02);
+  width: 320px;
+}
+
+.product-preview-spinner {
+  position: absolute;
+  color: var(--blue);
+}
+
+.product-preview-error {
+  position: absolute;
+  bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.product-preview-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
 .detail-nav-row {
   display: flex;
   justify-content: space-between;
@@ -17344,4 +17673,9 @@ body.resizing-customer-columns * {
     margin-left: 0;
     overflow-x: auto;
   }
+}
+
+/* FileMaker embeds keep the full window dedicated to the conversation. */
+.home-page.home-page-embedded {
+  grid-template-rows: minmax(0, 1fr);
 }

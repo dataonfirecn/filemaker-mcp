@@ -145,3 +145,11 @@ script: MES_FILEMAKER_SCRIPT_NAME
   }
 }
 ```
+
+## 产品 Web 主库（待切换）
+
+新增产品资料及全部容器的 WebViewer 编辑、不可变历史、COS 文件版本、持久化
+FileMaker 回写与同源 DMS 发布。所有新开关默认关闭；真实基表覆盖、专用布局、UUID
+录入规则及原生编辑权限验收完成之前，不启用生产切换。
+
+实施状态、迁移与回退见 [产品主库切换手册](docs/product-master-cutover.md)。

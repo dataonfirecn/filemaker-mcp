@@ -445,7 +445,7 @@
       "excludeFields": [
         "qrcode",
         "sync_response",
-        "檔案 1 | 容器"
+        "image_main"
       ],
       "dateFields": {
         "createdAt": "created_at",

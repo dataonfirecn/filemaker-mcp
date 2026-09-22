@@ -2079,7 +2079,7 @@ def _part_record_to_product_shape(
         if fields.get("stock_on_hand_qty") not in (None, "")
         else fields.get("current_stock")
     )
-    mapped_fields["檔案 1 | 容器"] = fields.get("影像 | 容器") or fields.get("圖面 | 容器")
+    mapped_fields["image_main"] = fields.get("影像 | 容器") or fields.get("圖面 | 容器")
     created_by_field = semantic_concept_field(semantic_profile, "createdBy")
     if created_by_field:
         mapped_fields["Created By"] = fields.get(created_by_field)

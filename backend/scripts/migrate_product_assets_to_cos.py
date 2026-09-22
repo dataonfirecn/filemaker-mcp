@@ -332,6 +332,8 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> None:
+    if get_settings().product_master_enabled:
+        raise SystemExit("Product master owns assets; use product_master_migrate.py before cutover")
     args = parse_args()
     summary = asyncio.run(run(args))
     print(json.dumps(summary, ensure_ascii=False, indent=2))

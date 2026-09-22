@@ -102,6 +102,9 @@ export type WebViewerPermissions = {
   canViewPrice: boolean;
   canManageAccounts: boolean;
   canViewProducts: boolean;
+  canEditProducts: boolean;
+  canEditProductPrices: boolean;
+  canManageProductSync: boolean;
   canViewOrders: boolean;
   canViewQuality: boolean;
   canAddCompletedReceipts: boolean;
@@ -286,6 +289,7 @@ export type Page =
   | "home"
   | "chat"
   | "productInventory"
+  | "productMaster"
   | "internalOrderMerge"
   | "orderDetail"
   | "bom" // 合并后的 BOM 计算单页工作台
@@ -402,6 +406,7 @@ export type BusinessProductRow = {
   productName: string;
   productNameCn: string;
   imageUrl: string;
+  thumbnailUrl: string;
   selectedFileUrl: string;
   qrCodeUrl: string;
   modelName: string;

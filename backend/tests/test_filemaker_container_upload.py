@@ -73,3 +73,16 @@ async def test_container_upload_uses_multipart_upload_field() -> None:
     assert kwargs["files"] == {"upload": ("part.jpg", b"jpeg", "image/jpeg")}
     assert kwargs["headers"] == {"Authorization": "Bearer token"}
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_container_upload_sends_modification_guard_and_repetition():
+    client = FileMakerClient(SettingsStub())
+    await client._client.aclose()
+    client._client = UploadHTTPClient()
+    client._token = 'token'
+    await client.upload_container('@products_web','22','Manual',b'pdf','manual.pdf','application/pdf',repetition=2,mod_id='8')
+    url, kwargs = client._client.calls[0]
+    assert url.endswith('/containers/Manual/2')
+    assert kwargs['params'] == {'modId':'8'}
+    await client.close()

@@ -10,6 +10,7 @@ from app.api import (
     bom_changes,
     bom_documents,
     business_products,
+    product_master,
     filemaker,
     health,
     inventory,
@@ -177,6 +178,40 @@ async def lifespan(app: FastAPI):
     app.state.rag_index_worker = rag_index_worker
     app.state.rag_semantic_registry = rag_index_worker.semantic_registry
 
+    product_master_store = product_master_worker = product_master_filemaker = product_master_preview_store = None
+    if settings.product_master_preview_enabled:
+        from app.services.product_master.schema import ProductSchema
+        app.state.product_master_schema = ProductSchema.load(settings.product_master_schema_path)
+        if not settings.product_master_enabled:
+            from app.services.product_master.store import ProductStore, source_fingerprint
+            product_master_preview_store = ProductStore(settings.audit_database_url, settings.product_master_source, source_fingerprint(settings))
+            await product_master_preview_store.init()
+            app.state.product_master_preview_store = product_master_preview_store
+    if settings.product_master_enabled:
+        from app.services.product_master.schema import ProductSchema
+        from app.services.product_master.store import ProductStore, source_fingerprint
+        from app.services.product_master.worker import ProductWorker
+        schema = ProductSchema.load(settings.product_master_schema_path)
+        if settings.product_master_write_enabled and (
+            not settings.product_master_username or not settings.product_master_password
+            or not schema.document.get("baseTableVerified")
+            or not schema.document.get("nativeEditingLocked")
+            or not schema.document.get("uuidCreateVerified")
+            or schema.document.get("layout") != settings.product_master_layout
+        ):
+            raise RuntimeError("Product writeback requires verified base-table coverage, dedicated layout and native edit lock")
+        product_master_store = ProductStore(settings.audit_database_url, settings.product_master_source, source_fingerprint(settings))
+        await product_master_store.init()
+        app.state.product_master_store = product_master_store
+        filemaker_client.product_master_store = product_master_store
+        app.state.product_master_schema = schema
+        product_master_filemaker = FileMakerClient(settings.model_copy(update={
+            "filemaker_username": settings.product_master_username or settings.filemaker_username,
+            "filemaker_password": settings.product_master_password or settings.filemaker_password,
+        }))
+        product_master_worker = ProductWorker(product_master_store, schema, product_master_filemaker, cos_storage_service, settings)
+        product_master_worker.start()
+
     callback_worker.start()
     rag_index_worker.start()
     natural_query_analytics_worker.start()
@@ -186,6 +221,14 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if product_master_worker:
+            await product_master_worker.stop()
+        if product_master_store:
+            await product_master_store.close()
+        if product_master_preview_store:
+            await product_master_preview_store.close()
+        if product_master_filemaker:
+            await product_master_filemaker.close()
         await part_creation_options_cache.stop()
         await synthetic_query_monitor.stop()
         await nightly_maintenance_worker.stop()
@@ -283,6 +326,7 @@ async def filter_price_fields_for_webviewer_accounts(request, call_next):
     )
 
 app.include_router(health.router)
+app.include_router(product_master.router, prefix=settings.api_prefix)
 app.include_router(filemaker.router, prefix=settings.api_prefix)
 app.include_router(webviewer.router, prefix=settings.api_prefix)
 app.include_router(inventory.router, prefix=settings.api_prefix)

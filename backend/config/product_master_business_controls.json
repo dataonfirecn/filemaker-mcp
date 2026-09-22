@@ -1,0 +1,1142 @@
+{
+  "fieldMetaData": [
+    {
+      "name": "車子比例",
+      "type": "normal",
+      "displayType": "popupList",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "車子比例",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "車款",
+      "type": "normal",
+      "displayType": "popupList",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "車款",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "產品分類",
+      "type": "normal",
+      "displayType": "popupList",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "產品分類",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "類別",
+      "type": "normal",
+      "displayType": "popupList",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "類別",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "審核",
+      "type": "normal",
+      "displayType": "popupMenu",
+      "result": "text",
+      "global": false,
+      "autoEnter": true,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "產品審核",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "有現貨",
+      "type": "calculation",
+      "displayType": "popupList",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "追加訂購",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    },
+    {
+      "name": "ShowStock",
+      "type": "normal",
+      "displayType": "checkBox",
+      "result": "text",
+      "global": false,
+      "autoEnter": false,
+      "fourDigitYear": false,
+      "maxRepeat": 1,
+      "maxCharacters": 0,
+      "notEmpty": false,
+      "numeric": false,
+      "timeOfDay": false,
+      "valueList": "check",
+      "repetitionStart": 1,
+      "repetitionEnd": 1
+    }
+  ],
+  "valueLists": [
+    {
+      "name": "車子比例",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "1/8",
+          "value": "1/8"
+        },
+        {
+          "displayValue": "1/10",
+          "value": "1/10"
+        },
+        {
+          "displayValue": "1/12",
+          "value": "1/12"
+        },
+        {
+          "displayValue": "1/14",
+          "value": "1/14"
+        },
+        {
+          "displayValue": "1/16",
+          "value": "1/16"
+        },
+        {
+          "displayValue": "1/18",
+          "value": "1/18"
+        },
+        {
+          "displayValue": "1/24",
+          "value": "1/24"
+        },
+        {
+          "displayValue": "1/32",
+          "value": "1/32"
+        },
+        {
+          "displayValue": "周边配件",
+          "value": "周边配件"
+        },
+        {
+          "displayValue": "FD",
+          "value": "FD"
+        },
+        {
+          "displayValue": "1/24",
+          "value": "1/24"
+        },
+        {
+          "displayValue": "F150",
+          "value": "F150"
+        },
+        {
+          "displayValue": "2WD",
+          "value": "2WD"
+        },
+        {
+          "displayValue": "FJ40",
+          "value": "FJ40"
+        },
+        {
+          "displayValue": "CC24",
+          "value": "CC24"
+        },
+        {
+          "displayValue": "1/8 V6",
+          "value": "1/8 V6"
+        },
+        {
+          "displayValue": "324",
+          "value": "324"
+        },
+        {
+          "displayValue": "FE",
+          "value": "FE"
+        },
+        {
+          "displayValue": "1/8 2020",
+          "value": "1/8 2020"
+        },
+        {
+          "displayValue": "1/8 2021",
+          "value": "1/8 2021"
+        },
+        {
+          "displayValue": "1/10 2020",
+          "value": "1/10 2020"
+        },
+        {
+          "displayValue": "1/8 2022",
+          "value": "1/8 2022"
+        },
+        {
+          "displayValue": "1/5",
+          "value": "1/5"
+        },
+        {
+          "displayValue": "其他",
+          "value": "其他"
+        },
+        {
+          "displayValue": "1/8 2023",
+          "value": "1/8 2023"
+        },
+        {
+          "displayValue": "1/8 FE 2023",
+          "value": "1/8 FE 2023"
+        },
+        {
+          "displayValue": "1/27.5",
+          "value": "1/27.5"
+        },
+        {
+          "displayValue": "1/8 2024",
+          "value": "1/8 2024"
+        }
+      ]
+    },
+    {
+      "name": "車款",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "MX8",
+          "value": "MX8"
+        },
+        {
+          "displayValue": "1/10 电车",
+          "value": "1/10 电车"
+        },
+        {
+          "displayValue": "1/18 电车",
+          "value": "1/18 电车"
+        },
+        {
+          "displayValue": "1/8 灵魂车STD RTR",
+          "value": "1/8 灵魂车STD RTR"
+        },
+        {
+          "displayValue": "1/8 灵魂车EVO",
+          "value": "1/8 灵魂车EVO"
+        },
+        {
+          "displayValue": "1/8 灵魂车NXT",
+          "value": "1/8 灵魂车NXT"
+        },
+        {
+          "displayValue": "1/8 概念車",
+          "value": "1/8 概念車"
+        },
+        {
+          "displayValue": "CR 改裝件",
+          "value": "CR 改裝件"
+        },
+        {
+          "displayValue": "1/8 DS3",
+          "value": "1/8 DS3"
+        },
+        {
+          "displayValue": "EX 电车",
+          "value": "EX 电车"
+        },
+        {
+          "displayValue": "F18 电车",
+          "value": "F18 电车"
+        },
+        {
+          "displayValue": "F8 电车",
+          "value": "F8 电车"
+        },
+        {
+          "displayValue": "Ishima",
+          "value": "Ishima"
+        },
+        {
+          "displayValue": "JR 改裝件",
+          "value": "JR 改裝件"
+        },
+        {
+          "displayValue": "K8 油车",
+          "value": "K8 油车"
+        },
+        {
+          "displayValue": "MBR",
+          "value": "MBR"
+        },
+        {
+          "displayValue": "1/0 电房车 REIZ",
+          "value": "1/0 电房车 REIZ"
+        },
+        {
+          "displayValue": "S10T 电货卡",
+          "value": "S10T 电货卡"
+        },
+        {
+          "displayValue": "SCT10 电短跑",
+          "value": "SCT10 电短跑"
+        },
+        {
+          "displayValue": "SK10 电车",
+          "value": "SK10 电车"
+        },
+        {
+          "displayValue": "STR 1/8 大脚 油车",
+          "value": "STR 1/8 大脚 油车"
+        },
+        {
+          "displayValue": "STR 1/8 油车",
+          "value": "STR 1/8 油车"
+        },
+        {
+          "displayValue": "STR 1/8 房车",
+          "value": "STR 1/8 房车"
+        },
+        {
+          "displayValue": "STR8 2WD",
+          "value": "STR8 2WD"
+        },
+        {
+          "displayValue": "STR8 电车",
+          "value": "STR8 电车"
+        },
+        {
+          "displayValue": "ZX 油车",
+          "value": "ZX 油车"
+        },
+        {
+          "displayValue": "引擎",
+          "value": "引擎"
+        },
+        {
+          "displayValue": "启动台",
+          "value": "启动台"
+        },
+        {
+          "displayValue": "灵魂车RTR",
+          "value": "灵魂车RTR"
+        },
+        {
+          "displayValue": "周边商品",
+          "value": "周边商品"
+        },
+        {
+          "displayValue": "JQ 2014 GP",
+          "value": "JQ 2014 GP"
+        },
+        {
+          "value": ""
+        },
+        {
+          "displayValue": "1/10 房车",
+          "value": "1/10 房车"
+        },
+        {
+          "displayValue": "1/8油车",
+          "value": "1/8油车"
+        },
+        {
+          "displayValue": "HT 1/8",
+          "value": "HT 1/8"
+        },
+        {
+          "displayValue": "HT 1/8 油越EVO",
+          "value": "HT 1/8 油越EVO"
+        },
+        {
+          "displayValue": "HT 1/8 油越灵魂车 一般版",
+          "value": "HT 1/8 油越灵魂车 一般版"
+        },
+        {
+          "displayValue": "HT 1/8 油越灵魂车 便宜版",
+          "value": "HT 1/8 油越灵魂车 便宜版"
+        },
+        {
+          "displayValue": "HT 1/8 电越EPX2.BU.RTR",
+          "value": "HT 1/8 电越EPX2.BU.RTR"
+        },
+        {
+          "displayValue": "HT 1/8 电越EPX2.BU.RR",
+          "value": "HT 1/8 电越EPX2.BU.RR"
+        },
+        {
+          "displayValue": "HT 1/8 电房车DS3/概念 RTR",
+          "value": "HT 1/8 电房车DS3/概念 RTR"
+        },
+        {
+          "displayValue": "HT 1/10 电越便宜版3.0",
+          "value": "HT 1/10 电越便宜版3.0"
+        },
+        {
+          "displayValue": "HT 1/10 电越无刷版2.0",
+          "value": "HT 1/10 电越无刷版2.0"
+        },
+        {
+          "displayValue": "HT 1/10 电越无刷版WP",
+          "value": "HT 1/10 电越无刷版WP"
+        },
+        {
+          "displayValue": "HT 1/10 电货卡有刷版",
+          "value": "HT 1/10 电货卡有刷版"
+        },
+        {
+          "displayValue": "HT 1/10 电货卡无刷版",
+          "value": "HT 1/10 电货卡无刷版"
+        },
+        {
+          "displayValue": "HT 1/10 Crawler",
+          "value": "HT 1/10 Crawler"
+        },
+        {
+          "displayValue": "HT SL 越野",
+          "value": "HT SL 越野"
+        },
+        {
+          "displayValue": "HT SL 沙滩车",
+          "value": "HT SL 沙滩车"
+        },
+        {
+          "displayValue": "1/16 越野电车",
+          "value": "1/16 越野电车"
+        },
+        {
+          "displayValue": "1/16 货卡电车",
+          "value": "1/16 货卡电车"
+        },
+        {
+          "displayValue": "JQ 1/8 RTR",
+          "value": "JQ 1/8 RTR"
+        },
+        {
+          "value": ""
+        },
+        {
+          "displayValue": "Carson 1/8 電車/油車",
+          "value": "Carson 1/8 電車/油車"
+        },
+        {
+          "displayValue": "Caster 1/10 油越野",
+          "value": "Caster 1/10 油越野"
+        },
+        {
+          "displayValue": "1:10 2WD",
+          "value": "1:10 2WD"
+        },
+        {
+          "displayValue": "1/8 电车",
+          "value": "1/8 电车"
+        },
+        {
+          "displayValue": "1/10 沙滩车",
+          "value": "1/10 沙滩车"
+        },
+        {
+          "displayValue": "1/10 油车",
+          "value": "1/10 油车"
+        },
+        {
+          "displayValue": "1/10攀岩车",
+          "value": "1/10攀岩车"
+        },
+        {
+          "displayValue": "1/16电车",
+          "value": "1/16电车"
+        },
+        {
+          "displayValue": "Carson CV-10 油车",
+          "value": "Carson CV-10 油车"
+        },
+        {
+          "displayValue": "Carson 1/10 FD玩具车",
+          "value": "Carson 1/10 FD玩具车"
+        },
+        {
+          "displayValue": "Carson  CV-10 / CE-10 ",
+          "value": "Carson  CV-10 / CE-10 "
+        },
+        {
+          "displayValue": "Carson 1/8 电车油车",
+          "value": "Carson 1/8 电车油车"
+        },
+        {
+          "displayValue": "1/16 沙滩电车",
+          "value": "1/16 沙滩电车"
+        },
+        {
+          "displayValue": "JQ 2016 GP",
+          "value": "JQ 2016 GP"
+        },
+        {
+          "displayValue": "TG 油车",
+          "value": "TG 油车"
+        },
+        {
+          "displayValue": "1/14攀岩车",
+          "value": "1/14攀岩车"
+        },
+        {
+          "displayValue": "1/8 货卡",
+          "value": "1/8 货卡"
+        },
+        {
+          "displayValue": "TT 1/8越野电车",
+          "value": "TT 1/8越野电车"
+        },
+        {
+          "displayValue": "TT Hilux",
+          "value": "TT Hilux"
+        },
+        {
+          "displayValue": "TTS Ford F150",
+          "value": "TTS Ford F150"
+        },
+        {
+          "displayValue": "TTS FJ45",
+          "value": "TTS FJ45"
+        },
+        {
+          "displayValue": "JQ 2017 GP",
+          "value": "JQ 2017 GP"
+        },
+        {
+          "displayValue": "HT 1/10SL",
+          "value": "HT 1/10SL"
+        },
+        {
+          "displayValue": "需要补产品照片",
+          "value": "需要补产品照片"
+        },
+        {
+          "displayValue": "1/8 房车",
+          "value": "1/8 房车"
+        },
+        {
+          "displayValue": "1/10 Pro",
+          "value": "1/10 Pro"
+        },
+        {
+          "displayValue": "2017 FD",
+          "value": "2017 FD"
+        },
+        {
+          "displayValue": "1/10 Unimog",
+          "value": "1/10 Unimog"
+        },
+        {
+          "displayValue": "2017 FE",
+          "value": "2017 FE"
+        },
+        {
+          "value": ""
+        },
+        {
+          "displayValue": "宝莱 100公里车体",
+          "value": "宝莱 100公里车体"
+        },
+        {
+          "displayValue": "S20B",
+          "value": "S20B"
+        },
+        {
+          "displayValue": "1/24 攀岩车",
+          "value": "1/24 攀岩车"
+        },
+        {
+          "displayValue": "JQ 2020 GP",
+          "value": "JQ 2020 GP"
+        },
+        {
+          "displayValue": "TTS PUBG BUGGY",
+          "value": "TTS PUBG BUGGY"
+        },
+        {
+          "displayValue": "Funtek CR12",
+          "value": "Funtek CR12"
+        },
+        {
+          "displayValue": "MT 2023",
+          "value": "MT 2023"
+        },
+        {
+          "displayValue": "Mayako 2023",
+          "value": "Mayako 2023"
+        },
+        {
+          "displayValue": "Mayako 2024",
+          "value": "Mayako 2024"
+        },
+        {
+          "displayValue": "1/8 Pro",
+          "value": "1/8 Pro"
+        },
+        {
+          "displayValue": "1/10 FE 2024",
+          "value": "1/10 FE 2024"
+        },
+        {
+          "displayValue": "1/10 XS",
+          "value": "1/10 XS"
+        },
+        {
+          "displayValue": "1/8 2024",
+          "value": "1/8 2024"
+        },
+        {
+          "displayValue": "1/10 FE",
+          "value": "1/10 FE"
+        },
+        {
+          "displayValue": "1/27.5 MiniZ",
+          "value": "1/27.5 MiniZ"
+        },
+        {
+          "displayValue": "290mm",
+          "value": "290mm"
+        }
+      ]
+    },
+    {
+      "name": "產品分類",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "车子",
+          "value": "车子"
+        },
+        {
+          "displayValue": "四轴机",
+          "value": "四轴机"
+        },
+        {
+          "displayValue": "車子零件",
+          "value": "車子零件"
+        },
+        {
+          "displayValue": "版费",
+          "value": "版费"
+        },
+        {
+          "displayValue": "彩盒",
+          "value": "彩盒"
+        },
+        {
+          "displayValue": "工具",
+          "value": "工具"
+        },
+        {
+          "displayValue": "离合器",
+          "value": "离合器"
+        },
+        {
+          "displayValue": "模具",
+          "value": "模具"
+        },
+        {
+          "displayValue": "空滤海绵",
+          "value": "空滤海绵"
+        },
+        {
+          "displayValue": "无刷马达",
+          "value": "无刷马达"
+        },
+        {
+          "displayValue": "有刷马达",
+          "value": "有刷马达"
+        },
+        {
+          "displayValue": "无刷电调",
+          "value": "无刷电调"
+        },
+        {
+          "displayValue": "有刷电调",
+          "value": "有刷电调"
+        },
+        {
+          "displayValue": "充电器",
+          "value": "充电器"
+        },
+        {
+          "displayValue": "遥控器",
+          "value": "遥控器"
+        },
+        {
+          "displayValue": "伺服机",
+          "value": "伺服机"
+        },
+        {
+          "displayValue": "伺服机片",
+          "value": "伺服机片"
+        },
+        {
+          "displayValue": "电池",
+          "value": "电池"
+        },
+        {
+          "displayValue": "空滤油",
+          "value": "空滤油"
+        },
+        {
+          "displayValue": "引擎",
+          "value": "引擎"
+        },
+        {
+          "displayValue": "胶水",
+          "value": "胶水"
+        },
+        {
+          "displayValue": "齒輪",
+          "value": "齒輪"
+        },
+        {
+          "displayValue": "周邊商品",
+          "value": "周邊商品"
+        },
+        {
+          "displayValue": "螺丝",
+          "value": "螺丝"
+        },
+        {
+          "displayValue": "硅胶油",
+          "value": "硅胶油"
+        },
+        {
+          "displayValue": "垫片",
+          "value": "垫片"
+        },
+        {
+          "displayValue": "避震器",
+          "value": "避震器"
+        },
+        {
+          "displayValue": "避震气室",
+          "value": "避震气室"
+        },
+        {
+          "displayValue": "原件盒",
+          "value": "原件盒"
+        },
+        {
+          "displayValue": "紡織品",
+          "value": "紡織品"
+        },
+        {
+          "displayValue": "轮胎",
+          "value": "轮胎"
+        },
+        {
+          "displayValue": "培林",
+          "value": "培林"
+        },
+        {
+          "displayValue": "车壳",
+          "value": "车壳"
+        },
+        {
+          "displayValue": "排气管",
+          "value": "排气管"
+        },
+        {
+          "displayValue": "插销",
+          "value": "插销"
+        },
+        {
+          "displayValue": "尾翼",
+          "value": "尾翼"
+        },
+        {
+          "displayValue": "轮档",
+          "value": "轮档"
+        },
+        {
+          "displayValue": "油壶",
+          "value": "油壶"
+        },
+        {
+          "displayValue": "启动台",
+          "value": "启动台"
+        },
+        {
+          "displayValue": "贴纸",
+          "value": "贴纸"
+        },
+        {
+          "displayValue": "平衡杆",
+          "value": "平衡杆"
+        },
+        {
+          "displayValue": "防尘套/罩",
+          "value": "防尘套/罩"
+        },
+        {
+          "displayValue": "组合/套件",
+          "value": "组合/套件"
+        },
+        {
+          "displayValue": "油管",
+          "value": "油管"
+        },
+        {
+          "displayValue": "袋子",
+          "value": "袋子"
+        },
+        {
+          "displayValue": "弹簧",
+          "value": "弹簧"
+        },
+        {
+          "displayValue": "PIN",
+          "value": "PIN"
+        },
+        {
+          "displayValue": "费用",
+          "value": "费用"
+        },
+        {
+          "displayValue": "车",
+          "value": "车"
+        },
+        {
+          "displayValue": "塑胶件",
+          "value": "塑胶件"
+        },
+        {
+          "displayValue": "灯",
+          "value": "灯"
+        },
+        {
+          "displayValue": "狗骨传动轴",
+          "value": "狗骨传动轴"
+        },
+        {
+          "displayValue": "CVD组",
+          "value": "CVD组"
+        },
+        {
+          "displayValue": "CVD传动轴",
+          "value": "CVD传动轴"
+        },
+        {
+          "displayValue": "马达座",
+          "value": "马达座"
+        },
+        {
+          "displayValue": "吊卡",
+          "value": "吊卡"
+        },
+        {
+          "displayValue": "接杯",
+          "value": "接杯"
+        },
+        {
+          "displayValue": "轮胎转接座",
+          "value": "轮胎转接座"
+        },
+        {
+          "displayValue": "海绵",
+          "value": "海绵"
+        },
+        {
+          "displayValue": "差速",
+          "value": "差速"
+        },
+        {
+          "displayValue": "铝件",
+          "value": "铝件"
+        },
+        {
+          "displayValue": "铁件",
+          "value": "铁件"
+        },
+        {
+          "displayValue": "橡胶件",
+          "value": "橡胶件"
+        },
+        {
+          "displayValue": "样品",
+          "value": "样品"
+        },
+        {
+          "displayValue": "铜件",
+          "value": "铜件"
+        },
+        {
+          "displayValue": "桌布",
+          "value": "桌布"
+        },
+        {
+          "displayValue": "组合/套件：电池＋充电器",
+          "value": "组合/套件：电池＋充电器"
+        },
+        {
+          "displayValue": "维修品",
+          "value": "维修品"
+        },
+        {
+          "displayValue": "双面胶贴纸 ",
+          "value": "双面胶贴纸 "
+        },
+        {
+          "displayValue": "天线管",
+          "value": "天线管"
+        },
+        {
+          "displayValue": "云台",
+          "value": "云台"
+        },
+        {
+          "displayValue": "钓鱼机",
+          "value": "钓鱼机"
+        },
+        {
+          "displayValue": "纸箱",
+          "value": "纸箱"
+        },
+        {
+          "displayValue": "220512",
+          "value": "220512"
+        }
+      ]
+    },
+    {
+      "name": "類別",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "車子",
+          "value": "車子"
+        },
+        {
+          "displayValue": "零件包",
+          "value": "零件包"
+        },
+        {
+          "displayValue": "车子-Pro 包",
+          "value": "车子-Pro 包"
+        },
+        {
+          "displayValue": "启动台",
+          "value": "启动台"
+        },
+        {
+          "displayValue": "代工 大包裝",
+          "value": "代工 大包裝"
+        },
+        {
+          "displayValue": "代工",
+          "value": "代工"
+        },
+        {
+          "displayValue": "彩绘模具",
+          "value": "彩绘模具"
+        },
+        {
+          "displayValue": "模具",
+          "value": "模具"
+        },
+        {
+          "displayValue": "样品",
+          "value": "样品"
+        },
+        {
+          "displayValue": "客供品",
+          "value": "客供品"
+        },
+        {
+          "displayValue": "补",
+          "value": "补"
+        },
+        {
+          "displayValue": "潜水艇",
+          "value": "潜水艇"
+        },
+        {
+          "displayValue": "贸易－伟力玩具",
+          "value": "贸易－伟力玩具"
+        },
+        {
+          "displayValue": "贸易－明极",
+          "value": "贸易－明极"
+        },
+        {
+          "displayValue": "Credit note",
+          "value": "Credit note"
+        },
+        {
+          "displayValue": "Balance",
+          "value": "Balance"
+        },
+        {
+          "displayValue": "空车架",
+          "value": "空车架"
+        },
+        {
+          "displayValue": "电子类",
+          "value": "电子类"
+        },
+        {
+          "displayValue": "四轴机",
+          "value": "四轴机"
+        },
+        {
+          "displayValue": "贸易－零件包",
+          "value": "贸易－零件包"
+        },
+        {
+          "displayValue": "遥控器",
+          "value": "遥控器"
+        },
+        {
+          "displayValue": "证书",
+          "value": "证书"
+        },
+        {
+          "displayValue": "贸易-极限伺服机",
+          "value": "贸易-极限伺服机"
+        },
+        {
+          "displayValue": "周边商品",
+          "value": "周边商品"
+        },
+        {
+          "displayValue": "彩盒",
+          "value": "彩盒"
+        },
+        {
+          "displayValue": "船",
+          "value": "船"
+        },
+        {
+          "displayValue": "车壳",
+          "value": "车壳"
+        },
+        {
+          "displayValue": "轮胎",
+          "value": "轮胎"
+        },
+        {
+          "displayValue": "海运费用",
+          "value": "海运费用"
+        },
+        {
+          "displayValue": "空运费用",
+          "value": "空运费用"
+        },
+        {
+          "displayValue": "代购",
+          "value": "代购"
+        },
+        {
+          "displayValue": "贸易",
+          "value": "贸易"
+        },
+        {
+          "displayValue": "设计费用",
+          "value": "设计费用"
+        },
+        {
+          "displayValue": "样品费用",
+          "value": "样品费用"
+        },
+        {
+          "displayValue": "开发费用",
+          "value": "开发费用"
+        },
+        {
+          "displayValue": "费用",
+          "value": "费用"
+        },
+        {
+          "displayValue": "包装袋",
+          "value": "包装袋"
+        },
+        {
+          "displayValue": "其他",
+          "value": "其他"
+        }
+      ]
+    },
+    {
+      "name": "產品審核",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "未審核",
+          "value": "未審核"
+        },
+        {
+          "displayValue": "已審核",
+          "value": "已審核"
+        }
+      ]
+    },
+    {
+      "name": "追加訂購",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "追加訂購",
+          "value": "追加訂購"
+        },
+        {
+          "displayValue": "有現貨",
+          "value": "有現貨"
+        }
+      ]
+    },
+    {
+      "name": "check",
+      "type": "customList",
+      "values": [
+        {
+          "displayValue": "1",
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "sourceLayout": "產品 資料_業務",
+  "verifiedAt": "2026-09-21"
+}

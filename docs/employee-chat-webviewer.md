@@ -102,7 +102,7 @@ GET /api/natural-query/analytics/top-questions
 ## 验收
 
 1. 用两个不同 FileMaker 账号分别打开 `StarRC｜员工对话`，均不出现网页登录表单。
-2. 页头显示当前 FileMaker 用户。
+2. 带有效 `ctx` / `sig` 的 `?page=chat` 内嵌入口仅显示对话和输入框，不显示 Dashboard 按钮、账号导航菜单、开场说明或预设问题；查询明细保留展示但不可跳转其他页面。普通浏览器工作台保持原有导航。
 3. 连续提出两到三个问题，页面保留完整的本次多轮对话。
 4. 在 `natural_query_conversations` 中确认每条记录的 `operator_account` 与提问员工一致。
 5. 等待后台 worker 处理后，在 `natural_query_question_analytics` 或高频问题接口中确认归一化记录。

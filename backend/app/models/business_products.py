@@ -28,6 +28,7 @@ class BusinessProductRow(BaseModel):
     product_name: str = Field(default="", alias="productName")
     product_name_cn: str = Field(default="", alias="productNameCn")
     image_url: str = Field(default="", alias="imageUrl")
+    thumbnail_url: str = Field(default="", alias="thumbnailUrl")
     selected_file_url: str = Field(default="", alias="selectedFileUrl")
     qr_code_url: str = Field(default="", alias="qrCodeUrl")
     model_name: str = Field(default="", alias="modelName")

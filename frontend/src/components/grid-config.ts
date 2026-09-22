@@ -35,6 +35,13 @@ export const defaultAutoSizeStrategy = {
   defaultMinWidth: 80
 };
 
+export function formatQty(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value);
+  return Number.isInteger(num) ? String(num) : num.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 export function adaptiveGridStyle(rowCount: number, minRows = 4, maxRows?: number) {
   const visibleRows = Math.min(Math.max(rowCount, minRows), maxRows ?? gridPageSize);
   const height =

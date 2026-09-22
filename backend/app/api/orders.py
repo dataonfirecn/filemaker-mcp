@@ -726,28 +726,38 @@ async def get_order_product_detail(
     normalized_sku = product_sku.strip()
     if not normalized_sku:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"message": "Missing productSku"})
-    try:
-        result, packaging_result = await asyncio.gather(
-            client.find_records(
-                PRODUCT_LAYOUT,
-                query={"product_sku": f"=={normalized_sku}"},
-                limit=1,
-            ),
-            client.find_records(
-                PRODUCT_PACKAGING_LAYOUT,
-                query={"product_sku": f"=={normalized_sku}"},
-                limit=1,
-            ),
-        )
-    except FileMakerAPIError as exc:
-        raise HTTPException(
-            status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
-            detail={"message": str(exc), "payload": exc.payload},
-        ) from exc
+    master = getattr(client, "product_master_store", None)
+    if master:
+        snapshot = await master.get(normalized_sku)
+        if not snapshot: raise HTTPException(404,"产品尚未迁入 Web 主库")
+        result = {'data':[{'recordId':snapshot['fm_record_id'] or str(snapshot['id']),'fieldData':snapshot['fields']}]}
+        try:
+            packaging_result = await client.find_records(PRODUCT_PACKAGING_LAYOUT,query={"product_sku":f"=={normalized_sku}"},limit=1)
+        except FileMakerAPIError:
+            packaging_result = {'data':[]}
+    else:
+        try:
+            result, packaging_result = await asyncio.gather(
+                client.find_records(
+                    PRODUCT_LAYOUT,
+                    query={"product_sku": f"=={normalized_sku}"},
+                    limit=1,
+                ),
+                client.find_records(
+                    PRODUCT_PACKAGING_LAYOUT,
+                    query={"product_sku": f"=={normalized_sku}"},
+                    limit=1,
+                ),
+            )
+        except FileMakerAPIError as exc:
+            raise HTTPException(
+                status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
+                detail={"message": str(exc), "payload": exc.payload},
+            ) from exc
     records = _records(result)
     if not records:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": f"找不到产品：{normalized_sku}"})
-    enriched = await enrich_product_record(client, records[0])
+    enriched = records[0] if master else await enrich_product_record(client, records[0])
     packaging_records = _records(packaging_result)
     packaging_record = packaging_records[0] if packaging_records else {}
     packaging_fields = _fields(packaging_record)
@@ -1021,7 +1031,7 @@ def _item_payload(
             or _text(fields.get("product_name"))
             or _text(product_fields.get("product_name"))
         ),
-        "hasImage": bool(_text(product_fields.get("檔案 1 | 容器"))),
+        "hasImage": bool(_text(product_fields.get("image_main"))),
         "client": _text(product_fields.get("Client")),
         "stock": _number(product_fields.get(PRODUCT_STOCK_FIELD)),
         "unitPrice": _number(product_fields.get("產品售價::Price")),
@@ -1510,6 +1520,26 @@ async def _product_cos_image_catalog(
     )
     if not normalized_skus or not storage.configured:
         return {}
+
+    master = getattr(client, "product_master_store", None)
+    if master:
+        catalog = {}
+        for sku in normalized_skus:
+            product = await master.get(sku)
+            if not product: continue
+            entry = {"mainImageUrl":"", "images":[], "packagingImages":[],
+                     "name":_text(product['fields'].get('產品名稱_中文')),
+                     "englishName":_text(product['fields'].get('product_name'))}
+            for asset in product['assets']:
+                if not asset['mimeType'].startswith('image/') or asset.get('role') not in {'product_image','packaging_reference'}: continue
+                category = 'packagingImages' if asset['role'] == 'packaging_reference' else 'images'
+                is_primary = asset['field'] == 'image_main'
+                if primary_only and not is_primary: continue
+                url,expires = await _verified_cos_download(storage,asset['objectKey'])
+                entry[category].append({'assetId':asset.get('assetId',asset['id']),'url':url,'filename':asset['filename'],'sortOrder':asset['sortOrder'],'isPrimary':is_primary,'expiresAt':expires})
+                if is_primary:entry['mainImageUrl']=url
+            catalog[sku]=entry
+        return catalog
 
     products: list[dict[str, Any]] = []
     for start in range(0, len(normalized_skus), PRODUCT_ASSET_BATCH_SIZE):

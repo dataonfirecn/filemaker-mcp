@@ -3,6 +3,7 @@ import { ExternalLink, LayoutDashboard, Loader2, Search, SendHorizontal } from "
 import type { BusinessProductRow, NaturalQueryExchange } from "../types";
 
 export type HomePageProps = {
+  embedded?: boolean;
   userMenu?: ReactNode;
   naturalQueryPrompt: string;
   naturalQueryLoading?: boolean;
@@ -162,6 +163,7 @@ function quantityLabel(value: number | string | null | undefined): string {
 }
 
 type QueryResponseMessageProps = {
+  allowNavigation: boolean;
   exchange: NaturalQueryExchange;
   loading?: boolean;
   onNaturalQuerySubmit: (prompt?: string) => void;
@@ -171,6 +173,7 @@ type QueryResponseMessageProps = {
 };
 
 function QueryResponseMessage({
+  allowNavigation,
   exchange,
   loading,
   onNaturalQuerySubmit,
@@ -188,7 +191,7 @@ function QueryResponseMessage({
   const visibleItems = items.slice(0, 10);
   const visibleDetailCount = visibleRows.length + visibleItems.length;
   const clarificationOptions = response.clarificationOptions ?? [];
-  const canOpenRows = response.plan.domain === "product" || response.plan.domain === "part";
+  const canOpenRows = allowNavigation && (response.plan.domain === "product" || response.plan.domain === "part");
   const shouldShowEmptyStock =
     response.plan.domain === "part" &&
     /库存|庫存|stock|current_stock|还有多少|還有多少|剩余|剩餘/i.test(exchange.prompt);
@@ -269,7 +272,7 @@ function QueryResponseMessage({
                 );
               })}
               {visibleItems.map((item) => {
-                const canOpenItem = Boolean(item.targetType && item.targetIdentifier);
+                const canOpenItem = allowNavigation && Boolean(item.targetType && item.targetIdentifier);
                 return (
                   <button
                     key={`${item.kind}-${item.id}`}
@@ -317,6 +320,7 @@ function QueryResponseMessage({
 }
 
 export default function HomePage({
+  embedded = false,
   userMenu,
   naturalQueryPrompt,
   naturalQueryLoading,
@@ -339,18 +343,18 @@ export default function HomePage({
   }, [naturalQueryExchanges, naturalQueryLoading]);
 
   return (
-    <div className="home-page">
-      <header className="home-chat-topbar" aria-label="当前用户">
+    <div className={`home-page${embedded ? " home-page-embedded" : ""}`}>
+      {!embedded && <header className="home-chat-topbar" aria-label="当前用户">
         <button className="home-chat-dashboard-button" type="button" onClick={onOpenDashboard}>
           <LayoutDashboard size={17} />
           <span>返回 Dashboard</span>
         </button>
         {userMenu}
-      </header>
+      </header>}
 
       <main className="home-chat-main" aria-label="FileMaker 对话">
         <section className="home-chat-thread">
-          <article className="home-chat-message assistant">
+          {!embedded && <article className="home-chat-message assistant">
             <div className="home-chat-bubble">
               <strong>FileMaker 问答</strong>
               <p className="home-chat-retention">
@@ -371,7 +375,7 @@ export default function HomePage({
                 ))}
               </div>
             </div>
-          </article>
+          </article>}
 
           {naturalQueryExchanges.map((exchange) => (
             <Fragment key={exchange.id}>
@@ -386,6 +390,7 @@ export default function HomePage({
                 </article>
               )}
               <QueryResponseMessage
+                allowNavigation={!embedded}
                 exchange={exchange}
                 loading={naturalQueryLoading}
                 onNaturalQuerySubmit={onNaturalQuerySubmit}

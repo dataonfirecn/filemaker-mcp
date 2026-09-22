@@ -140,14 +140,14 @@ async def test_sync_product_photo_writes_asset_and_legacy_product_container():
     asset_fields = filemaker.created[0][1]
     assert "id_asset" not in asset_fields
     assert asset_fields["asset_type"] == "product_image"
-    assert asset_fields["legacy_source_field"] == "檔案 1 | 容器"
+    assert asset_fields["legacy_source_field"] == "image_main"
     assert asset_fields["is_primary"] == 1
     assert [
         (layout, record_id, field_name)
         for layout, record_id, field_name, *_rest in filemaker.uploaded
     ] == [
         ("ProductAssets", "asset-200", "asset_file"),
-        ("@products", "100", "檔案 1 | 容器"),
+        ("@products", "100", "image_main"),
     ]
     assert upload_store.statuses[-1] == (
         "SYNCED",

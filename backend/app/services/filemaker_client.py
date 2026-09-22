@@ -301,6 +301,7 @@ class FileMakerClient:
         content_type: str,
         *,
         repetition: int = 1,
+        mod_id: str | None = None,
         retry_on_unauthorized: bool = True,
     ) -> dict[str, Any]:
         if repetition < 1:
@@ -317,6 +318,7 @@ class FileMakerClient:
                 f"{self._base_url()}{endpoint}",
                 headers={"Authorization": f"Bearer {token}"},
                 files={"upload": (filename, content, content_type)},
+                params={"modId": mod_id} if mod_id is not None else None,
             )
         except httpx.RequestError as exc:
             raise FileMakerAPIError(
@@ -334,6 +336,7 @@ class FileMakerClient:
                 filename,
                 content_type,
                 repetition=repetition,
+                mod_id=mod_id,
                 retry_on_unauthorized=False,
             )
 

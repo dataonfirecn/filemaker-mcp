@@ -36,6 +36,8 @@ from app.services.filemaker_client import (  # noqa: E402
 )
 
 
+from app.services.product_image_fields import product_image_field, MAIN_IMAGE_FIELD, LEGACY_MAIN_IMAGE_FIELD
+
 SOURCE_LAYOUT = "@products"
 TARGET_LAYOUT = "ProductAssets"
 TARGET_CONTAINER_FIELD = "asset_file"
@@ -55,7 +57,7 @@ class AssetSpec:
 
 PRODUCT_IMAGE_SPECS = tuple(
     AssetSpec(
-        source_field=f"檔案 {position} | 容器",
+        source_field=product_image_field(position),
         asset_type="product_image",
         sort_order=position,
         is_primary=1 if position == 1 else 0,
@@ -65,7 +67,7 @@ PRODUCT_IMAGE_SPECS = tuple(
 
 PACKAGING_IMAGE_SPECS = tuple(
     AssetSpec(
-        source_field=f"檔案 {position} | 容器",
+        source_field=product_image_field(position),
         asset_type="packaging_reference",
         sort_order=position - 10,
         is_primary=0,
@@ -180,6 +182,9 @@ def _container_url(value: Any) -> str:
 
 
 def _migration_key(source_record_id: str, source_field: str) -> str:
+    # Keep the established identity key when only the source container was renamed.
+    if source_field == MAIN_IMAGE_FIELD:
+        source_field = LEGACY_MAIN_IMAGE_FIELD
     return f"{SOURCE_LAYOUT}:{source_record_id}:{source_field}"
 
 
@@ -561,6 +566,8 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> None:
+    if get_settings().product_master_enabled:
+        raise SystemExit("Product master owns assets; use product_master_migrate.py before cutover")
     args = parse_args()
     summary = asyncio.run(run(args))
     print(json.dumps(summary, ensure_ascii=False, indent=2))

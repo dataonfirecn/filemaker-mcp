@@ -1,5 +1,6 @@
 import re
 import uuid
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -178,12 +179,23 @@ class COSStorageService:
     ) -> str:
         client = self._require_client()
         try:
-            response = client.put_object(
-                Bucket=self.settings.cos_bucket,
-                Key=object_key,
-                Body=content,
-                ContentType=content_type,
-            )
+            if len(content) > 1024 * 1024:
+                # Bounded parts avoid retrying an entire large file on slow cross-region links.
+                with tempfile.NamedTemporaryFile() as upload_file:
+                    upload_file.write(content)
+                    upload_file.flush()
+                    response = client.upload_file(
+                        Bucket=self.settings.cos_bucket, Key=object_key,
+                        LocalFilePath=upload_file.name, PartSize=1, MAXThread=3,
+                        EnableMD5=True, ContentType=content_type,
+                    )
+            else:
+                response = client.put_object(
+                    Bucket=self.settings.cos_bucket,
+                    Key=object_key,
+                    Body=content,
+                    ContentType=content_type,
+                )
         except Exception as exc:
             raise COSStorageError("Unable to upload COS object") from exc
         return str(response.get("ETag") or "").strip('"')
@@ -202,9 +214,9 @@ class COSStorageService:
             )
             body = response.get("Body")
             if hasattr(body, "get_raw_stream"):
-                content = body.get_raw_stream().read()
+                content = body.get_raw_stream().read(max_bytes + 1 if max_bytes is not None else -1)
             elif hasattr(body, "read"):
-                content = body.read()
+                content = body.read(max_bytes + 1 if max_bytes is not None else -1)
             elif isinstance(body, bytes):
                 content = body
             else:

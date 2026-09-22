@@ -2,7 +2,7 @@ import type { SessionResponse } from "../types";
 
 const PREVIEW_SESSION_WINDOW_PREFIX = "starrc-preview-session:";
 
-function isSessionResponse(value: unknown): value is SessionResponse {
+export function isSessionResponse(value: unknown): value is SessionResponse {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<SessionResponse>;
   return Boolean(

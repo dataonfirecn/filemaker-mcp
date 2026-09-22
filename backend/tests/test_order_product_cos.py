@@ -466,3 +466,26 @@ def test_product_asset_category_separates_product_and_packaging_photos(
             "legacy_source_field": legacy_field,
         }
     ) == expected
+
+
+@pytest.mark.asyncio
+async def test_web_main_image_binding_wins_over_list_order(monkeypatch):
+    from types import SimpleNamespace
+    import app.api.orders as orders
+    assets=[{'id':str(i),'field':name,'objectKey':str(i),'filename':'image.jpg',
+             'sortOrder':i,'role':'product_image','mimeType':'image/jpeg'}
+            for i,name in enumerate(['檔案 2 | 容器','image_main','檔案 11 | 容器'])]
+    class Store:
+        async def get(self,sku):return {'fields':{},'assets':assets}
+    async def signed(storage,key):return 'https://cos.test/'+key,'expiry'
+    monkeypatch.setattr(orders,'_verified_cos_download',signed)
+    client=SimpleNamespace(product_master_store=Store());storage=SimpleNamespace(configured=True)
+    catalog=await orders._product_cos_image_catalog(client,storage,['SKU'],primary_only=True)
+    assert catalog['SKU']['mainImageUrl']=='https://cos.test/1'
+    assert [a['assetId'] for a in catalog['SKU']['images']]==['1']
+    catalog=await orders._product_cos_image_catalog(client,storage,['SKU'])
+    assert len(catalog['SKU']['images'])==3 and not catalog['SKU']['packagingImages']
+    assert [a['assetId'] for a in catalog['SKU']['images'] if a['isPrimary']]==['1']
+    assets.pop(1)
+    catalog=await orders._product_cos_image_catalog(client,storage,['SKU'],primary_only=True)
+    assert catalog['SKU']['mainImageUrl']=='' and catalog['SKU']['images']==[]

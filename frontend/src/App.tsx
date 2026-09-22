@@ -9,7 +9,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import { BookOpen, Boxes, BrainCircuit, Bug, ClipboardCheck, ClipboardList, Database, Eye, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { BookOpen, Boxes, BrainCircuit, Bug, ClipboardCheck, ClipboardList, Database, FileBarChart, KeyRound, LogIn, MessageCircle, Play, RotateCcw, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import AppShell from "./components/AppShell";
 import SidebarNav, { type SidebarNavGroup } from "./components/SidebarNav";
 import StepIndicator from "./components/StepIndicator";
@@ -27,6 +27,7 @@ import DashboardPage from "./components/DashboardPage";
 import HomePage from "./components/HomePage";
 import RagControlPage from "./components/RagControlPage";
 import OrderDetailPage from "./components/OrderDetailPage";
+import ProductMasterPage from "./components/ProductMasterPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
 import InternalOrderMergePage from "./components/InternalOrderMergePage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
@@ -41,9 +42,15 @@ import PartSearchDialog from "./components/PartSearchDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
 import ConfirmDialog from "./components/ConfirmDialog";
 import SuccessAlert from "./components/SuccessAlert";
-import { numberFilterParams } from "./components/grid-config";
+import { formatQty, numberFilterParams } from "./components/grid-config";
 import { parseError } from "./utils/error";
 import { takePreviewSession } from "./utils/previewSession";
+import {
+  clearStoredSession,
+  loadStoredSession,
+  millisecondsUntilExpiry,
+  storeSession
+} from "./utils/storedSession";
 import type {
   CalculationLine,
   CalculationPreview,
@@ -73,8 +80,28 @@ import type {
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
+const BUSINESS_PRODUCT_PAGE_SIZE_KEY = "business-products:page-size";
+const BUSINESS_PRODUCT_PAGE_SIZES = [50, 100, 200];
+
+function readStoredPageSize() {
+  try {
+    const stored = Number(localStorage.getItem(BUSINESS_PRODUCT_PAGE_SIZE_KEY));
+    if (BUSINESS_PRODUCT_PAGE_SIZES.includes(stored)) return stored;
+  } catch {
+    // Ignore storage errors and fall back to the default page size.
+  }
+  return 50;
+}
 const THEME_STORAGE_KEY = "starrc-theme";
 const previewSessionFromWindow = takePreviewSession();
+// A signed FileMaker context in the URL always mints a fresh session, so a
+// stored one must never shadow it.
+const signedContextInUrl = (() => {
+  const params = new URLSearchParams(window.location.search);
+  return Boolean(params.get("ctx") && params.get("sig"));
+})();
+const restoredSessionFromStorage =
+  previewSessionFromWindow || signedContextInUrl ? null : loadStoredSession();
 
 const emptyBusinessProductFilters: BusinessProductFilters = {
   category: "",
@@ -92,6 +119,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
     title: "智能对话",
     subtitle: "使用自然语言查询 FileMaker 产品、零件、库存和日期数据。"
   },
+  productMaster: { title: "产品主资料", subtitle: "编辑产品、附件与版本历史" },
   productInventory: {
     title: "出入库记录",
     subtitle: "当前产品的只读库存流水。"
@@ -122,7 +150,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   businessProducts: {
     title: "产品资料",
-    subtitle: "读取 FileMaker @products，支持产品搜索、条件过滤和详情查看。"
+    subtitle: "浏览产品资料，支持产品搜索、条件过滤和详情查看。"
   },
   businessProductDetail: {
     title: "产品资料详情",
@@ -196,10 +224,16 @@ function orderIdQueryValue(params: URLSearchParams): string {
   return queryValue(params, "orderId", queryValue(params, "id", ""));
 }
 
+/** URL params that name the specific record a page is showing. */
+const PAGE_IDENTIFIER_KEYS = ["partId", "recordId"] as const;
+
+type PageIdentifiers = Partial<Record<(typeof PAGE_IDENTIFIER_KEYS)[number], string>>;
+
 function pageFromSearchParams(params: URLSearchParams): Page {
   const requestedPage = params.get("page");
   switch (requestedPage) {
     case "chat":
+    case "productMaster":
     case "productInventory":
     case "internalOrderMerge":
     case "orderDetail":
@@ -227,13 +261,6 @@ function pageFromSearchParams(params: URLSearchParams): Page {
   }
 }
 
-function formatQty(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "";
-  const num = Number(value);
-  if (!Number.isFinite(num)) return String(value);
-  return Number.isInteger(num) ? String(num) : num.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
-}
-
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -255,8 +282,14 @@ function initialTheme(): ThemeMode {
 
 export default function App() {
   const didInit = useRef(false);
+  const [embeddedChat] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("page") === "chat" && Boolean(params.get("ctx") && params.get("sig"));
+  });
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
-  const [session, setSession] = useState<SessionResponse | null>(() => previewSessionFromWindow);
+  const [session, setSession] = useState<SessionResponse | null>(
+    () => previewSessionFromWindow ?? restoredSessionFromStorage
+  );
   const [remoteLoginRequired, setRemoteLoginRequired] = useState(false);
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
@@ -289,6 +322,7 @@ export default function App() {
     emptyBusinessProductFilters
   );
   const [businessProductsLoading, setBusinessProductsLoading] = useState(false);
+  const [businessProductPageSize, setBusinessProductPageSize] = useState(readStoredPageSize);
   const [businessProductDetail, setBusinessProductDetail] = useState<BusinessProductRow | null>(null);
   const [businessProductDetailLoading, setBusinessProductDetailLoading] = useState(false);
   const [selectedPartIdentifier, setSelectedPartIdentifier] = useState(
@@ -367,6 +401,7 @@ export default function App() {
       password: credentials?.password ?? ""
     });
     setSession(nextSession);
+    storeSession(nextSession);
     if (initialPage === "ragControl") {
       await loadRagStatus(nextSession);
       await loadTopQuestions(nextSession);
@@ -468,14 +503,18 @@ export default function App() {
     nextPage = businessProductsData?.page ?? 1,
     activeSession = session,
     query = businessProductQuery,
-    filters = businessProductFilters
+    filters = businessProductFilters,
+    pageSize = businessProductPageSize
   ) {
     if (!activeSession) return;
     setBusinessProductsLoading(true);
     setError(null);
     try {
       const pageNumber = Math.max(1, Math.trunc(nextPage));
-      const params = new URLSearchParams({ page: String(pageNumber) });
+      const params = new URLSearchParams({
+        page: String(pageNumber),
+        pageSize: String(pageSize)
+      });
       const normalizedQuery = query.trim();
       if (normalizedQuery) params.set("q", normalizedQuery);
       (Object.entries(filters) as [keyof BusinessProductFilters, string][]).forEach(([key, value]) => {
@@ -496,15 +535,19 @@ export default function App() {
     }
   }
 
-  async function loadBusinessProductDetail(recordId: string, fallback?: BusinessProductRow) {
-    if (!session) return;
+  async function loadBusinessProductDetail(
+    recordId: string,
+    fallback?: BusinessProductRow,
+    activeSession = session
+  ) {
+    if (!activeSession) return;
     setBusinessProductDetailLoading(true);
     setError(null);
-    if (fallback) setBusinessProductDetail(fallback);
+    setBusinessProductDetail(fallback ?? null);
     try {
       const data = await fetchJson<BusinessProductDetailResponse>(
         `/api/business-products/${encodeURIComponent(recordId)}`,
-        session.token
+        activeSession.token
       );
       setBusinessProductDetail(data.product);
     } catch (err) {
@@ -699,6 +742,7 @@ export default function App() {
         setBomStep("calc");
       } else {
         setPage("issue");
+        writePageUrl("issue");
       }
     } catch (err) {
       setError(parseError(err));
@@ -896,6 +940,29 @@ export default function App() {
       });
       return;
     }
+    if (restoredSessionFromStorage) {
+      // The token survived the reload, but it may have been revoked or the
+      // account disabled since, so the server gets the final say before the
+      // page behaves as if it is signed in.
+      const params = new URLSearchParams(window.location.search);
+      setKitIssueOrderNo(orderIdQueryValue(params));
+      setBomSkuInput(
+        queryValue(
+          params,
+          "productSku",
+          restoredSessionFromStorage.context.productSku || "STRX-202"
+        )
+      );
+      void fetchJson("/api/webviewer/session/me", restoredSessionFromStorage.token)
+        .then(() => restoreRouteFromUrl(restoredSessionFromStorage))
+        .catch(() => {
+          clearStoredSession();
+          setSession(null);
+          setRemoteLoginRequired(true);
+          setRemoteLoginError("登录状态已失效，请重新登录。");
+        });
+      return;
+    }
     void startSession().catch((err) => {
       const params = new URLSearchParams(window.location.search);
       if (!(params.get("ctx") && params.get("sig"))) {
@@ -906,6 +973,44 @@ export default function App() {
       }
     });
   }, []);
+
+  // Back and forward move between pages instead of leaving the app, now that
+  // every navigation pushes a history entry.
+  useEffect(() => {
+    function handlePopState() {
+      const params = new URLSearchParams(window.location.search);
+      const nextPage = pageFromSearchParams(params);
+      setPage(nextPage);
+      setError(null);
+      setSelectedPartIdentifier(params.get("partId") ?? "");
+      const recordId = params.get("recordId") ?? "";
+      if (
+        nextPage === "businessProductDetail"
+        && recordId
+        && recordId !== businessProductDetail?.recordId
+      ) {
+        void loadBusinessProductDetail(recordId);
+      }
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [businessProductDetail?.recordId, session]);
+
+  // An 8-hour token can lapse while the tab sits open. Sign out at the moment
+  // it does, rather than letting every later request fail with a raw 401.
+  useEffect(() => {
+    if (!session) return;
+    const remaining = millisecondsUntilExpiry(session.token);
+    // A token with no readable expiry is left to the server to reject.
+    if (remaining === null) return;
+    const timer = window.setTimeout(() => {
+      clearStoredSession();
+      setSession(null);
+      setRemoteLoginRequired(true);
+      setRemoteLoginError("登录状态已过期，请重新登录。");
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [session]);
 
   useEffect(() => {
     window.document.documentElement.dataset.theme = theme;
@@ -938,12 +1043,14 @@ export default function App() {
       `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
     );
 
+    clearStoredSession();
     setSession(null);
     setRemoteLoginRequired(true);
     setRemoteUsername(signedOutUsername);
     setRemotePassword("");
     setRemoteLoginError(null);
     setPage("home");
+    writePageUrl("home", {}, "replace");
     setError(null);
     setSuccess(null);
     setProductBom(null);
@@ -990,6 +1097,7 @@ export default function App() {
       && !session.context.access.canManageAccounts
     ) {
       setPage("home");
+      writePageUrl("home", {}, "replace");
       setError("当前账号没有访问系统管理页面的权限。");
     }
   }, [page, session]);
@@ -1033,6 +1141,17 @@ export default function App() {
     void loadBusinessProducts(1, session, "", emptyBusinessProductFilters);
   }
 
+  function handleBusinessProductPageSizeChange(nextPageSize: number) {
+    setBusinessProductPageSize(nextPageSize);
+    try {
+      localStorage.setItem(BUSINESS_PRODUCT_PAGE_SIZE_KEY, String(nextPageSize));
+    } catch {
+      // Ignore storage errors; the choice simply will not survive a reload.
+    }
+    // Row offsets shift with the page size, so restart from the first page.
+    void loadBusinessProducts(1, session, businessProductQuery, businessProductFilters, nextPageSize);
+  }
+
   function handleBusinessProductsPageChange(nextPage: number) {
     const totalPages = businessProductsData?.totalPages ?? 1;
     const pageNumber = Math.min(Math.max(1, nextPage), totalPages);
@@ -1042,18 +1161,55 @@ export default function App() {
   function openBusinessProductDetail(row: BusinessProductRow) {
     setBusinessProductDetail(row);
     setPage("businessProductDetail");
+    writePageUrl("businessProductDetail", { recordId: row.recordId });
     void loadBusinessProductDetail(row.recordId, row);
   }
 
-  function setPartPageUrl(nextPage: "parts" | "partDetail", identifier?: string) {
+  /**
+   * Mirrors where the user is into the address bar, so a refresh lands on the
+   * same page and the browser's back button walks the pages they visited.
+   * Only identifiers that name what is on screen go in; search text, filters
+   * and paging stay in memory.
+   */
+  function writePageUrl(
+    nextPage: Page,
+    identifiers: PageIdentifiers = {},
+    mode: "push" | "replace" = "push"
+  ) {
     const url = new URL(window.location.href);
     url.searchParams.set("page", nextPage);
-    if (nextPage === "partDetail" && identifier) {
-      url.searchParams.set("partId", identifier);
-    } else {
-      url.searchParams.delete("partId");
+    PAGE_IDENTIFIER_KEYS.forEach((key) => {
+      const value = identifiers[key];
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    });
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    if (next === `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      return;
     }
-    window.history.pushState({}, "", url);
+    window.history[mode === "push" ? "pushState" : "replaceState"]({}, "", next);
+  }
+
+  /** Reopen whatever the URL points at after a reload. */
+  function restoreRouteFromUrl(activeSession: SessionResponse) {
+    const params = new URLSearchParams(window.location.search);
+    const restoredPage = pageFromSearchParams(params);
+    const recordId = params.get("recordId") ?? "";
+    if (restoredPage === "businessProductDetail") {
+      if (!recordId) {
+        // Nothing identifies the product any more, so fall back to the list
+        // rather than rendering an empty detail page.
+        setPage("businessProducts");
+        writePageUrl("businessProducts", {}, "replace");
+        return;
+      }
+      void loadBusinessProductDetail(recordId, undefined, activeSession);
+    }
+    if (restoredPage === "ragControl") {
+      void loadRagStatus(activeSession);
+      void loadTopQuestions(activeSession);
+      void loadRelationshipMapping(activeSession);
+    }
   }
 
   function openPartDetail(part: PartDirectoryRow) {
@@ -1061,7 +1217,7 @@ export default function App() {
     setSelectedPartIdentifier(identifier);
     setPage("partDetail");
     setError(null);
-    setPartPageUrl("partDetail", identifier);
+    writePageUrl("partDetail", { partId: identifier });
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
@@ -1086,7 +1242,7 @@ export default function App() {
     setSelectedPartIdentifier(identifier);
     setPage("partDetail");
     setError(null);
-    setPartPageUrl("partDetail", identifier);
+    writePageUrl("partDetail", { partId: identifier });
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
@@ -1099,14 +1255,14 @@ export default function App() {
     setSelectedPartIdentifier(identifier);
     setPage("partDetail");
     setError(null);
-    setPartPageUrl("partDetail", identifier);
+    writePageUrl("partDetail", { partId: identifier });
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
   function returnToParts() {
     setPage("parts");
     setError(null);
-    setPartPageUrl("parts");
+    writePageUrl("parts");
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
@@ -1333,65 +1489,6 @@ export default function App() {
     []
   );
 
-  const businessProductColumns = useMemo<ColDef<BusinessProductRow>[]>(
-    () => [
-      {
-        headerName: "操作",
-        width: 92,
-        pinned: "left",
-        sortable: false,
-        filter: false,
-        cellRenderer: ({ data }: ICellRendererParams<BusinessProductRow>) =>
-          data ? (
-            <button className="grid-action-button" type="button" onClick={() => openBusinessProductDetail(data)}>
-              <Eye size={14} />
-              查看
-            </button>
-          ) : null
-      },
-      { field: "productSku", headerName: "产品编号", width: 145, pinned: "left" },
-      { field: "productNameCn", headerName: "中文名称", minWidth: 250, flex: 1 },
-      { field: "productName", headerName: "英文名称", minWidth: 260, flex: 1 },
-      { field: "modelName", headerName: "车款", width: 150 },
-      { field: "scale", headerName: "比例", width: 90 },
-      { field: "category", headerName: "类别", width: 110 },
-      {
-        field: "auditStatus",
-        headerName: "审核",
-        width: 105,
-        cellRenderer: ({ value }: ICellRendererParams<BusinessProductRow, string>) =>
-          value ? <span className="status-chip success">{value}</span> : ""
-      },
-      {
-        field: "bomCount",
-        headerName: "BOM",
-        width: 95,
-        filter: "agNumberColumnFilter",
-        filterParams: numberFilterParams,
-        cellClass: "numeric-cell",
-        headerClass: "numeric-header",
-        valueFormatter: ({ value }) => formatQty(value)
-      },
-      {
-        field: "stock",
-        headerName: "库存",
-        width: 100,
-        filter: "agNumberColumnFilter",
-        filterParams: numberFilterParams,
-        cellClass: "numeric-cell",
-        headerClass: "numeric-header",
-        valueFormatter: ({ value }) => formatQty(value)
-      },
-      { field: "client", headerName: "Client", width: 120 },
-      { field: "customer", headerName: "客户", width: 150 },
-      { field: "category1", headerName: "分类 1", width: 140 },
-      { field: "category2", headerName: "分类 2", width: 140 },
-      { field: "category3", headerName: "分类 3", width: 160 },
-      { field: "bomDate", headerName: "BOM 日期", width: 120 }
-    ],
-    []
-  );
-
   const partSearchColumns = useMemo<ColDef<PartInfo>[]>(
     () => [
       { field: "partNo", headerName: "零件编号", width: 150, pinned: "left" },
@@ -1479,10 +1576,11 @@ export default function App() {
         id: "product-master",
         label: "产品资料",
         items: [
+          { id: "productMaster", label: "产品编辑", description: "产品主资料与附件版本", Icon: Database, disabled: access ? !access.canViewProducts : false },
           {
             id: "businessProducts",
             label: "产品资料",
-            description: "@products 列表与详情",
+            description: "产品列表与详情",
             Icon: Boxes,
             disabled: access ? !access.canViewProducts : false,
             disabledReason: "当前账号角色未开放产品资料",
@@ -1598,9 +1696,10 @@ export default function App() {
     }
     setPage(nextPage);
     setError(null);
-    if (nextPage === "parts") {
-      setPartPageUrl("parts");
-    }
+    writePageUrl(
+      nextPage,
+      nextPage === "partDetail" ? { partId: selectedPartIdentifier } : {}
+    );
     if (nextPage === "bom") {
       // 首次进入工作台：从产品选择开始；若已有数据则恢复到对应阶段
       if (!productBom && !preview && !document) {
@@ -1670,6 +1769,9 @@ export default function App() {
     );
   }
 
+  if (page === "productMaster") {
+    return <ProductMasterPage apiBase={apiBase} token={session?.token ?? ""} initialRef={new URLSearchParams(window.location.search).get("productId") ?? ""} />;
+  }
   if (page === "productInventory") {
     return (
       <main className="app app-productInventory">
@@ -1704,6 +1806,7 @@ export default function App() {
     <main className={`app app-${page}`}>
       {page === "chat" ? (
         <HomePage
+          embedded={embeddedChat}
           userMenu={currentUser ? (
             <InternalUserMenu
               user={currentUser}
@@ -1942,16 +2045,19 @@ export default function App() {
 
             {page === "businessProducts" && (
               <BusinessProductsPage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
                 data={businessProductsData}
-                columns={businessProductColumns}
                 query={businessProductQuery}
                 filters={businessProductFilters}
                 loading={businessProductsLoading}
+                pageSizeOptions={BUSINESS_PRODUCT_PAGE_SIZES}
                 onQueryChange={setBusinessProductQuery}
                 onFilterChange={handleBusinessProductFilterChange}
                 onSearch={handleBusinessProductsSearch}
                 onReset={handleBusinessProductsReset}
                 onPageChange={handleBusinessProductsPageChange}
+                onPageSizeChange={handleBusinessProductPageSizeChange}
                 onOpenDetail={openBusinessProductDetail}
               />
             )}

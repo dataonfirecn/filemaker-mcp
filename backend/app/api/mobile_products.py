@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from app.services.product_image_fields import product_image_field, product_image_slot
+
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, status
+from fastapi import Request, APIRouter, BackgroundTasks, Depends, HTTPException, Path, status
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
@@ -57,7 +59,13 @@ async def create_product_photo_presign(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     upload_store: ProductPhotoUploadStore = Depends(get_product_photo_upload_store),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
+    request: Request = None,
 ) -> ProductPhotoPresignResponse:
+    if settings.product_master_enabled:
+        if not request or not getattr(request.app.state, "product_master_store", None):
+            raise HTTPException(503, "产品主库尚未就绪")
+        from app.services.product_master import mobile
+        return await mobile.create(request, product_sku, body, operator)
     _require_cos(settings, storage)
     normalized_sku = product_sku.strip()
     if body.mime_type not in settings.cos_allowed_content_type_set:
@@ -125,6 +133,8 @@ async def create_product_photo_presign(
             },
         ) from exc
 
+    if settings.product_master_enabled:
+        return  # Legacy in-process tasks must not overwrite Web-owned containers.
     asset_record_id = ""
     try:
         created = await filemaker.create_record(
@@ -229,7 +239,13 @@ async def complete_product_photo_upload(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     upload_store: ProductPhotoUploadStore = Depends(get_product_photo_upload_store),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
+    request: Request = None,
 ) -> ProductPhotoUploadResponse:
+    if settings.product_master_enabled:
+        if not request or not getattr(request.app.state, "product_master_store", None):
+            raise HTTPException(503, "产品主库尚未就绪")
+        from app.services.product_master import mobile
+        return await mobile.finish(request, product_sku, upload_id, operator, body)
     _require_cos(settings, storage)
     record = await _owned_record(
         upload_store,
@@ -311,7 +327,13 @@ async def get_product_photo_upload(
     filemaker: FileMakerClient = Depends(get_filemaker_client),
     upload_store: ProductPhotoUploadStore = Depends(get_product_photo_upload_store),
     audit_log: AuditLogStore = Depends(get_audit_log_store),
+    request: Request = None,
 ) -> ProductPhotoUploadResponse:
+    if settings.product_master_enabled:
+        if not request or not getattr(request.app.state, "product_master_store", None):
+            raise HTTPException(503, "产品主库尚未就绪")
+        from app.services.product_master import mobile
+        return await mobile.finish(request, product_sku, upload_id, operator)
     record = await _owned_record(
         upload_store,
         upload_id=upload_id,
@@ -355,7 +377,7 @@ async def _sync_product_photo(
         product = await _find_product(filemaker, record.product_sku)
         product_fields = _fields(product)
         product_record_id = str(product.get("recordId") or record.product_record_id)
-        legacy_field = f"檔案 {record.slot} | 容器"
+        legacy_field = product_image_field(record.slot)
         target_data = _asset_target_data(
             record,
             product_fields,
@@ -489,7 +511,7 @@ async def _product_has_photos(
 ) -> bool:
     fields = _fields(product)
     if any(
-        _container_present(fields.get(f"檔案 {slot} | 容器"))
+        _container_present(fields.get(product_image_field(slot)))
         for slot in range(1, PRODUCT_CONTAINER_LIMIT + 1)
     ):
         return True
@@ -516,9 +538,9 @@ async def _product_has_photos(
 
 def _is_product_photo_asset(fields: dict[str, Any]) -> bool:
     legacy_field = _text(fields.get("legacy_source_field"))
-    match = re.fullmatch(r"檔案\s+(\d+)\s+\|\s+容器", legacy_field)
-    if match:
-        return 1 <= int(match.group(1)) <= PRODUCT_CONTAINER_LIMIT
+    slot = product_image_slot(legacy_field)
+    if slot is not None:
+        return 1 <= slot <= PRODUCT_CONTAINER_LIMIT
     return _text(fields.get("asset_type")) == "product_image"
 
 
@@ -605,7 +627,7 @@ def _asset_target_data(
         "visibility": "internal",
         "title": f"PDA 产品照片 {record.slot}",
         "description": "由 PDA 为无图产品补拍",
-        "legacy_source_field": f"檔案 {record.slot} | 容器",
+        "legacy_source_field": product_image_field(record.slot),
         "source_record_id": product_record_id,
         "source_mod_id": (
             source_mod_id

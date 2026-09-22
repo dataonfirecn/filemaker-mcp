@@ -64,3 +64,9 @@ async def test_existing_packaging_asset_metadata_is_corrected_without_copy():
             },
         )
     ]
+
+
+def test_main_rename_keeps_legacy_migration_identity():
+    from scripts.migrate_product_assets import _migration_key, PRODUCT_IMAGE_SPECS
+    assert PRODUCT_IMAGE_SPECS[0].source_field == 'image_main'
+    assert _migration_key('100','image_main') == _migration_key('100','檔案 1 | 容器')

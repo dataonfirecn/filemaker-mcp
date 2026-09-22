@@ -10,6 +10,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    product_master_web_only: bool = False
+    product_master_enabled: bool = False
+    product_master_preview_enabled: bool = False
+    product_master_write_enabled: bool = False
+    product_master_username: str = ""
+    product_master_password: str = ""
+    product_master_source: str = ""
+    product_master_layout: str = "@products_web"
+    product_master_schema_path: str = "backend/config/product_master_schema.json"
+    product_master_consumers_json: str = "{}"
+    product_master_max_file_bytes: int = Field(default=104857600, ge=1, le=1073741824)
+
     app_name: str = "StarRC FileMaker Service"
     app_env: str = "local"
     api_prefix: str = "/api"

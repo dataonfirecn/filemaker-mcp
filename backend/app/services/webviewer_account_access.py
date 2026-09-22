@@ -18,6 +18,9 @@ PERMISSION_KEYS = (
     "canViewPrice",
     "canManageAccounts",
     "canViewProducts",
+    "canEditProducts",
+    "canEditProductPrices",
+    "canManageProductSync",
     "canViewOrders",
     "canViewQuality",
     "canAddCompletedReceipts",
@@ -32,6 +35,9 @@ STANDARD_PERMISSIONS = {
     "canViewPrice": False,
     "canManageAccounts": False,
     "canViewProducts": True,
+    "canEditProducts": False,
+    "canEditProductPrices": False,
+    "canManageProductSync": False,
     "canViewOrders": True,
     "canViewQuality": False,
     "canAddCompletedReceipts": True,
@@ -183,7 +189,7 @@ def _is_price_key(
         if explicit is not None:
             return explicit
     normalized = "".join(character for character in key.casefold() if character.isalnum())
-    if normalized.startswith(("canviewprice", "pricepermission")):
+    if normalized.startswith(("canviewprice", "caneditproductprices", "pricepermission")):
         return False
     english_terms = (
         "price",
