@@ -88,7 +88,7 @@ const permissionOptions: Array<{
   critical?: boolean;
 }> = [
   { key: "canEditProducts", label: "编辑产品", description: "新增产品、编辑产品字段与附件" },
-  { key: "canEditProductPrices", label: "编辑产品价格", description: "编辑产品自身的价格及成本字段", critical: true },
+  { key: "canEditProductPrices", label: "编辑产品价格", description: "编辑产品价格、成本字段及客户群报价", critical: true },
   { key: "canManageProductSync", label: "处理产品同步", description: "重试同步和处理 FileMaker 冲突", critical: true },
   {
     key: "canViewPrice",

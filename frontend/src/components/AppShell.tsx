@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CalcStatus, ThemeMode } from "../types";
 import InternalUserMenu, { type InternalUserMenuUser } from "./InternalUserMenu";
@@ -18,6 +18,8 @@ function statusClass(status: CalcStatus): string {
 }
 
 export type AppShellProps = {
+  sidebarCollapsed?: boolean;
+  onSidebarToggle?: () => void;
   title: string;
   subtitle: string;
   calcStatus?: CalcStatus | null;
@@ -34,6 +36,8 @@ export type AppShellProps = {
 };
 
 export default function AppShell({
+  sidebarCollapsed = false,
+  onSidebarToggle,
   title,
   subtitle,
   calcStatus,
@@ -52,9 +56,17 @@ export default function AppShell({
     <>
       <header className="app-shell">
         <div className="app-shell-top">
-          <div>
-            <h1>{title}</h1>
-            <p className="app-shell-subtitle">{subtitle}</p>
+          <div className="app-shell-title">
+            {onSidebarToggle && <button className="app-sidebar-toggle" type="button"
+              onClick={onSidebarToggle} aria-controls="main-navigation" aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? "展开导航" : "收起导航"}
+              title={sidebarCollapsed ? "展开导航" : "收起导航"}>
+              {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+            </button>}
+            <div className="app-shell-heading">
+              <h1>{title}</h1>
+              {subtitle && <p className="app-shell-subtitle">{subtitle}</p>}
+            </div>
           </div>
           <div className="app-shell-meta">
             <ThemeToggle theme={theme} onToggle={onThemeToggle} />

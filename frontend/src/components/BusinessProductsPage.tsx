@@ -15,11 +15,10 @@ import {
   Columns3,
   Download,
   ImageOff,
-  Info,
   LoaderCircle,
   Maximize2,
-  RotateCcw,
-  Rows3,
+  SlidersHorizontal,
+  MoreHorizontal,
   Search,
   X
 } from "lucide-react";
@@ -29,8 +28,7 @@ import {
   agGridZhCN,
   defaultTableColDef,
   formatQty,
-  gridHeaderHeight,
-  numberFilterParams
+  gridHeaderHeight
 } from "./grid-config";
 import type { BusinessProductFilters, BusinessProductRow, BusinessProductsResponse } from "../types";
 
@@ -46,6 +44,9 @@ const THUMB_SIZE = { compact: 30, comfortable: 44 } as const;
 
 type Density = keyof typeof ROW_HEIGHT;
 
+const EMPTY_FILTERS: BusinessProductFilters = { model: "", category: "", audit: "", client: "" };
+const FILTER_FIELDS = [["model", "车款"], ["category", "类别"], ["audit", "审核"], ["client", "客户"]] as const;
+
 /** Columns hidden by default: still one click away, but out of the way. */
 const OPTIONAL_COLUMNS = ["scale", "bomCount", "client", "category1", "category2", "category3", "bomDate"];
 
@@ -57,10 +58,7 @@ export type BusinessProductsPageProps = {
   filters: BusinessProductFilters;
   loading?: boolean;
   pageSizeOptions: number[];
-  onQueryChange: (value: string) => void;
-  onFilterChange: (key: keyof BusinessProductFilters, value: string) => void;
-  onSearch: () => void;
-  onReset: () => void;
+  onSearch: (query: string, filters: BusinessProductFilters) => Promise<boolean>;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenDetail: (row: BusinessProductRow) => void;
@@ -84,16 +82,23 @@ export default function BusinessProductsPage({
   filters,
   loading,
   pageSizeOptions,
-  onQueryChange,
-  onFilterChange,
   onSearch,
-  onReset,
   onPageChange,
   onPageSizeChange,
   onOpenDetail
 }: BusinessProductsPageProps) {
   const gridRef = useRef<AgGridReact<BusinessProductRow>>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [queryDraft, setQueryDraft] = useState(query);
+  const [filterDraft, setFilterDraft] = useState(filters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const activeFilters = FILTER_FIELDS.filter(([key]) => filters[key].trim());
   const [pageDraft, setPageDraft] = useState("1");
   const [density, setDensity] = useState<Density>(readDensity);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
@@ -103,7 +108,7 @@ export default function BusinessProductsPage({
 
   const page = data?.page ?? 1;
   const pageSize = data?.pageSize ?? 50;
-  const totalPages = data?.totalPages ?? 1;
+  const totalPages = Math.max(1, data?.totalPages ?? 1);
   const foundCount = data?.foundCount ?? 0;
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const firstRow = foundCount === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -128,6 +133,25 @@ export default function BusinessProductsPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    function dismiss(event: PointerEvent) {
+      const target = event.target as Node;
+      if (!settingsRef.current?.contains(target)) setColumnMenuOpen(false);
+      if (!moreRef.current?.contains(target)) setMoreOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (columnMenuOpen) { setColumnMenuOpen(false); settingsButtonRef.current?.focus(); }
+      if (moreOpen) { setMoreOpen(false); moreButtonRef.current?.focus(); }
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [columnMenuOpen, moreOpen]);
 
   const saveColumnState = useCallback(() => {
     if (!gridRef.current) return;
@@ -159,20 +183,17 @@ export default function BusinessProductsPage({
         state: OPTIONAL_COLUMNS.map((colId) => ({ colId, hide: true }))
       });
     }
+    setPageScoped(event.api.getColumnState().some((column) => Boolean(column.sort)));
     setHiddenColumns(
       event.api.getColumnState().filter((column) => column.hide).map((column) => column.colId)
     );
   }
 
-  /**
-   * Header sorting and the per-column filter menus both run client-side, over
-   * the rows of the current page only. That is invisible next to a toolbar
-   * that queries all 10k records, so say it out loud whenever one is active.
-   */
+  // Column sorting is local to the loaded page.
   const refreshScopeHint = useCallback(() => {
     const api = gridRef.current?.api;
     if (!api) return;
-    setPageScoped(api.getColumnState().some((column) => column.sort) || api.isAnyFilterPresent());
+    setPageScoped(api.getColumnState().some((column) => column.sort));
   }, []);
 
   function handleSortChanged(_event: SortChangedEvent<BusinessProductRow>) {
@@ -229,16 +250,29 @@ export default function BusinessProductsPage({
     });
   }
 
+  async function applySearch(nextQuery: string, nextFilters: BusinessProductFilters) {
+    if (loading) return;
+    if (await onSearch(nextQuery, nextFilters)) {
+      setQueryDraft(nextQuery.trim());
+      setFilterDraft(Object.fromEntries(Object.entries(nextFilters).map(([key, value]) => [key, value.trim()])) as BusinessProductFilters);
+      setFiltersOpen(false);
+      if (filtersOpen) filterButtonRef.current?.focus();
+      else searchRef.current?.focus();
+    }
+  }
+
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSearch();
+    void applySearch(queryDraft, filtersOpen ? filterDraft : filters);
   }
 
   function submitPageJump(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextPage = Number(pageDraft);
-    if (!Number.isFinite(nextPage)) return;
-    onPageChange(Math.min(Math.max(1, Math.trunc(nextPage)), totalPages));
+    if (loading || !pageDraft.trim() || !Number.isFinite(nextPage)) return;
+    const bounded = Math.min(Math.max(1, Math.trunc(nextPage)), totalPages);
+    setPageDraft(String(bounded));
+    onPageChange(bounded);
   }
 
   function handleRowDoubleClick(event: RowDoubleClickedEvent<BusinessProductRow>) {
@@ -250,7 +284,7 @@ export default function BusinessProductsPage({
   // The toolbar above already filters server-side across all pages. A floating
   // filter row would look identical but silently filter the current page only,
   // so this grid opts out of it.
-  const gridColDef = useMemo<ColDef>(() => ({ ...defaultTableColDef, floatingFilter: false }), []);
+  const gridColDef = useMemo<ColDef>(() => ({ ...defaultTableColDef, floatingFilter: false, filter: false, suppressHeaderMenuButton: true }), []);
 
   const columns = useMemo<ColDef<BusinessProductRow>[]>(
     () => [
@@ -350,8 +384,6 @@ export default function BusinessProductsPage({
         colId: "stock",
         headerName: "库存",
         width: 100,
-        filter: "agNumberColumnFilter",
-        filterParams: numberFilterParams,
         cellClass: "numeric-cell",
         headerClass: "numeric-header",
         valueFormatter: ({ value }) => formatQty(value)
@@ -362,8 +394,6 @@ export default function BusinessProductsPage({
         colId: "bomCount",
         headerName: "BOM",
         width: 95,
-        filter: "agNumberColumnFilter",
-        filterParams: numberFilterParams,
         cellClass: "numeric-cell",
         headerClass: "numeric-header",
         valueFormatter: ({ value }) => formatQty(value)
@@ -384,156 +414,91 @@ export default function BusinessProductsPage({
 
   return (
     <>
-      <section className="kit-issue-summary product-directory-summary" aria-label="产品资料摘要">
-        <div>
-          <span className="meta-label">数据来源</span>
-          <strong className="meta-value">{data?.layout ?? "—"}</strong>
-        </div>
-        <div>
-          <span className="meta-label">产品记录</span>
-          <strong className="meta-value qty">{foundCount.toLocaleString("zh-CN")}</strong>
-        </div>
-        <div>
-          <span className="meta-label">每页</span>
-          <strong className="meta-value qty">{pageSize}</strong>
-        </div>
-        <div>
-          <span className="meta-label">当前页</span>
-          <strong className="meta-value qty">
-            {page.toLocaleString("zh-CN")} / {totalPages.toLocaleString("zh-CN")}
-          </strong>
-        </div>
-      </section>
-
-      <section className="card data-card kit-issue-card product-directory-card">
-        <div className="card-head">
-          <div className="card-head-left">
-            <h3>产品资料列表</h3>
-            <span className="record-count">
-              {firstRow}-{lastRow} / {foundCount.toLocaleString("zh-CN")} 条
-            </span>
-          </div>
-          <div className="card-head-actions">
-            <div className="column-menu-wrap">
-              <button
-                className="btn ghost"
-                type="button"
-                onClick={() => setColumnMenuOpen((open) => !open)}
-                aria-expanded={columnMenuOpen}
-                title="选择要显示的列"
-              >
-                <Columns3 size={15} />
-                列{hiddenColumns.length > 0 ? ` · 隐藏 ${hiddenColumns.length}` : ""}
-              </button>
-              {columnMenuOpen && (
-                <>
-                  <div className="column-menu-backdrop" onClick={() => setColumnMenuOpen(false)} />
-                  <div className="column-menu" role="menu">
-                    <div className="column-menu-head">
-                      <span>显示的列</span>
-                      <button type="button" className="btn-link" onClick={resetLayout}>
-                        恢复默认
-                      </button>
-                    </div>
-                    <div className="column-menu-list">
-                    {toggleableColumns.map((column) => {
-                      const colId = column.colId as string;
-                      const visible = !hiddenColumns.includes(colId);
-                      return (
-                        <label key={colId} className="column-menu-item">
-                          <input
-                            type="checkbox"
-                            checked={visible}
-                            onChange={(event) => toggleColumn(colId, event.target.checked)}
-                          />
-                          <span>{column.headerName}</span>
-                        </label>
-                      );
-                    })}
-                    </div>
-                    <div className="column-menu-foot">
-                      <button type="button" className="btn-link" onClick={autoSizeColumns}>
-                        按内容自适应列宽
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <button
-              className="btn ghost"
-              type="button"
-              onClick={() => changeDensity(density === "compact" ? "comfortable" : "compact")}
-              title={density === "compact" ? "切换到舒适行高" : "切换到紧凑行高"}
-            >
-              <Rows3 size={15} />
-              {density === "compact" ? "紧凑" : "舒适"}
-            </button>
-            <button className="btn ghost" onClick={exportCsv} disabled={rows.length === 0}>
-              <Download size={15} />
-              导出 CSV
-            </button>
-          </div>
-        </div>
-
-        <div className="card-toolbar product-directory-toolbar">
-          <form className="product-filter-form" onSubmit={submitSearch}>
+      <section className="card data-card kit-issue-card product-directory-card" aria-label="产品资料列表">
+        <div className="product-directory-toolbar">
+          <form className="product-search-form" onSubmit={submitSearch}>
             <label className="grid-search product-main-search" htmlFor="businessProductQuery">
               <Search size={15} />
-              <input
-                id="businessProductQuery"
-                ref={searchRef}
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="产品编号、名称、车款、客户（按 / 聚焦）"
-              />
+              <input id="businessProductQuery" ref={searchRef} value={queryDraft}
+                onChange={(event) => setQueryDraft(event.target.value)} disabled={loading}
+                aria-label="搜索产品" placeholder="搜索产品编号、名称、车款、客户" title="按 / 聚焦搜索" />
             </label>
-            <input
-              className="filter-input"
-              value={filters.model}
-              onChange={(event) => onFilterChange("model", event.target.value)}
-              placeholder="车款"
-              aria-label="车款"
-            />
-            <input
-              className="filter-input"
-              value={filters.category}
-              onChange={(event) => onFilterChange("category", event.target.value)}
-              placeholder="类别"
-              aria-label="类别"
-            />
-            <input
-              className="filter-input"
-              value={filters.audit}
-              onChange={(event) => onFilterChange("audit", event.target.value)}
-              placeholder="审核"
-              aria-label="审核"
-            />
-            <input
-              className="filter-input"
-              value={filters.client}
-              onChange={(event) => onFilterChange("client", event.target.value)}
-              placeholder="客户"
-              aria-label="客户"
-            />
-            <button className="btn primary" type="submit" disabled={loading}>
-              <Search size={15} />
-              查询
-            </button>
-            <button className="btn ghost" type="button" onClick={onReset} disabled={loading}>
-              <RotateCcw size={15} />
-              重置
-            </button>
+            <button className="btn primary" type="submit" disabled={loading}>搜索</button>
           </form>
+          <button ref={filterButtonRef} className={`btn ${activeFilters.length ? "secondary" : "ghost"}`}
+            type="button" aria-expanded={filtersOpen} aria-controls="product-filters"
+            onClick={() => setFiltersOpen((open) => !open)}>
+            <SlidersHorizontal size={15} />筛选{activeFilters.length > 0 ? ` · ${activeFilters.length}` : ""}
+          </button>
+          <div className="column-menu-wrap" ref={settingsRef}
+            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setColumnMenuOpen(false); }}>
+            <button className="btn ghost" type="button" ref={settingsButtonRef}
+              aria-expanded={columnMenuOpen} aria-controls="product-table-settings"
+              onClick={() => { setColumnMenuOpen((open) => !open); setMoreOpen(false); }}>
+              <Columns3 size={15} />表格设置
+            </button>
+            {columnMenuOpen && (
+              <div className="column-menu product-settings-menu" id="product-table-settings" aria-label="表格设置">
+                <div className="column-menu-head"><span>显示的列</span>
+                  <button type="button" className="btn-link" onClick={resetLayout}>恢复默认</button>
+                </div>
+                <div className="column-menu-list">
+                  {toggleableColumns.map((column) => (
+                    <label key={column.colId} className="column-menu-item">
+                      <input type="checkbox" checked={!hiddenColumns.includes(column.colId as string)}
+                        onChange={(event) => toggleColumn(column.colId as string, event.target.checked)} />
+                      <span>{column.headerName}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="product-settings-density">
+                  <label htmlFor="product-row-density">行高</label>
+                  <select id="product-row-density" value={density} onChange={(event) => changeDensity(event.target.value as Density)}>
+                    <option value="comfortable">舒适</option><option value="compact">紧凑</option>
+                  </select>
+                </div>
+                <div className="column-menu-foot">
+                  <button type="button" className="btn-link" onClick={autoSizeColumns}>按内容自适应列宽</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="column-menu-wrap" ref={moreRef}
+            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setMoreOpen(false); }}>
+            <button className="btn ghost" type="button" ref={moreButtonRef} aria-expanded={moreOpen}
+              aria-controls="product-more-actions" onClick={() => { setMoreOpen((open) => !open); setColumnMenuOpen(false); }}>
+              <MoreHorizontal size={16} />更多
+            </button>
+            {moreOpen && <div className="column-menu product-more-menu" id="product-more-actions">
+              <button className="btn ghost" type="button" disabled={loading || rows.length === 0}
+                onClick={() => { exportCsv(); setMoreOpen(false); moreButtonRef.current?.focus(); }}>
+                <Download size={15} />导出当前页 CSV
+              </button>
+            </div>}
+          </div>
         </div>
 
-        {pageScoped && (
-          <p className="grid-scope-hint">
-            <Info size={13} />
-            表头的排序和筛选只作用于当前这一页的 {rows.length} 条记录；要在全部{" "}
-            {foundCount.toLocaleString("zh-CN")} 条里查找，请用上面的搜索框和筛选条件。
-          </p>
-        )}
+        {filtersOpen && <form id="product-filters" className="product-filter-panel" onSubmit={submitSearch}>
+          <fieldset disabled={loading}>
+            <legend className="sr-only">筛选产品</legend>
+            {FILTER_FIELDS.map(([key, label]) => <label key={key} className="product-filter-field">
+              <span>{label}</span>
+              <input className="filter-input" value={filterDraft[key]}
+                onChange={(event) => setFilterDraft((current) => ({ ...current, [key]: event.target.value }))} />
+            </label>)}
+            <div className="product-filter-actions">
+              <button className="btn primary" type="submit">应用筛选</button>
+              <button className="btn ghost" type="button" onClick={() => setFilterDraft({ ...EMPTY_FILTERS })}>清空条件</button>
+            </div>
+          </fieldset>
+        </form>}
+
+        {(query.trim() || activeFilters.length > 0) && <div className="product-active-filters" aria-label="已生效的查询条件">
+          {query.trim() && <span title={query}>搜索：{query}</span>}
+          {activeFilters.map(([key, label]) => <span key={key} title={filters[key]}>{label}：{filters[key]}</span>)}
+          <button className="btn-link" type="button" disabled={loading}
+            onClick={() => void applySearch("", { ...EMPTY_FILTERS })}>清除全部</button>
+        </div>}
 
         <div className={`grid full product-directory-grid ag-theme-quartz density-${density}`}>
           <AgGridReact
@@ -554,14 +519,13 @@ export default function BusinessProductsPage({
             onColumnResized={({ finished }) => finished && saveColumnState()}
             onColumnMoved={({ finished }) => finished && saveColumnState()}
             onSortChanged={handleSortChanged}
-            onFilterChanged={refreshScopeHint}
             onColumnPinned={saveColumnState}
           />
         </div>
 
         <div className="kit-pager">
           <span className="kit-pager-range">
-            {firstRow}-{lastRow} / {foundCount.toLocaleString("zh-CN")}
+            第 {firstRow.toLocaleString("zh-CN")}–{lastRow.toLocaleString("zh-CN")} 条，共 {foundCount.toLocaleString("zh-CN")} 条
           </span>
           <div className="kit-pager-actions">
             <label className="page-size-select">
@@ -599,18 +563,19 @@ export default function BusinessProductsPage({
             >
               <ChevronLeft size={16} />
             </button>
-            <form className="page-jump" onSubmit={submitPageJump}>
+            <form className="page-jump" onSubmit={submitPageJump} noValidate>
+              <span>第</span>
               <input
                 aria-label="页码"
+                disabled={loading || foundCount === 0}
+                title="输入页码后按 Enter 跳转"
                 min={1}
                 max={totalPages}
                 type="number"
                 value={pageDraft}
                 onChange={(event) => setPageDraft(event.target.value)}
               />
-              <button className="btn" type="submit" disabled={loading}>
-                跳转
-              </button>
+              <span>/ {totalPages.toLocaleString("zh-CN")} 页</span>
             </form>
             <button
               className="btn icon"
@@ -634,6 +599,10 @@ export default function BusinessProductsPage({
             </button>
           </div>
         </div>
+        <footer className="product-directory-footnote">
+          <span>数据来源：{data?.layout || "—"}</span>
+          {pageScoped && <span>排序仅作用于当前页</span>}
+        </footer>
       </section>
 
       {preview && (
@@ -645,7 +614,6 @@ export default function BusinessProductsPage({
           onOpenDetail={onOpenDetail}
         />
       )}
-      <div className="page-footer-spacer" aria-hidden="true" />
     </>
   );
 }

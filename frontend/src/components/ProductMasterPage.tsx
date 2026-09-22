@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Download, X, CircleCheck, AlertCircle, Plus, Layers, Camera, History, RefreshCw } from 'lucide-react';
 import { productPhotoFields, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups } from './productMasterLayout';
 import './ProductMasterPage.css';
+import ProductQuotes from './ProductQuotes';
 
 type Choice = { value: string; label: string; name?: string; code?: string };
 type Control = { type: string; options: Choice[]; searchable: boolean };
@@ -28,7 +29,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
   '同步状态': <RefreshCw size={14} />,
 };
 
-export default function ProductMasterPage({ apiBase, token, initialRef = '' }: { apiBase: string; token: string; initialRef?: string }) {
+export default function ProductMasterPage({ apiBase, token, initialRef = '', readOnly = false }: { apiBase: string; token: string; initialRef?: string; readOnly?: boolean }) {
   const [controls, setControls] = useState<Record<string, Control>>({});
   const [picker, setPicker] = useState<{ field: string; repetition: number } | null>(null);
   const [query, setQuery] = useState('');
@@ -63,10 +64,14 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
   const loadSequence = useRef(0);
   const closing = useRef(false);
   const pending = useRef({ fingerprint: '', id: crypto.randomUUID() });
-  const dirty = JSON.stringify(fields) !== JSON.stringify(product?.fields ?? {}) || JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []);
-  const canEdit = !!permissions.canEditProducts && !product?.previewMode;
+  const [quoteDirty, setQuoteDirty] = useState(false);
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const productDirty = JSON.stringify(fields) !== JSON.stringify(product?.fields ?? {}) || JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []);
+  const dirty = productDirty || quoteDirty;
+  const canEdit = !readOnly && !!permissions.canEditProducts && !product?.previewMode;
 
   async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    if (readOnly && method !== 'GET') throw new Error('产品浏览页不支持修改');
     const response = await fetch(`${apiBase}/api/product-master${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const data = await response.json();
     if (!response.ok) {
@@ -95,6 +100,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
   }
   function show(p: Product) { localFiles.current.clear(); setProduct(p); setFields(p.fields); setAssets(p.assets); setConflict(null); setError(''); setSkuError(''); }
   async function load(ref: string) {
+    if (quoteBusy) { setError('报价正在保存，请稍后切换产品。'); return; }
     if (dirty && !window.confirm('当前修改尚未保存，是否放弃并切换产品？')) return;
     const sequence = ++loadSequence.current; setLoading(true); setError('');
     try { const result = await api<Product>(`/products/${encodeURIComponent(ref)}`); if (sequence === loadSequence.current) { show(result); setSelectedAsset(null); } } catch (e) { if (sequence === loadSequence.current) setError(String(e)); } finally { if (sequence === loadSequence.current) setLoading(false); }
@@ -113,7 +119,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard);
   }, [dirty]);
   useEffect(() => {
-    if (!product) return;
+    if (!product || readOnly) return;
     if (product.previewMode) { setHistory([]); setSync({ writeEnabled: false, filemaker: [], dms: [] }); return; }
     let active = true;
     const poll = () => api<Status>(`/products/${product.id}/status`).then(s => { if (active) setSync(s); }).catch(e => { if (active) setError(String(e)); });
@@ -138,7 +144,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close);
   }, []);
   function cancelEditing() {
-    if (busy) return;
+    if (busy || quoteBusy) return;
     if (!window.confirm(dirty
       ? '确定取消编辑并关闭窗口吗？尚未保存的修改将被放弃。'
       : '确定取消编辑并关闭窗口吗？')) return;
@@ -172,7 +178,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     try { show(await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id })); setMessage('Web 已保存，已进入同步队列'); } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请稍后重试。'); } finally { setBusy(false); }
   }
   async function upload(file: File, field: Field, repetition: number) {
-    if (!product || busy) return;
+    if (readOnly || !product || busy) return;
     if (['產品照片', '产品规格书'].includes(assetGroup(field.name)) && !/^image\/(png|jpeg|webp|gif)$/.test(file.type)) { setError('产品图片只支持 JPG、PNG、WebP 或 GIF。'); return; }
     if (file.size > 100 * 1024 * 1024) { setError('文件不能超过 100 MB。'); return; }
     if (product.previewMode) { const id = crypto.randomUUID(); localFiles.current.set(id, file); setAssets(old => [...old.filter(a => a.field !== field.name || a.repetition !== repetition), { id, field: field.name, repetition, filename: file.name, mimeType: file.type, size: file.size }]); setError(''); setMessage('图片已加入当前草稿，尚未保存。'); return; }
@@ -204,9 +210,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
   const changeCount = Object.entries(fields).filter(([name, v]) => JSON.stringify(product?.fields[name]) !== JSON.stringify(v)).length
     + (JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []) ? 1 : 0);
   const heroAsset = assets.find(a => a.field === 'image_main');
-  const tabs = ['基础资料', ...nativeTabs, '修改历史', '同步状态'];
+  const quoteTabs = product && permissions.canViewPrice ? ['客户群报价'] : [];
+  const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
   const find = (name: string) => schema.find(f => f.name === name && f.result !== 'container');
-  const writableField = (f: Field) => f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
+  const writableField = (f: Field) => !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
   const label = (name: string) => fieldLabels[name] ?? name;
 
   function readOnlyTag(f: Field) {
@@ -245,11 +252,11 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     if (f.name === 'id_client' && schema.some(field => field.name === 'Client')) return null;
     if (f.name === 'Client') {
       const customerFields = schema.filter(field => ['Client', 'id_client'].includes(field.name));
-      const editable = customerFields.length === 2 && customerFields.every(field => field.writable && (product?.previewMode || (canEdit && permissions[field.writePermission ?? 'canEditProducts'])));
+      const editable = !readOnly && customerFields.length === 2 && customerFields.every(field => field.writable && (product?.previewMode || (canEdit && permissions[field.writePermission ?? 'canEditProducts'])));
       return <section className="pm-customer" key={f.name} aria-label="客户资料">
         <div className="pm-customer-main"><span className="k">客户</span><span className="v">{value('Client') || '未选择客户'}</span></div>
         {customerFields.some(field => field.name === 'id_client') && <div className="pm-customer-code"><span className="k">编号</span><span className="v">{value('id_client') || '—'}</span></div>}
-        <button type="button" disabled={!editable || busy || loading} onClick={() => openPicker('Client', 1)}>{value('Client') ? '更换' : '选择客户'}</button>
+        {!readOnly && <button type="button" disabled={!editable || busy || loading} onClick={() => openPicker('Client', 1)}>{value('Client') ? '更换' : '选择客户'}</button>}
       </section>;
     }
     const writable = writableField(f);
@@ -257,10 +264,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     return <div className={`pm-f pm-f-${presentation}${f.name === '審核' ? ' pm-f-review' : ''}${writable ? '' : ' is-readonly'}`} key={f.name} title={f.name}>
       <span className="pm-f-label">
         {label(f.name)}
-        {f.required && <em className="pm-req"> *</em>}
-        {!writable && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
+        {!readOnly && f.required && <em className="pm-req"> *</em>}
+        {!readOnly && !writable && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
       </span>
-      {f.name === '系統產品編號' ? <div className="pm-field-action">
+      {!readOnly && f.name === '系統產品編號' ? <div className="pm-field-action">
         {inputFor(f, 0)}
         <button type="button" disabled={!writable || busy || loading || !value('product_sku').trim()}
           title={value('product_sku').trim() ? '将 SKU 复制到系统编号' : '请先填写 SKU'}
@@ -306,7 +313,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     </div>;
   }
 
-  function formCard(title: string, names: string[], caption?: string) {
+  function sectionInner(title: string, names: string[]) {
     const measures = measureGroups[title] ?? [];
     const folds = foldedGroups[title] ?? [];
     const bands = title === '报价信息' ? priceBands : [];
@@ -319,17 +326,43 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
     const bandBlocks = bands.map(band => ({ title: band.title, fs: band.fields.map(find).filter((f): f is Field => !!f) })).filter(b => b.fs.length);
     const total = names.map(find).filter(Boolean).length;
     if (!total) return null;
+    return <>
+      {!!rest.length && <div className="pm-grid">{rest.map(fieldControl)}</div>}
+      {!!measures.length && <div className="pm-measures">{measures.map((g, i) => measureBlock(g, `${title}:${i}`))}</div>}
+      {bandBlocks.map(band => <div className="pm-band" key={band.title}>
+        <div className="pm-band-head"><span>{band.title}</span><i /></div>
+        <div className="pm-grid pm-grid-bands">{band.fs.map(fieldControl)}</div>
+      </div>)}
+      {folds.map((g, i) => foldBlock(title, g, i))}
+    </>;
+  }
+
+  function formCard(title: string, names: string[], caption?: string) {
+    const inner = sectionInner(title, names);
+    if (!inner) return null;
     return <section className="pm-card" id={`pm-section-${title}`} key={title}>
       <div className="pm-card-head"><i className="pm-card-rule" /><h2>{title}</h2></div>
       {caption && <p className="pm-caption">{caption}</p>}
-      <div className="pm-card-body">
-        {!!rest.length && <div className="pm-grid">{rest.map(fieldControl)}</div>}
-        {!!measures.length && <div className="pm-measures">{measures.map((g, i) => measureBlock(g, `${title}:${i}`))}</div>}
-        {bandBlocks.map(band => <div className="pm-band" key={band.title}>
-          <div className="pm-band-head"><span>{band.title}</span><i /></div>
-          <div className="pm-grid pm-grid-bands">{band.fs.map(fieldControl)}</div>
-        </div>)}
-        {folds.map((g, i) => foldBlock(title, g, i))}
+      <div className="pm-card-body">{inner}</div>
+    </section>;
+  }
+
+  /** 报价信息（左）与库存信息（右）合并为一个区域，紧跟在产品信息之后展示。 */
+  function splitCard(id: string, left: { title: string; names: string[] }, right: { title: string; names: string[] }) {
+    const leftInner = sectionInner(left.title, left.names);
+    const rightInner = sectionInner(right.title, right.names);
+    if (!leftInner && !rightInner) return null;
+    return <section className="pm-card" id={`pm-section-${id}`} key={id}>
+      <div className="pm-card-head"><i className="pm-card-rule" /><h2>{left.title} · {right.title}</h2></div>
+      <div className="pm-card-body pm-split">
+        {leftInner && <div className="pm-split-col" id={`pm-section-${left.title}`}>
+          <div className="pm-split-col-head">{left.title}</div>
+          {leftInner}
+        </div>}
+        {rightInner && <div className="pm-split-col" id={`pm-section-${right.title}`}>
+          <div className="pm-split-col-head">{right.title}</div>
+          {rightInner}
+        </div>}
       </div>
     </section>;
   }
@@ -343,7 +376,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
   function photoSlot(f: Field, repetition: number, hero = false) {
     const a = assets.find(a => a.field === f.name && a.repetition === repetition);
     const reason = a ? unsupportedPreviewReason(a) || previewErrors[a.id] : '';
-    const editable = f.writable && (canEdit || (!!product?.previewMode && ['產品照片', '产品规格书'].includes(assetGroup(f.name))));
+    const editable = !readOnly && f.writable && (canEdit || (!!product?.previewMode && ['產品照片', '产品规格书'].includes(assetGroup(f.name))));
     const slot = `${f.name}:${repetition}`;
     const pendingFile = product?.pendingAssetFields?.includes(f.name);
     const onDrop = (e: React.DragEvent) => { e.preventDefault(); setDragSlot(''); if (!editable || busy) return; const files = Array.from(e.dataTransfer.files); if (files.length !== 1) { setError('每个图片位置请拖入一张图片。'); return; } void upload(files[0], f, repetition); };
@@ -353,7 +386,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
       onDrop,
     };
     if (!a) return <label className={`pm-slot pm-slot-empty${hero ? ' pm-slot-hero' : ''}${dragSlot === slot ? ' is-drag' : ''}`} key={slot} title={f.name} {...dragProps}>
-      <Plus size={hero ? 24 : 16} />
+      {readOnly ? <ImageIcon size={hero ? 24 : 16} /> : <Plus size={hero ? 24 : 16} />}
       <span className="pm-slot-n">{slotLabel(f, repetition)}</span>
       {pendingFile && <span className="pm-slot-pending">待复制</span>}
       {editable && <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-label={`上传 ${f.name}`} disabled={!product || busy} onChange={e => { const file = e.target.files?.[0]; if (file) void upload(file, f, repetition); e.target.value = ''; }} />}
@@ -382,7 +415,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
       </div>
       <div className="pm-card-body pm-slots">
         {slots.map(s => photoSlot(s.f, s.repetition, s.f.name === 'image_main'))}
-        <p className="pm-slots-note">主图独立管理，其余为产品图片 02–18。</p>
+        <p className="pm-slots-note">{readOnly ? '点击预览查看图片，可下载原文件。' : '主图独立管理，其余为产品图片 02–18。'}</p>
       </div>
     </section>;
   }
@@ -396,7 +429,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
       <div className="pm-card-body pm-docs">
         {slots.map(({ f, repetition }) => {
           const a = assets.find(a => a.field === f.name && a.repetition === repetition);
-          const editable = f.writable && (canEdit || (!!product?.previewMode && assetGroup(f.name) === '产品规格书'));
+          const editable = !readOnly && f.writable && (canEdit || (!!product?.previewMode && assetGroup(f.name) === '产品规格书'));
           const slot = `${f.name}:${repetition}`;
           return <div className={`pm-doc${a ? ' has-file' : ''}`} key={slot} title={f.name}>
             <span className="pm-doc-icon">{a && a.mimeType === 'application/pdf' ? <FileText size={18} /> : a ? <ImageIcon size={18} /> : <Plus size={18} />}</span>
@@ -419,7 +452,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
 
   if (!token) return <main className="product-master"><p className="pm-boot">正在验证登录信息，请从 FileMaker 打开。</p></main>;
 
-  return <main className="product-master">
+  return <main className={`product-master${readOnly ? " pm-browser" : ""}`}>
     <header className="pm-bar">
       <div className="pm-thumb" title={heroAsset ? unsupportedPreviewReason(heroAsset) || previewErrors[heroAsset.id] : undefined}>
         {heroAsset && !unsupportedPreviewReason(heroAsset) && !previewErrors[heroAsset.id] && previews[heroAsset.id]
@@ -436,25 +469,26 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
         </div>
       </div>
       <div className="pm-bar-actions">
+        {readOnly ? <span className="pm-chip"><LockKeyhole size={12} />只读浏览</span> : <>
         <div className="pm-save-state">
-          <b className={dirty ? 'is-dirty' : ''}>{loading ? '正在载入' : dirty ? `${changeCount} 处未保存` : product ? `Web 版本 ${product.version}` : '新产品'}</b>
+          <b className={dirty ? 'is-dirty' : ''}>{loading ? '正在载入' : quoteDirty ? '报价尚未保存' : dirty ? `${changeCount} 处未保存` : product ? `Web 版本 ${product.version}` : '新产品'}</b>
           <span>{product?.previewMode ? '草稿预览 · 本地' : canEdit ? '可保存' : '只读'}</span>
         </div>
-        <button type="button" className="pm-btn" disabled={busy} onClick={cancelEditing}>取消</button>
-        <button type="button" className="pm-btn pm-btn-primary" disabled={!canEdit || busy || loading || (!dirty && !!product)} onClick={() => void save()}><Save size={14} />{busy ? '处理中…' : '保存'}</button>
+        <button type="button" className="pm-btn" disabled={busy || quoteBusy} onClick={cancelEditing}>取消</button>
+        <button type="button" className="pm-btn pm-btn-primary" disabled={!canEdit || busy || loading || (!productDirty && !!product)} onClick={() => void save()}><Save size={14} />{busy ? '处理中…' : '保存产品资料'}</button></>}
       </div>
     </header>
 
     {error && <div role="alert" className="pm-notice pm-notice-error"><AlertCircle size={15} />{error}</div>}
     {message && <div className="pm-notice pm-notice-ok" role="status"><CircleCheck size={15} />{message}</div>}
-    {product?.previewMode && <div className="pm-notice"><LockKeyhole size={14} /><span>预览模式：字段可试填，保存与回写 FileMaker 尚未开放，修改仅保留在当前窗口。</span></div>}
+    {!readOnly && product?.previewMode && <div className="pm-notice"><LockKeyhole size={14} /><span>预览模式：字段可试填，保存与回写 FileMaker 尚未开放，修改仅保留在当前窗口。</span></div>}
     {product?.assetImportError && <div role="alert" className="pm-notice pm-notice-error"><AlertCircle size={15} />{product.assetImportError}</div>}
     {loading && <div className="pm-notice" role="status"><RotateCw className="pm-spin" size={15} /> 正在读取当前产品并校验全部容器；首次加载图片可能需要较长时间。</div>}
 
     <div className="pm-shell">
-      <nav className="pm-rail" aria-label="编辑器导航">
+      <nav className="pm-rail" aria-label={readOnly ? "产品资料导航" : "编辑器导航"}>
         <div className="pm-rail-label">模块</div>
-        {tabs.map(t => <button type="button" key={t} className="pm-rail-tab" aria-current={tab === t} onClick={() => { setTab(t); window.scrollTo(0, 0); }}>
+        {tabs.map(t => <button type="button" key={t} className="pm-rail-tab" aria-current={tab === t} disabled={quoteBusy} onClick={() => { if (t !== tab && quoteDirty && !window.confirm('当前报价尚未保存，是否放弃修改并切换栏目？')) return; setTab(t); window.scrollTo(0, 0); }}>
           {TAB_ICONS[t] ?? <Layers size={14} />}<span>{t}</span>
         </button>)}
         {tab === '基础资料' && <>
@@ -464,7 +498,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
           </button>)}
         </>}
         {product && <div className="pm-rail-foot">
-          {product.previewMode ? '草稿预览' : `Web 版本 ${product.version}`}<br />
+          {readOnly ? '产品资料' : product.previewMode ? '草稿预览' : `Web 版本 ${product.version}`}<br />
           <code>{value('ID') || product.id}</code>
         </div>}
       </nav>
@@ -473,7 +507,15 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
         {conflict && <section className="pm-conflict"><h2>此产品已有新修改</h2><p>你的输入仍保留，请比较差异后载入最新版本。</p><pre>{JSON.stringify({ 当前已保存: conflict.fields, 本次输入: fields }, null, 2)}</pre><button type="button" className="pm-btn" onClick={() => show(conflict)}>加载最新版本</button></section>}
 
         {tab === '基础资料' && <>
-          {Object.entries(basicSections).map(([title, names]) => formCard(title, names))}
+          {(() => {
+            const nodes: ReactNode[] = [];
+            for (const [title, names] of Object.entries(basicSections)) {
+              if (title === '报价信息' || title === '库存信息') continue;
+              nodes.push(formCard(title, names));
+              if (title === '产品信息') nodes.push(splitCard('报价与库存', { title: '报价信息', names: basicSections['报价信息'] }, { title: '库存信息', names: basicSections['库存信息'] }));
+            }
+            return nodes;
+          })()}
           <section className="pm-record-meta" aria-label="记录信息">
             {schema.filter(f => recordMetaFields.includes(f.name)).map(f => <div className="pm-meta-item" key={f.name}><span>{label(f.name)}</span><b>{value(f.name) || '—'}</b></div>)}
             {schema.some(f => f.name === 'ID') && <div className="pm-meta-item"><span>UUID</span><code>{value('ID')}</code></div>}
@@ -488,6 +530,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
           {tab === '生產注意事項' && docList('包装与标签', containers.filter(f => assetGroup(f.name) === '包装与标签'))}
         </>}
 
+        {tab === '客户群报价' && product && permissions.canViewPrice && <ProductQuotes key={`${product.id}:${token}`} apiBase={apiBase} token={token} productId={product.id} readOnly={readOnly || !!product.previewMode} onDirty={setQuoteDirty} onBusy={setQuoteBusy} />}
         {tab === '修改历史' && <section className="pm-card"><div className="pm-card-head"><i className="pm-card-rule" /><h2>修改历史</h2></div><div className="pm-card-body">
           {history.length ? history.map(h => <details className="pm-history" key={h.version}><summary>版本 {h.version} · {h.actor.name || h.actor.account} · {new Date(h.created_at).toLocaleString()}</summary><pre>{JSON.stringify({ 修改前: h.before_data, 修改后: h.after_data }, null, 2)}</pre><div className="pm-history-actions"><button type="button" className="pm-btn pm-btn-sm" disabled={!canEdit || busy} onClick={() => void restore(h.version)}>恢复为新版本</button>{h.after_data.assets.map(a => <button type="button" className="pm-btn pm-btn-sm" key={a.id} onClick={() => void download(a)}>下载 {a.filename}</button>)}</div></details>)
             : <p className="pm-empty-text">预览期间未开放编辑；启用后，每次保存的修改与原文件都可在这里追溯。</p>}
@@ -504,7 +547,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '' }: {
       </div>
     </div>
 
-    <footer className="pm-foot"><span>{dirty ? `有 ${changeCount} 处尚未保存的修改` : product?.previewMode ? '当前为草稿预览' : '所有修改按产品版本保存'} · {visibleAssets.length} 个附件</span></footer>
+    <footer className="pm-foot"><span>{readOnly ? '产品资料 · 只读浏览' : quoteDirty ? '客户群报价尚未保存，请使用“保存此报价”' : dirty ? `有 ${changeCount} 处尚未保存的修改` : product?.previewMode ? '当前为草稿预览' : '产品资料和客户群报价分别保存并保留历史'} · {visibleAssets.length} 个附件</span></footer>
 
     {picker && <div className="pm-modal" role="dialog" aria-modal="true" aria-label={['Client', 'id_client'].includes(picker.field) ? '选择客户' : '选择 ' + picker.field} onKeyDown={e => { if (e.key === 'Escape') setPicker(null); }}>
       <section className="pm-choice">

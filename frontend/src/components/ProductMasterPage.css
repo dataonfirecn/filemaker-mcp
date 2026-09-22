@@ -177,6 +177,12 @@
 .pm-card-body { padding: 15px 16px 17px; }
 .pm-caption { padding: 10px 16px 0; font-size: 11.5px; color: var(--pm-muted); }
 
+/* ── split card (报价信息 · 库存信息 side by side) ──────────────── */
+.pm-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
+.pm-split-col { min-width: 0; scroll-margin-top: 78px; }
+.pm-split-col + .pm-split-col { padding-left: 24px; border-left: 1px dashed var(--pm-line-strong); }
+.pm-split-col-head { margin: 0 0 10px; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; color: var(--pm-muted); }
+
 /* ── field grid ──────────────────────────────────────────────── */
 .pm-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
 .product-master .pm-grid > .pm-f { grid-column: span 3; }
@@ -376,6 +382,8 @@
 @media (max-width: 760px) {
   .pm-measures, .pm-docs { grid-template-columns: 1fr; }
   .pm-grid-bands { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pm-split { grid-template-columns: 1fr; gap: 16px 0; }
+  .pm-split-col + .pm-split-col { padding-left: 0; padding-top: 16px; border-left: 0; border-top: 1px dashed var(--pm-line-strong); }
 }
 @media (max-width: 620px) {
   .pm-bar { flex-wrap: wrap; padding: 10px 16px; }
@@ -388,3 +396,13 @@
   .pm-customer { flex-wrap: wrap; }
   .pm-modal { padding: 12px; }
 }
+
+/* Product browser inside the workspace navigation. */
+.product-master.pm-browser { min-height: 0; border: 1px solid var(--pm-line); border-radius: 10px; }
+.pm-browser .pm-bar { position: static; border-radius: 10px 10px 0 0; }
+.pm-browser .pm-shell { grid-template-columns: minmax(0, 1fr); }
+.pm-browser .pm-rail { position: static; display: flex; flex-wrap: wrap; gap: 6px; max-height: none; padding: 12px 18px; border-right: 0; border-bottom: 1px solid var(--pm-line); }
+.pm-browser .pm-rail-label, .pm-browser .pm-rail-foot, .pm-browser .pm-rail-anchor { display: none; }
+.product-master.pm-browser .pm-rail-tab { width: auto; margin: 0; }
+.pm-browser .pm-foot { position: static; border-radius: 0 0 10px 10px; }
+.pm-browser .pm-slot-empty { cursor: default; }

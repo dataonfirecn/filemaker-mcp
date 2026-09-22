@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     product_master_enabled: bool = False
     product_master_preview_enabled: bool = False
     product_master_write_enabled: bool = False
+    product_quote_write_enabled: bool = False
     product_master_username: str = ""
     product_master_password: str = ""
     product_master_source: str = ""

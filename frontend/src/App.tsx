@@ -44,7 +44,7 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import SuccessAlert from "./components/SuccessAlert";
 import { formatQty, numberFilterParams } from "./components/grid-config";
 import { parseError } from "./utils/error";
-import { takePreviewSession } from "./utils/previewSession";
+import { openPreviewWindow, takePreviewSession } from "./utils/previewSession";
 import {
   clearStoredSession,
   loadStoredSession,
@@ -150,11 +150,11 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   businessProducts: {
     title: "产品资料",
-    subtitle: "浏览产品资料，支持产品搜索、条件过滤和详情查看。"
+    subtitle: ""
   },
   businessProductDetail: {
     title: "产品资料详情",
-    subtitle: "查看 FileMaker 产品核心字段、商务分类和原始字段。"
+    subtitle: "浏览产品基础资料、产品图片、规格书与生产注意事项。"
   },
   parts: {
     title: "零件资料",
@@ -282,6 +282,14 @@ function initialTheme(): ThemeMode {
 
 export default function App() {
   const didInit = useRef(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("starrc-sidebar-collapsed") === "true"; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("starrc-sidebar-collapsed", String(sidebarCollapsed)); }
+    catch { /* Keep the toggle usable when storage is unavailable. */ }
+  }, [sidebarCollapsed]);
   const [embeddedChat] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("page") === "chat" && Boolean(params.get("ctx") && params.get("sig"));
@@ -506,7 +514,7 @@ export default function App() {
     filters = businessProductFilters,
     pageSize = businessProductPageSize
   ) {
-    if (!activeSession) return;
+    if (!activeSession) return false;
     setBusinessProductsLoading(true);
     setError(null);
     try {
@@ -528,8 +536,10 @@ export default function App() {
       setBusinessProductsData(data);
       setBusinessProductQuery(data.query);
       setBusinessProductFilters(data.filters);
+      return true;
     } catch (err) {
       setError(parseError(err));
+      return false;
     } finally {
       setBusinessProductsLoading(false);
     }
@@ -1124,32 +1134,20 @@ export default function App() {
     void loadKitIssueRecords(pageNumber, currentOrderNo);
   }
 
-  function handleBusinessProductFilterChange(key: keyof BusinessProductFilters, value: string) {
-    setBusinessProductFilters((current) => ({
-      ...current,
-      [key]: value
-    }));
+  function handleBusinessProductsSearch(query: string, filters: BusinessProductFilters) {
+    return loadBusinessProducts(1, session, query, filters);
   }
 
-  function handleBusinessProductsSearch() {
-    void loadBusinessProducts(1);
-  }
-
-  function handleBusinessProductsReset() {
-    setBusinessProductQuery("");
-    setBusinessProductFilters(emptyBusinessProductFilters);
-    void loadBusinessProducts(1, session, "", emptyBusinessProductFilters);
-  }
-
-  function handleBusinessProductPageSizeChange(nextPageSize: number) {
+  async function handleBusinessProductPageSizeChange(nextPageSize: number) {
+    // Only commit the preference after the new page has loaded successfully.
+    const loaded = await loadBusinessProducts(1, session, businessProductQuery, businessProductFilters, nextPageSize);
+    if (!loaded) return;
     setBusinessProductPageSize(nextPageSize);
     try {
       localStorage.setItem(BUSINESS_PRODUCT_PAGE_SIZE_KEY, String(nextPageSize));
     } catch {
-      // Ignore storage errors; the choice simply will not survive a reload.
+      // The in-memory preference remains usable when storage is unavailable.
     }
-    // Row offsets shift with the page size, so restart from the first page.
-    void loadBusinessProducts(1, session, businessProductQuery, businessProductFilters, nextPageSize);
   }
 
   function handleBusinessProductsPageChange(nextPage: number) {
@@ -1576,7 +1574,6 @@ export default function App() {
         id: "product-master",
         label: "产品资料",
         items: [
-          { id: "productMaster", label: "产品编辑", description: "产品主资料与附件版本", Icon: Database, disabled: access ? !access.canViewProducts : false },
           {
             id: "businessProducts",
             label: "产品资料",
@@ -1648,6 +1645,17 @@ export default function App() {
           }
         ]
       },
+      {
+        id: "filemaker-preview",
+        label: "FileMaker 专用",
+        items: [
+          { id: "fm-productMaster", label: "产品编辑", description: "预览 FileMaker 产品编辑页", Icon: Database, badge: "预览", disabled: !access?.canViewProducts, onOpen: () => openFileMakerPreview("productMaster") },
+          { id: "fm-productInventory", label: "产品出入库", description: "预览产品库存摘要与流水", Icon: Boxes, badge: "预览", disabled: !access?.canViewInventory, onOpen: () => openFileMakerPreview("productInventory") },
+          { id: "fm-internalOrderMerge", label: "内部订单合并", description: "预览 FileMaker 订单合并页", Icon: ShoppingCart, badge: "预览", disabled: !access?.canMergeOrders, onOpen: () => openFileMakerPreview("internalOrderMerge") },
+          { id: "fm-materialId", label: "零件编号生成", description: "预览 FileMaker 编号生成页", Icon: KeyRound, badge: "预览", disabled: !access?.canViewProducts, onOpen: () => openFileMakerPreview("materialIdWebViewer") },
+          { id: "fm-newPart", label: "新建零件", description: "预览 FileMaker 新建零件页", Icon: Boxes, badge: "预览", disabled: !access?.canViewProducts, onOpen: () => openFileMakerPreview("newPartWebViewer") }
+        ]
+      },
       ...(access?.canManageAccounts
         ? [{
             id: "system-admin",
@@ -1685,8 +1693,28 @@ export default function App() {
           }]
         : [])
     ],
-    [access, businessProductsData, bomStep, kitIssueData, preview, productBom, ragStatus]
+    [access, businessProductsData, businessProductDetail, session, bomSkuInput, bomStep, kitIssueData, preview, productBom, ragStatus]
   );
+
+  function openFileMakerPreview(target: string) {
+    if (!session) return;
+    const params = new URLSearchParams({ page: target });
+    if (target === "productMaster") {
+      const suggested = businessProductDetail?.recordId || businessProductsData?.rows[0]?.recordId || "";
+      const productId = window.prompt("输入要预览的产品 UUID（可从产品详情页地址中的 recordId 复制）", suggested);
+      if (!productId?.trim()) return;
+      params.set("productId", productId.trim());
+    }
+    if (target === "productInventory") {
+      const sku = window.prompt("输入要预览出入库记录的产品编号", businessProductDetail?.productSku || session.context.productSku || bomSkuInput || "");
+      if (!sku?.trim()) return;
+      params.set("productSku", sku.trim());
+    }
+    const previewSession = target === "productInventory"
+      ? { ...session, context: { ...session.context, productSku: params.get("productSku") || "" } }
+      : session;
+    if (!openPreviewWindow(`/?${params}`, previewSession)) setError("浏览器拦截了预览窗口，请允许本站弹出窗口后重试。");
+  }
 
   function handleNavigate(nextPage: Page) {
     if (nextPage === page) return;
@@ -1836,6 +1864,7 @@ export default function App() {
           {page !== "orderDetail" && (
             <SidebarNav
               groups={sidebarGroups}
+              collapsed={sidebarCollapsed}
               activePage={activeNavPage}
               onNavigate={handleNavigate}
               onGoHome={() => handleNavigate("home")}
@@ -1844,6 +1873,8 @@ export default function App() {
 
           <div className="app-main">
             <AppShell
+              sidebarCollapsed={sidebarCollapsed}
+              onSidebarToggle={page !== "orderDetail" ? () => setSidebarCollapsed((current) => !current) : undefined}
               title={pageMeta[page].title}
               subtitle={pageMeta[page].subtitle}
               calcStatus={showBOMWorkflow ? calcStatus : null}
@@ -2052,10 +2083,7 @@ export default function App() {
                 filters={businessProductFilters}
                 loading={businessProductsLoading}
                 pageSizeOptions={BUSINESS_PRODUCT_PAGE_SIZES}
-                onQueryChange={setBusinessProductQuery}
-                onFilterChange={handleBusinessProductFilterChange}
                 onSearch={handleBusinessProductsSearch}
-                onReset={handleBusinessProductsReset}
                 onPageChange={handleBusinessProductsPageChange}
                 onPageSizeChange={handleBusinessProductPageSizeChange}
                 onOpenDetail={openBusinessProductDetail}

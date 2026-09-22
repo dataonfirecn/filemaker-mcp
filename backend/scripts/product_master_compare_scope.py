@@ -27,7 +27,7 @@ async def run(args):
     s=get_settings();fm=FileMakerClient(s);store=ProductStore(s.audit_database_url,args.source);await store.init();schema=ProductSchema.load(args.schema)
     mode='scope' if args.privilege else 'full' if args.full else 'uuid-file'
     report={'source':args.source,'mode':mode,'privilege':args.privilege,'complete':False,'filemakerCount':0,'webCount':0,
-            'missing':[],'extra':[],'fieldDifferences':[],'slotDifferences':[],'changedSinceImport':[]}
+            'missing':[],'extra':[],'fieldDifferences':[],'slotDifferences':[],'changedSinceImport':[],'canonicalFailures':[]}
     baseline=None
     if args.baseline:
       baseline=json.loads(Path(args.baseline).read_text())
@@ -57,7 +57,14 @@ async def run(args):
           if name=='ID':remote=pid
           local=saved['fields'].get(name)
           if remote==local:continue
-          if canonical(remote,f['result'])!=canonical(local,f['result']):diffs.append(name)
+          try:
+            r=canonical(remote,f['result']);l=canonical(local,f['result'])
+          except Exception as exc:
+            # Unparseable source values are reported, never fatal: compare is read-only verification.
+            r='\x00'+repr(remote)[:200];l='\x00'+repr(local)[:200]
+            report['canonicalFailures'].append({'id':pid,'field':name,'result':f['result'],
+                'error':type(exc).__name__+': '+str(exc)[:120],'remote':repr(remote)[:200],'local':repr(local)[:200]})
+          if r!=l:diffs.append(name)
         if diffs:report['fieldDifferences'].append({'id':pid,'fields':diffs})
         slots={(f['name'],i) for f in schema.fields.values() if f['result']=='container' and f.get('managed',True) for i in range(1,int(f.get('maxRepeat',1))+1) if value_at(row['fieldData'],f['name'],i)}
         actual={(a['field'],a['repetition']) for a in saved['assets']}
@@ -79,7 +86,7 @@ async def run(args):
           if before_assets!=after_assets:changes.append({'assets':{'removed':len(before_assets-after_assets),'added':len(after_assets-before_assets)}})
           if changes:report['baseline']['baselineChanges'].append({'id':pid,'changes':changes})
       report['webCount']=len(known)
-      report['complete']=not any(report[k] for k in ('missing','fieldDifferences','slotDifferences','changedSinceImport'))\
+      report['complete']=not any(report[k] for k in ('missing','fieldDifferences','slotDifferences','changedSinceImport','canonicalFailures'))\
         and not (report['extra'] or []) and not report['identityIssues'].get('duplicateUuid') and not report['identityIssues'].get('invalidUuid')\
         and (baseline is None or not report['baseline']['baselineChanges'] and not report['baseline']['baselineMissing'])
       Path(args.report).write_text(dumps(report));print(dumps(report),flush=True)

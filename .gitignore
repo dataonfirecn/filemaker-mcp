@@ -43,3 +43,6 @@ npm-debug.log*
 .playwright-mcp/
 .com.apple.backupd.*
 part-detail-current.jpeg
+
+# Local backups
+frontend/src/components/.pm-backup-*/

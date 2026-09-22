@@ -1,3 +1,4 @@
+import { takePreviewSession } from "../utils/previewSession";
 import {
   AlertCircle,
   Check,
@@ -255,7 +256,8 @@ export default function MaterialIdWebViewerApp() {
     async function start() {
       const params = new URLSearchParams(window.location.search);
       try {
-        const nextSession = await requestJson<SessionResponse>(
+        const previewSession = !(params.get("ctx") && params.get("sig")) ? takePreviewSession() : null;
+        const nextSession = previewSession ?? await requestJson<SessionResponse>(
           "/api/webviewer/session",
           {
             method: "POST",

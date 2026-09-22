@@ -213,7 +213,10 @@ export default function DashboardPage({
                       key={item.id}
                       type="button"
                       onClick={() => {
-                        if (!item.disabled) onNavigate(item.id);
+                        if (!item.disabled) {
+                          if (item.onOpen) item.onOpen();
+                          else onNavigate(item.id);
+                        }
                       }}
                       disabled={item.disabled}
                       title={item.disabled ? item.disabledReason : item.description}

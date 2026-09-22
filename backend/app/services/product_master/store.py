@@ -127,6 +127,8 @@ class ProductStore:
         self.pool = await asyncpg.create_pool(self.url, min_size=1, max_size=max_size)
         async with self.pool.acquire() as c:
             await c.execute(DDL)
+            from .quotes import DDL as QUOTE_DDL
+            await c.execute(QUOTE_DDL)
             if self.fingerprint:
                 await c.execute('INSERT INTO pm_source(source,fingerprint) VALUES($1,$2) ON CONFLICT DO NOTHING',self.source,self.fingerprint)
                 saved=await c.fetchval('SELECT fingerprint FROM pm_source WHERE source=$1',self.source)

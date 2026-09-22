@@ -44,10 +44,10 @@ export function fieldPresentation(field: { name: string; result: string }, isChe
 // Review status follows the identifiers and is aligned to the right of the first row.
 export const basicSections: Record<string, string[]> = {
   '产品信息': ['product_sku', '系統產品編號', '審核', '客戶SKU', '條形碼', '產品名稱_中文', 'product_name', '法文名稱', 'Client', 'id_client'],
+  '报价信息': ['MOQ', 'Retail_Price_USD', '建議報價', 'opencost', '組裝成本USD', '組裝成本', '其他成本估價', '匯率', '成本加成', '報價積數', '應課稅', '提成', '提成B', '報價紀錄', '關聯編號_Price'],
+  '库存信息': ['stock', '有現貨', 'ShowStock', '產品位置', '位置', '追加訂購的等級', 'lastOrderElapsedDays', 'Stock_USD', 'PrePaid_stock_USD'],
   '分类与适配': ['類別', '車子比例', '車款', '車款 車型 A', '車款 車型 B', '車款 車型 C', '車款 車型 D', '產品分類', 'Brand_ID', 'Category', 'category1', 'category2', 'category3', '加入目錄', 'Upload_Date'],
   '尺寸与重量': ['尺寸', '重量', 'N.W淨重', 'G.W毛重', '彩盒尺寸 長', '彩盒尺寸 寬', '彩盒尺寸 高', '彩盒尺寸CBM', '外箱尺寸 長', '外箱尺寸 寬', '外箱尺寸 高', '外箱尺寸CBM', '產品平均CBM'],
-  '库存信息': ['stock', '有現貨', 'ShowStock', '產品位置', '位置', '追加訂購的等級', 'lastOrderElapsedDays', 'Stock_USD', 'PrePaid_stock_USD'],
-  '报价信息': ['MOQ', 'Retail_Price_USD', '建議報價', 'opencost', '組裝成本USD', '組裝成本', '其他成本估價', '匯率', '成本加成', '報價積數', '應課稅', '提成', '提成B', '報價紀錄', '關聯編號_Price'],
   '描述与备注': ['Product_intro_english', '描述', 'Remarks', '附註'],
 };
 

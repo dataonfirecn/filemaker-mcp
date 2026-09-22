@@ -1,0 +1,28 @@
+.pq-section { min-width: 0; }
+.pq-section .pm-card-head { justify-content: space-between; }
+.pq-notice { color: #64748b; font-size: 13px; line-height: 1.6; }
+.pq-error { padding: 12px; background: #fff4f2; border: 1px solid #e9b3aa; color: #942c21; border-radius: 6px; margin: 12px 0; }
+.pq-table-wrap { overflow-x: auto; }
+.pq-table { border-collapse: collapse; width: 100%; text-align: left; font-size: 13px; }
+.pq-table th, .pq-table td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.pq-table th { background: #f8fafc; color: #475569; white-space: nowrap; }
+.pq-table small { display: block; color: #64748b; margin-top: 4px; }
+.pq-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pq-member { display: inline-block; border: 1px solid #dbe4ef; border-radius: 4px; background: #f3f7fc; color: #334155; padding: 5px 8px; margin: 3px; font-size: 12px; }
+.pq-member small { display: inline; }
+button.pq-member { cursor: pointer; }
+.pq-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.pq-editor { border: 1px solid #dbe4ef; background: #fafcff; border-radius: 8px; padding: 20px; margin-top: 20px; }
+.pq-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.pq-editor label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.pq-editor input:not([type=checkbox]), .pq-editor select { box-sizing: border-box; width: 100%; min-width: 0; padding: 9px; border: 1px solid #cbd5e1; border-radius: 5px; background: white; color: #172033; font: inherit; }
+.pq-fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 14px; }
+.pq-selected { min-height: 32px; margin-bottom: 14px; }
+.pq-choices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); max-height: 260px; overflow-y: auto; gap: 4px; margin-top: 10px; }
+.pq-choices label { flex-direction: row; align-items: center; padding: 8px; }
+.pq-history { margin-top: 24px; }
+.pq-history details { border-bottom: 1px solid #e2e8f0; padding: 12px 0; }
+.pq-history summary { cursor: pointer; }
+.pq-history-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 12px; }
+.pq-section pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
+@media (max-width: 760px) { .pq-fields, .pq-history-diff, .pq-choices { grid-template-columns: 1fr; } .pq-editor { padding: 12px; } }

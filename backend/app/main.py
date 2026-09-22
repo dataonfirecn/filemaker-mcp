@@ -11,6 +11,7 @@ from app.api import (
     bom_documents,
     business_products,
     product_master,
+    product_quotes,
     filemaker,
     health,
     inventory,
@@ -327,6 +328,7 @@ async def filter_price_fields_for_webviewer_accounts(request, call_next):
 
 app.include_router(health.router)
 app.include_router(product_master.router, prefix=settings.api_prefix)
+app.include_router(product_quotes.router, prefix=settings.api_prefix)
 app.include_router(filemaker.router, prefix=settings.api_prefix)
 app.include_router(webviewer.router, prefix=settings.api_prefix)
 app.include_router(inventory.router, prefix=settings.api_prefix)
