@@ -94,9 +94,9 @@ body {
 }
 
 .remote-login-brand-copy { display: grid; gap: 2px; }
-.remote-login-brand span { color: var(--teal); font-size: 18px; font-weight: 600; letter-spacing: .08em; }
+.remote-login-brand span { color: var(--ink-strong); font-size: 18px; font-weight: 600; letter-spacing: .08em; }
 .remote-login-brand small { color: var(--muted); font-size: 12px; font-weight: 600; }
-.remote-login-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 13px; background: var(--teal-soft); color: var(--teal); }
+.remote-login-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 13px; background: var(--surface-muted); color: var(--ink); border: 1px solid var(--line); }
 .remote-login-card h1 { margin: 18px 0 0; font-size: 27px; letter-spacing: -.03em; }
 .remote-login-card > p { margin: 9px 0 24px; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .remote-login-field { display: grid; gap: 7px; margin-top: 15px; color: var(--ink); font-size: 12px; font-weight: 600; }
