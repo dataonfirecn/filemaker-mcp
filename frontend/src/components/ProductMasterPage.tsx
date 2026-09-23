@@ -229,6 +229,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const value = (name: string) => String(costFields.has(name) ? costs?.fields[name] ?? '' : fields[name] ?? '');
   const containers = schema.filter(f => f.result === 'container').sort((a, b) => { const ai = productPhotoFields.indexOf(a.name), bi = productPhotoFields.indexOf(b.name); return ai >= 0 || bi >= 0 ? (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) : a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }); });
   const visibleAssets = assets.filter(a => isEditorField(a.field));
+  const hasProductPhotos = assets.some(a => assetGroup(a.field) === '產品照片');
   const currentAsset = selectedAsset && assets.some(a => a.id === selectedAsset.id) ? selectedAsset : null;
   const changeCount = Object.entries(fields).filter(([name, v]) => JSON.stringify(product?.fields[name]) !== JSON.stringify(v)).length
     + (JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []) ? 1 : 0);
@@ -291,7 +292,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     const presentation = fieldPresentation(f, controls[f.name]?.type === 'checkBox');
     return <div className={`pm-f pm-f-${presentation}${f.name === '審核' ? ' pm-f-review' : ''}${writable ? '' : ' is-readonly'}`} key={f.name} title={f.name}>
       <span className="pm-f-label">
-        {label(f.name)}
+        <span className="pm-f-label-text" title={label(f.name)}>{label(f.name)}</span>
         {!readOnly && f.required && <em className="pm-req"> *</em>}
         {!readOnly && !writable && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
       </span>
@@ -443,13 +444,21 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   function photoGallery(title: string, fs: Field[]) {
     if (!fs.length) return null;
     const slots = fs.flatMap(f => Array.from({ length: f.maxRepeat || 1 }, (_, i) => ({ f, repetition: i + 1 })));
-    const used = slots.filter(s => assets.some(a => a.field === s.f.name && a.repetition === s.repetition)).length;
+    const filledSlots = slots.filter(s => assets.some(a => a.field === s.f.name && a.repetition === s.repetition));
+    const used = filledSlots.length;
+    if (readOnly && !used) return <section className="pm-card" key={title}>
+      <div className="pm-card-head"><i className="pm-card-rule" /><h2>{title}</h2></div>
+      <div className="pm-card-body"><p className="empty-state">暂无产品照片。</p></div>
+    </section>;
+    const visibleSlots = readOnly ? filledSlots : slots;
     return <section className="pm-card" key={title}>
       <div className="pm-card-head"><i className="pm-card-rule" /><h2>{title}</h2>
-        <div className="pm-progress"><span className="track"><span className="fill" style={{ width: `${slots.length ? Math.round(used / slots.length * 100) : 0}%` }} /></span>{used} / {slots.length} 位置</div>
+        {readOnly
+          ? <div className="pm-card-meta">{used} 张图片</div>
+          : <div className="pm-progress"><span className="track"><span className="fill" style={{ width: `${slots.length ? Math.round(used / slots.length * 100) : 0}%` }} /></span>{used} / {slots.length} 位置</div>}
       </div>
       <div className="pm-card-body pm-slots">
-        {slots.map(s => photoSlot(s.f, s.repetition, s.f.name === 'image_main'))}
+        {visibleSlots.map(s => photoSlot(s.f, s.repetition, s.f.name === 'image_main'))}
         <p className="pm-slots-note">{readOnly ? '点击预览查看图片，可下载原文件。' : '主图独立管理，其余为产品图片 02–18。'}</p>
       </div>
     </section>;
@@ -523,9 +532,12 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     <div className="pm-shell">
       <nav className="pm-rail" aria-label={readOnly ? "产品资料导航" : "编辑器导航"}>
         <div className="pm-rail-label">模块</div>
-        {tabs.map(t => <button type="button" key={t} className="pm-rail-tab" aria-current={tab === t} disabled={quoteBusy} onClick={() => { if (t !== tab && quoteDirty && !window.confirm('当前报价尚未保存，是否放弃修改并切换栏目？')) return; setTab(t); window.scrollTo(0, 0); }}>
-          {TAB_ICONS[t] ?? <Layers size={14} />}<span>{t}</span>
-        </button>)}
+        {tabs.map(t => {
+          const tabDisabled = quoteBusy || (readOnly && t === '產品照片' && !hasProductPhotos);
+          return <button type="button" key={t} className="pm-rail-tab" aria-current={tab === t} disabled={tabDisabled} title={tabDisabled ? '暂无产品照片' : undefined} onClick={() => { if (t !== tab && quoteDirty && !window.confirm('当前报价尚未保存，是否放弃修改并切换栏目？')) return; setTab(t); window.scrollTo(0, 0); }}>
+            {TAB_ICONS[t] ?? <Layers size={14} />}<span>{t}</span>
+          </button>;
+        })}
         {tab === '基础资料' && <>
           <div className="pm-rail-label">本页分区</div>
           {Object.keys(basicSections).map(section => <button type="button" key={section} className="pm-rail-anchor" onClick={() => document.getElementById(`pm-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>

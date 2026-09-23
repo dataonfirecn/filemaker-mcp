@@ -105,6 +105,8 @@
 }
 .product-master .pm-rail-tab:hover, .product-master .pm-rail-anchor:hover { background: var(--pm-surface-3); color: var(--pm-ink); }
 .product-master .pm-rail-tab[aria-current="true"] { background: var(--pm-brand); color: #fff; font-weight: 600; }
+.product-master .pm-rail-tab:disabled { opacity: .45; cursor: not-allowed; }
+.product-master .pm-rail-tab:disabled:hover { background: transparent; color: var(--pm-ink-2); }
 .pm-rail-tab svg { flex-shrink: 0; opacity: .8; }
 .pm-rail-tab span, .pm-rail-anchor span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-rail-foot { margin-top: 18px; padding: 10px 9px 0; border-top: 1px solid var(--pm-line-soft); font-size: 12px; line-height: 1.7; color: var(--pm-faint); }
@@ -112,7 +114,7 @@
 .pm-main { min-width: 0; padding: 18px 22px 40px; }
 
 /* ── cards ───────────────────────────────────────────────────── */
-.pm-card { margin-bottom: 16px; background: var(--pm-surface); border: 1px solid var(--pm-line); border-radius: var(--pm-r); box-shadow: var(--pm-shadow); overflow: hidden; scroll-margin-top: 78px; }
+.pm-card { container: pm-card / inline-size; margin-bottom: 16px; background: var(--pm-surface); border: 1px solid var(--pm-line); border-radius: var(--pm-r); box-shadow: var(--pm-shadow); overflow: hidden; scroll-margin-top: 78px; }
 .pm-card-head { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--pm-line-soft); }
 .pm-card-head h2 { font-size: 13px; font-weight: 600; letter-spacing: .2px; }
 .pm-card-rule { width: 3px; height: 14px; border-radius: 2px; background: var(--pm-brand); }
@@ -122,24 +124,32 @@
 
 /* ── split card (报价信息 · 库存信息 side by side) ──────────────── */
 .pm-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
-.pm-split-col { min-width: 0; scroll-margin-top: 78px; }
+.pm-split-col { min-width: 0; scroll-margin-top: 78px; container-type: inline-size; }
+/* Stack by the card's own width, not the viewport: the sidebar and rail change how much room the card gets. */
+@container pm-card (max-width: 860px) {
+  .pm-split { grid-template-columns: 1fr; gap: 16px 0; }
+  .pm-split-col + .pm-split-col { padding-left: 0; padding-top: 16px; border-left: 0; border-top: 1px dashed var(--pm-line-strong); }
+}
 .pm-split-col + .pm-split-col { padding-left: 24px; border-left: 1px dashed var(--pm-line-strong); }
-.pm-split-col-head { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--pm-muted); }
+.pm-split-col-head { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--pm-ink); }
 
 /* ── field grid ──────────────────────────────────────────────── */
-.pm-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
-.product-master .pm-grid > .pm-f { grid-column: span 3; }
-.product-master .pm-grid > .pm-f-compact { grid-column: span 2; }
-.product-master .pm-grid > .pm-f-flag { grid-column: span 3; }
-.product-master .pm-grid > .pm-f-review { grid-column: -4 / -1; }
-.product-master .pm-grid > .pm-f-notes { grid-column: span 6; }
+/* One fixed-minimum track for every field: grids of equal width get identical columns,
+   so fields line up across rows, bands and sections without per-breakpoint span tables. */
+.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr)); gap: 14px 16px; align-items: start; }
+.product-master .pm-grid > .pm-f-review { grid-column: -2 / -1; }
+.product-master .pm-grid > .pm-f-notes { grid-column: 1 / -1; }
+@container (min-width: 720px) { .product-master .pm-grid > .pm-f-notes { grid-column: span 2; } }
 /* names and the customer block each own a full row — long values must not be clipped */
 .product-master .pm-grid > .pm-f-name,
 .product-master .pm-grid > .pm-f-identifier,
 .product-master .pm-grid > .pm-customer { grid-column: 1 / -1; }
 
 .pm-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.pm-f-label { display: flex; align-items: center; gap: 5px; min-height: 15px; font-size: 12px; font-weight: 600; color: var(--pm-muted); }
+/* Label = small, regular, muted; value = larger, medium, full ink. Labels stay on one line so values share a baseline. */
+.pm-f-label { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 18px; font-size: 12px; font-weight: 400; line-height: 18px; color: var(--pm-muted); white-space: nowrap; }
+.pm-f-label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pm-f-label .pm-chip, .pm-f-label .pm-req { flex-shrink: 0; }
 .pm-req { color: var(--pm-danger); font-style: normal; }
 .pm-f-error { font-size: 12px; color: var(--pm-danger); }
 .pm-field-action { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -161,11 +171,12 @@
 .product-master .pm-f input::placeholder, .product-master .pm-f textarea::placeholder { color: var(--pm-faint); }
 
 /* read-only values are not drawn as inputs */
-.pm-val { display: flex; align-items: center; min-height: var(--pm-h); padding: 0 3px; font-size: 13px; color: var(--pm-ink-2); overflow-wrap: anywhere; }
-.pm-f-compact .pm-val { font: 500 13px/1.4 var(--pm-mono); font-variant-numeric: tabular-nums; }
+.pm-val { display: flex; align-items: center; min-height: var(--pm-h); padding: 0 3px; font-size: 14px; font-weight: 500; color: var(--pm-ink); overflow-wrap: anywhere; }
+.pm-grid .pm-val { border-bottom: 1px solid var(--pm-line-soft); }
+.pm-f-compact .pm-val { font: 500 14px/1.4 var(--pm-mono); font-variant-numeric: tabular-nums; }
 .pm-f-notes .pm-val, .pm-f-name .pm-val { align-items: flex-start; padding-top: 7px; line-height: 1.6; white-space: pre-wrap; }
 .pm-f-identifier .pm-val { font: 400 12px/1.5 var(--pm-mono); }
-.pm-val-empty { color: var(--pm-faint); }
+.pm-val-empty { font-weight: 400; color: var(--pm-faint); }
 
 .product-master .pm-picker { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: var(--pm-h); padding: 0 9px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s); background: var(--pm-surface); color: var(--pm-ink); font: 13px/1 var(--pm-sans); cursor: pointer; }
 .product-master .pm-picker:hover:not(:disabled) { border-color: var(--pm-brand-line); }
@@ -205,14 +216,13 @@
 .pm-measure-note { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; font-size: 12px; color: var(--pm-faint); }
 
 /* ── price bands ─────────────────────────────────────────────── */
-.pm-band { margin-top: 14px; }
+.pm-band { margin-top: 14px; container-type: inline-size; }
+.pm-band .pm-caption { padding: 0 0 10px; }
 .pm-band-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pm-band-head span { font-size: 12px; font-weight: 600; letter-spacing: .09em; color: var(--pm-faint); }
 .pm-band-head i { flex: 1; height: 1px; background: var(--pm-line-soft); }
-.pm-grid-bands { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
-.product-master .pm-grid-bands > .pm-f, .product-master .pm-grid-bands > .pm-f-compact, .product-master .pm-grid-bands > .pm-f-notes, .product-master .pm-grid-bands > .pm-f-name { grid-column: span 1; }
 .product-master .pm-grid-bands .pm-f-compact .pm-val, .product-master .pm-grid-bands .pm-f-compact input { text-align: right; }
-.product-master .pm-grid-bands .pm-f-compact .pm-val { justify-content: flex-end; border-bottom: 1px solid var(--pm-line-soft); border-radius: 0; }
+.product-master .pm-grid-bands .pm-f-compact .pm-val { justify-content: flex-end; }
 
 /* ── folded groups ───────────────────────────────────────────── */
 .pm-fold { margin-top: 12px; }
@@ -315,25 +325,15 @@
   .pm-rail-label, .pm-rail-foot, .pm-rail-anchor { display: none; }
   .product-master .pm-rail-tab { width: auto; flex-shrink: 0; margin: 0; }
   .pm-main { padding: 14px 16px 32px; }
-  .product-master .pm-grid > .pm-f { grid-column: span 4; }
-  .product-master .pm-grid > .pm-f-compact, .product-master .pm-grid > .pm-f-flag { grid-column: span 4; }
-  .product-master .pm-grid > .pm-f-review { grid-column: -5 / -1; }
-  .product-master .pm-grid > .pm-f-notes { grid-column: 1 / -1; }
   .pm-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .pm-grid-bands { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .pm-measures, .pm-docs { grid-template-columns: 1fr; }
-  .pm-grid-bands { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pm-split { grid-template-columns: 1fr; gap: 16px 0; }
-  .pm-split-col + .pm-split-col { padding-left: 0; padding-top: 16px; border-left: 0; border-top: 1px dashed var(--pm-line-strong); }
 }
 @media (max-width: 620px) {
   .pm-bar { flex-wrap: wrap; padding: 10px 16px; }
   .pm-bar-actions { width: 100%; justify-content: flex-end; }
   .pm-notice, .pm-foot { padding-left: 16px; padding-right: 16px; }
-  .product-master .pm-grid > .pm-f, .product-master .pm-grid > .pm-f-compact, .product-master .pm-grid > .pm-f-flag { grid-column: span 6; }
-  .product-master .pm-grid > .pm-f-review { grid-column: -7 / -1; }
   .pm-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pm-slot-hero { grid-column: span 3; grid-row: span 3; }
   .pm-customer { flex-wrap: wrap; }
