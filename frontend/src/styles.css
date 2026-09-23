@@ -9239,13 +9239,16 @@ body.resizing-customer-columns * {
   --ag-font-size: 13px;
   --ag-row-height: 38px;
   --ag-header-height: 36px;
-  --ag-border-color: var(--line);
-  --ag-row-border-color: var(--line-soft);
-  --ag-header-background-color: #f5f8fb;
-  --ag-odd-row-background-color: #fbfdff;
-  --ag-row-hover-color: #eef7ff;
-  --ag-selected-row-background-color: #e8f3ff;
-  --ag-range-selection-border-color: var(--teal);
+  --ag-background-color: var(--color-surface);
+  --ag-foreground-color: var(--color-text-secondary);
+  --ag-secondary-foreground-color: var(--color-text-muted);
+  --ag-border-color: var(--color-border);
+  --ag-row-border-color: var(--color-divider);
+  --ag-header-background-color: var(--color-surface-muted);
+  --ag-odd-row-background-color: transparent;
+  --ag-row-hover-color: var(--color-surface-hover);
+  --ag-selected-row-background-color: var(--color-primary-soft);
+  --ag-range-selection-border-color: var(--color-primary);
   --ag-wrapper-border-radius: 0;
 }
 
@@ -9254,19 +9257,19 @@ body.resizing-customer-columns * {
 }
 
 .ag-theme-quartz .ag-header {
-  border-bottom: 1px solid var(--line);
-  background: #f5f8fb;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--ag-header-background-color);
 }
 
 .ag-theme-quartz .ag-header-row-column-filter {
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .ag-theme-quartz .ag-header-cell {
-  border-right: 1px solid #e5ebf0;
-  background: #f5f8fb;
-  color: #485667;
+  border-right: 1px solid var(--color-divider);
+  background: var(--ag-header-background-color);
+  color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 600;
 }
@@ -9291,10 +9294,10 @@ body.resizing-customer-columns * {
 }
 
 .ag-theme-quartz .ag-input-field-input {
-  border: 1px solid #d4dbe2;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--surface);
-  color: #24313e;
+  background: var(--color-surface);
+  color: var(--color-text);
   padding: 0 8px;
   font-size: 12px;
 }
@@ -9305,17 +9308,17 @@ body.resizing-customer-columns * {
 }
 
 .ag-theme-quartz .ag-cell {
-  border-right: 1px solid #f0f4f7;
-  color: #24313e;
+  border-right: 1px solid var(--color-divider);
+  color: var(--ag-foreground-color);
   line-height: 38px;
 }
 
 .ag-theme-quartz .ag-row {
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .ag-theme-quartz .ag-row-hover {
-  background-color: #eef7ff;
+  background-color: var(--ag-row-hover-color);
 }
 
 .ag-theme-quartz .ag-cell-focus,
@@ -9330,9 +9333,9 @@ body.resizing-customer-columns * {
 
 .ag-theme-quartz .ag-paging-panel {
   height: 38px;
-  border-top: 1px solid var(--line);
-  background: #fbfcfd;
-  color: #536171;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -9342,12 +9345,12 @@ body.resizing-customer-columns * {
 
 .ag-theme-quartz .ag-paging-row-summary-panel,
 .ag-theme-quartz .ag-paging-page-summary-panel {
-  color: #354351;
+  color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .ag-theme-quartz .editable-cell {
-  background: #fff9e8;
+  background: var(--color-warning-soft);
 }
 
 .ag-theme-quartz .numeric-cell {
@@ -11633,23 +11636,6 @@ body.resizing-customer-columns * {
 
 [data-theme="dark"] .loading-overlay {
   background: rgba(10, 13, 16, 0.72);
-}
-
-[data-theme="dark"] .ag-theme-quartz {
-  --ag-background-color: var(--surface);
-  --ag-foreground-color: var(--ink);
-  --ag-secondary-foreground-color: var(--muted);
-  --ag-border-color: var(--line);
-  --ag-row-border-color: var(--line-soft);
-  --ag-header-background-color: var(--surface-muted);
-  --ag-odd-row-background-color: var(--surface-subtle);
-  --ag-row-hover-color: var(--blue-soft);
-  --ag-selected-row-background-color: #173144;
-}
-
-[data-theme="dark"] .ag-theme-quartz .ag-cell,
-[data-theme="dark"] .ag-theme-quartz .ag-header-cell {
-  color: var(--ink);
 }
 
 @media (max-width: 720px) {
