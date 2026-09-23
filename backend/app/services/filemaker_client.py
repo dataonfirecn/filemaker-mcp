@@ -196,8 +196,11 @@ class FileMakerClient:
 
         self._token_last_used_at = time.time()
         if response.content:
-            return response.json()
+            return self._decode_json(response)
         return None
+
+    def _decode_json(self, response):
+        return response.json()
 
     async def find_records(
         self,

@@ -208,12 +208,17 @@ async def lifespan(app: FastAPI):
         app.state.product_master_store = product_master_store
         filemaker_client.product_master_store = product_master_store
         app.state.product_master_schema = schema
-        product_master_filemaker = FileMakerClient(settings.model_copy(update={
+        from app.services.product_master.finance import FinanceFileMakerClient
+        product_master_filemaker = FinanceFileMakerClient(settings.model_copy(update={
             "filemaker_username": settings.product_master_username or settings.filemaker_username,
             "filemaker_password": settings.product_master_password or settings.filemaker_password,
         }))
         product_master_worker = ProductWorker(product_master_store, schema, product_master_filemaker, cos_storage_service, settings)
         product_master_worker.start()
+
+    from app.services.product_master.finance import FinanceFileMakerClient
+    finance_filemaker = FinanceFileMakerClient(settings.model_copy(update={'filemaker_timeout_seconds': 20}))
+    app.state.product_finance_filemaker = finance_filemaker
 
     callback_worker.start()
     rag_index_worker.start()
@@ -224,6 +229,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await finance_filemaker.close()
         if product_master_worker:
             await product_master_worker.stop()
         if product_master_store:

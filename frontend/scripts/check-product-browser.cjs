@@ -16,7 +16,7 @@ function load(file) {
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;
   const module = { exports: {} };
   const localRequire = name => name === 'react' ? { ...React, useState: initial => [overrides[stateNames[stateIndex++]] ?? initial, () => {}], useEffect: () => {}, useRef: current => ({ current }) }
-    : name.endsWith('.css') ? {} : name.startsWith('.') ? load(['.ts', '.tsx'].map(ext => path.resolve(path.dirname(file), name + ext)).find(candidate => fs.existsSync(candidate))) : require(name);
+    : name.endsWith('.css') ? {} : name.startsWith('.') ? load(['.ts', '.tsx', '/index.ts', '/index.tsx'].map(ext => path.resolve(path.dirname(file), name + ext)).find(candidate => fs.existsSync(candidate))) : require(name);
   vm.runInNewContext(js, { require: localRequire, module, exports: module.exports, crypto: globalThis.crypto, console });
   return module.exports;
 }

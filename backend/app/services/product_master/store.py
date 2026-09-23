@@ -192,6 +192,8 @@ class ProductStore:
                 raise Conflict(old)
             if not imported:
                 schema.validate(changes, permissions)
+                from .finance import validate_binding
+                await validate_binding(c, self.source, pid, changes, old['fields'] if old else {})
             fields = {**(old['fields'] if old else {}), **changes, 'ID': str(pid)}
             if not imported:
                 schema.validate_complete(fields)

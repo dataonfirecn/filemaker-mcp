@@ -209,7 +209,7 @@
 .pm-band-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pm-band-head span { font-size: 12px; font-weight: 600; letter-spacing: .09em; color: var(--pm-faint); }
 .pm-band-head i { flex: 1; height: 1px; background: var(--pm-line-soft); }
-.pm-grid-bands { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pm-grid-bands { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
 .product-master .pm-grid-bands > .pm-f, .product-master .pm-grid-bands > .pm-f-compact, .product-master .pm-grid-bands > .pm-f-notes, .product-master .pm-grid-bands > .pm-f-name { grid-column: span 1; }
 .product-master .pm-grid-bands .pm-f-compact .pm-val, .product-master .pm-grid-bands .pm-f-compact input { text-align: right; }
 .product-master .pm-grid-bands .pm-f-compact .pm-val { justify-content: flex-end; border-bottom: 1px solid var(--pm-line-soft); border-radius: 0; }

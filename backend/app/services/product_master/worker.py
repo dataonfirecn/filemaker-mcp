@@ -162,7 +162,7 @@ class ProductWorker:
         result = await self.fm.find_records(layout, {'ID': f'=={pid}'}, limit=2)
         if len(result['data']) > 1:
             raise DriftError('FileMaker UUID 重复')
-        writable = {k: v for k, v in desired['fields'].items() if self.schema.editable(k) and self.schema.fields[k]['result'] != 'container'}
+        writable = {k: v for k, v in desired['fields'].items() if self.schema.editable(k) and self.schema.fields[k]['result'] != 'container' and not self.schema.fields[k].get('externalSource')}
         if not result['data']:
             if product['fm_record_id']:
                 raise DriftError('FileMaker 来源记录已消失，Web 数据保持不变')
@@ -205,6 +205,13 @@ class ProductWorker:
             await c.execute('UPDATE pm_job SET steps=$4::jsonb WHERE source=$1 AND product_id=$2 AND version=$3', source, pid, version, dumps(steps))
         steps['modId'] = str(remote['modId'])
         await checkpoint()
+        # A price-only edit must not touch the product record or trigger its auto-enter fields.
+        from .finance import PRICE_FIELDS
+        before_fields = revision['before_data'].get('fields', {})
+        price_only = any(desired['fields'].get(k) != before_fields.get(k) for k in PRICE_FIELDS) and all(
+            before_fields.get(k) == v for k, v in writable.items())
+        if price_only and fields_match(remote['fieldData'], writable, self.schema):
+            steps['fields'] = True
         if not steps.get('fields'):
             steps['inFlight']={'kind':'fields'}
             await checkpoint()
@@ -256,6 +263,8 @@ class ProductWorker:
         checked = (await self.fm.get_record(layout, record_id))[0]
         if not fields_match(checked['fieldData'],writable,self.schema):
             raise DriftError('FileMaker 字段回读不一致')
+        from .finance import sync_prices
+        await sync_prices(self.fm, c, source, pid, revision['before_data'].get('fields', {}), desired['fields'], steps, checkpoint)
         async with c.transaction():
             await c.execute('UPDATE pm_product SET fm_record_id=$3,fm_mod_id=$4,fm_version=$5 WHERE source=$1 AND id=$2', source, pid, record_id, str(checked['modId']), version)
             await c.execute("UPDATE pm_job SET status='synced',error=NULL WHERE source=$1 AND product_id=$2 AND version=$3", source, pid, version)

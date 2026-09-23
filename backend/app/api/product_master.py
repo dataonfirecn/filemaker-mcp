@@ -67,6 +67,8 @@ def actor(context):
 def filtered(snapshot, schema, permissions):
     result = dict(snapshot)
     result['fields'] = schema.filter_fields(snapshot.get('fields', {}), permissions)
+    for name in ('RMB成本', '美金成本'):
+        result['fields'].pop(name, None)
     visible = {f['name'] for f in schema.visible(permissions)}
     result['assets'] = [a for a in snapshot.get('assets', []) if a['field'] in visible]
     return result
@@ -143,6 +145,38 @@ async def products(request: Request, q: str = '', offset: int = Query(0, ge=0), 
     return {'rows': [filtered(r, schema, permissions) for r in await store.list(q, offset=offset)]}
 
 
+@router.get('/products/{product_id}/costs')
+async def product_costs(product_id: UUID, request: Request, context=Depends(get_webviewer_session_context)):
+    access(context, 'canViewProducts')
+    access(context, 'canViewPrice')
+    store = getattr(request.app.state, 'product_master_store', None) or getattr(request.app.state, 'product_master_preview_store', None)
+    if not store:
+        raise HTTPException(503, '产品主库尚未启用')
+    product = await store.get(product_id)
+    if not product:
+        raise HTTPException(404, '产品不存在')
+    from app.services.product_master.finance import read_costs
+    from fastapi.responses import JSONResponse
+    try:
+        result = await read_costs(request.app.state.product_finance_filemaker, product)
+        return JSONResponse(result, headers={'Cache-Control': 'no-store'})
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, '实时成本读取失败，请稍后点击刷新成本重试。') from exc
+
+
+async def finance_detail(snapshot, store, schema, permissions):
+    result = filtered(snapshot, schema, permissions)
+    if permissions.get('canViewPrice') and any(f.get('externalSource') for f in schema.fields.values()):
+        from app.services.product_master.finance import load_snapshot
+        baseline = await load_snapshot(store.pool, store.source, snapshot['id'])
+        result['financeIssues'] = baseline.get('issues', {}) if baseline else {}
+        result['financeImported'] = bool(baseline)
+        result['financePriceBound'] = bool(baseline and baseline.get('price'))
+    return result
+
+
 @router.get('/products/{ref}')
 async def get_product(ref: str, request: Request, context=Depends(get_webviewer_session_context)):
     permissions = access(context, 'canViewProducts')
@@ -156,7 +190,7 @@ async def get_product(ref: str, request: Request, context=Depends(get_webviewer_
         if preview_store:
             saved = await preview_store.get(product_id)
             if saved:
-                return {**filtered(saved, schema, permissions), 'previewMode': True, 'pendingAssetFields': []}
+                return {**await finance_detail(saved, preview_store, schema, permissions), 'previewMode': True, 'pendingAssetFields': []}
         if getattr(request.app.state.settings, 'product_master_web_only', False):
             raise HTTPException(404, '当前 Web 测试库不包含此产品')
         rows = (await request.app.state.filemaker_client.find_records(
@@ -172,7 +206,7 @@ async def get_product(ref: str, request: Request, context=Depends(get_webviewer_
             try:
                 saved = await import_product(preview_store, schema, request.app.state.filemaker_client,
                     request.app.state.cos_storage_service, request.app.state.settings, rows[0])
-                return {**filtered(saved, schema, permissions), 'previewMode': True, 'pendingAssetFields': []}
+                return {**await finance_detail(saved, preview_store, schema, permissions), 'previewMode': True, 'pendingAssetFields': []}
             except Exception:
                 import_error = '当前产品的附件复制或校验未完成，请重试；原文件仍保留。'
         fields = schema.filter_fields(rows[0]['fieldData'], permissions)
@@ -184,7 +218,7 @@ async def get_product(ref: str, request: Request, context=Depends(get_webviewer_
     result = await store.get(ref)
     if not result:
         raise HTTPException(404, '产品不存在')
-    return filtered(result, schema, permissions)
+    return await finance_detail(result, store, schema, permissions)
 
 
 async def check_filemaker_sku(request, sku, product_id):
@@ -211,7 +245,7 @@ async def commit(request, context, product_id, body, origin='web', connection=No
             request_id=body.requestId, changes=body.changes, assets=body.assets,
             actor=actor(context), schema=schema, permissions=permissions, origin=origin, connection=connection, command=command,
             sku_validator=lambda sku, pid: check_filemaker_sku(request, sku, pid))
-        return filtered(value, schema, permissions)
+        return await finance_detail(value, store, schema, permissions)
     except SKUValidationError as exc:
         raise HTTPException(422, {'code': exc.code, 'field': 'product_sku', 'message': str(exc)}) from exc
     except Conflict as exc:

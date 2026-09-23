@@ -3711,6 +3711,61 @@
       "readPermission": "canViewProducts",
       "writePermission": "canEditProducts",
       "publish": true
+    },
+    {
+      "name": "RMB成本",
+      "result": "number",
+      "type": "calculation",
+      "writable": false,
+      "maxRepeat": 1,
+      "readPermission": "canViewPrice",
+      "writePermission": "canEditProductPrices",
+      "publish": false,
+      "externalSource": "產品 BOM::產品成本"
+    },
+    {
+      "name": "美金成本",
+      "result": "number",
+      "type": "calculation",
+      "writable": false,
+      "maxRepeat": 1,
+      "readPermission": "canViewPrice",
+      "writePermission": "canEditProductPrices",
+      "publish": false,
+      "externalSource": "產品 BOM::計算美金"
+    },
+    {
+      "name": "EX-Price",
+      "result": "number",
+      "type": "normal",
+      "writable": true,
+      "maxRepeat": 1,
+      "readPermission": "canViewPrice",
+      "writePermission": "canEditProductPrices",
+      "publish": false,
+      "externalSource": "產品售價::Price"
+    },
+    {
+      "name": "台幣出廠",
+      "result": "number",
+      "type": "normal",
+      "writable": true,
+      "maxRepeat": 1,
+      "readPermission": "canViewPrice",
+      "writePermission": "canEditProductPrices",
+      "publish": false,
+      "externalSource": "產品售價::台灣售價"
+    },
+    {
+      "name": "RMB出廠",
+      "result": "number",
+      "type": "normal",
+      "writable": true,
+      "maxRepeat": 1,
+      "readPermission": "canViewPrice",
+      "writePermission": "canEditProductPrices",
+      "publish": false,
+      "externalSource": "產品售價::RMB售價"
     }
   ],
   "uuidCreateVerified": false,

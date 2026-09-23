@@ -39,7 +39,7 @@ class ProductSchema:
     def validate_layout(self, metadata):
         actual = {field['name']: field for field in metadata.get('fieldMetaData', [])}
         for name, field in self.fields.items():
-            if not field.get('managed', True):
+            if not field.get('managed', True) or field.get('externalSource'):
                 continue
             if name not in actual:
                 raise ProductValidationError(f'API 布局缺少登记字段，禁止按空值导入：{name}')

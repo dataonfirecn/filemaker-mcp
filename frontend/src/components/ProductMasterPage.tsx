@@ -4,10 +4,11 @@ import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Down
 import { productPhotoFields, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups } from './productMasterLayout';
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
+import { Alert, Button } from './ui';
 
 type Choice = { value: string; label: string; name?: string; code?: string };
 type Control = { type: string; options: Choice[]; searchable: boolean };
-type Field = { name: string; result: string; writable: boolean; maxRepeat: number; required?: boolean; writePermission?: string };
+type Field = { name: string; result: string; writable: boolean; maxRepeat: number; required?: boolean; writePermission?: string; externalSource?: string };
 type Asset = { id: string; field: string; repetition: number; filename: string; mimeType: string; size: number; sortOrder?: number };
 function unsupportedPreviewReason(asset: Asset, compact = false): string {
   if (/^(image\/(png|jpeg|webp|gif)|application\/pdf)$/.test(asset.mimeType)) return '';
@@ -16,7 +17,9 @@ function unsupportedPreviewReason(asset: Asset, compact = false): string {
   if (compact) return format ? `${format} 格式暂不支持预览` : '此格式暂不支持预览';
   return format ? `当前页面不支持 ${format} 格式预览，请下载原文件查看。` : '当前页面不支持此文件格式预览，请下载原文件查看。';
 }
-type Product = { previewMode?: boolean; pendingAssetFields?: string[]; assetImportError?: string; id: string; version: number; fields: Record<string, unknown>; assets: Asset[] };
+type Product = { financeIssues?: Record<string, string>; financeImported?: boolean; financePriceBound?: boolean; previewMode?: boolean; pendingAssetFields?: string[]; assetImportError?: string; id: string; version: number; fields: Record<string, unknown>; assets: Asset[] };
+type Costs = { fields: Record<string, string>; issues: Record<string, string>; calculatedAt: string };
+const costFields = new Set(['RMB成本', '美金成本']);
 type Revision = { version: number; created_at: string; actor: { account: string; name: string; origin: string }; before_data: Product; after_data: Product };
 type Status = { writeEnabled?: boolean; drift?: Array<{ id: number; observed: unknown }>; filemaker: Array<{ version: number; status: string; error?: string }>; dms: Array<{ consumer: string; synced: boolean }> };
 
@@ -30,6 +33,10 @@ const TAB_ICONS: Record<string, ReactNode> = {
 };
 
 export default function ProductMasterPage({ apiBase, token, initialRef = '', readOnly = false }: { apiBase: string; token: string; initialRef?: string; readOnly?: boolean }) {
+  const [costs, setCosts] = useState<Costs | null>(null);
+  const [costLoading, setCostLoading] = useState(false);
+  const [costError, setCostError] = useState('');
+  const costSequence = useRef(0);
   const [controls, setControls] = useState<Record<string, Control>>({});
   const [picker, setPicker] = useState<{ field: string; repetition: number } | null>(null);
   const [query, setQuery] = useState('');
@@ -90,6 +97,22 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     }, 250);
     return () => { active = false; clearTimeout(timer); };
   }, [picker, query, choiceOffset, choiceRetry, token]);
+  async function refreshCosts() {
+    if (!product || !permissions.canViewPrice) return;
+    const sequence = ++costSequence.current;
+    setCostLoading(true); setCostError('');
+    try {
+      const result = await api<Costs>(`/products/${product.id}/costs`);
+      if (sequence === costSequence.current) setCosts(result);
+    } catch (error) {
+      if (sequence === costSequence.current) { setCosts(null); setCostError(error instanceof Error ? error.message : '实时成本读取失败，请重试。'); }
+    } finally { if (sequence === costSequence.current) setCostLoading(false); }
+  }
+  useEffect(() => {
+    setCosts(null); setCostError(''); setCostLoading(false);
+    if (product && permissions.canViewPrice) void refreshCosts();
+    return () => { costSequence.current++; };
+  }, [product?.id, permissions.canViewPrice, token]);
   function openPicker(field: string, repetition: number) { setChoices([]); setChoiceTotal(0); setChoiceError(''); choiceBusy.current = true; setChoiceLoading(true); setQuery(''); setChoiceOffset(0); setPicker({ field, repetition }); }
   function loadMoreChoices(element: HTMLDivElement) { if (!choiceBusy.current && !choiceError && choiceOffset + 50 < choiceTotal && element.scrollHeight - element.scrollTop - element.clientHeight < 80) { choiceBusy.current = true; setChoiceLoading(true); setChoiceOffset(offset => offset + 50); } }
   function choose(option: Choice) {
@@ -203,7 +226,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     setBusy(true); try { show(await api<Product>(`/products/${product.id}/restore/${version}`, 'POST', { requestId: crypto.randomUUID(), expectedVersion: product.version })); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
-  const value = (name: string) => String(fields[name] ?? '');
+  const value = (name: string) => String(costFields.has(name) ? costs?.fields[name] ?? '' : fields[name] ?? '');
   const containers = schema.filter(f => f.result === 'container').sort((a, b) => { const ai = productPhotoFields.indexOf(a.name), bi = productPhotoFields.indexOf(b.name); return ai >= 0 || bi >= 0 ? (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) : a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }); });
   const visibleAssets = assets.filter(a => isEditorField(a.field));
   const currentAsset = selectedAsset && assets.some(a => a.id === selectedAsset.id) ? selectedAsset : null;
@@ -214,17 +237,21 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const quoteTabs = product && canViewQuotes ? ['客户群报价'] : [];
   const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
   const find = (name: string) => schema.find(f => f.name === name && f.result !== 'container');
-  const writableField = (f: Field) => !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
+  const writableField = (f: Field) => !(f.externalSource && (product?.previewMode || !product?.financePriceBound)) && !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
   const label = (name: string) => fieldLabels[name] ?? name;
 
   function readOnlyTag(f: Field) {
+    if (costFields.has(f.name)) return costs?.issues[f.name] ? '计算异常' : '实时计算';
+    if (product?.financeIssues?.[f.name]) return '计算异常';
+    if (f.externalSource && !product?.financeImported) return '待同步';
+    if (f.externalSource?.startsWith('產品 BOM::')) return 'BOM计算';
     if (f.name === 'ID') return '标识';
     if (/CBM|Stock_USD|PrePaid_stock_USD|^stock$|建議報價|報價積數|組裝成本/.test(f.name)) return '计算';
     return '只读';
   }
 
   function inputFor(f: Field, i: number, cls = '') {
-    const v = String(Array.isArray(fields[f.name]) ? (fields[f.name] as unknown[])[i] ?? '' : i === 0 ? fields[f.name] ?? '' : '');
+    const v = costFields.has(f.name) ? value(f.name) : String(Array.isArray(fields[f.name]) ? (fields[f.name] as unknown[])[i] ?? '' : i === 0 ? fields[f.name] ?? '' : '');
     const change = (input: string) => { if (f.name === 'product_sku') setSkuError(''); setFields(p => { if (f.maxRepeat <= 1) return { ...p, [f.name]: input }; const values = Array.isArray(p[f.name]) ? [...p[f.name] as unknown[]] : [p[f.name] ?? '']; while (values.length < f.maxRepeat) values.push(''); values[i] = input; return { ...p, [f.name]: values }; }); };
     const writable = writableField(f);
     const presentation = fieldPresentation(f, controls[f.name]?.type === 'checkBox');
@@ -277,6 +304,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
             return sku.trim() ? { ...previous, 系統產品編號: sku } : previous;
           })}>同 SKU</button>
       </div> : Array.from({ length: f.maxRepeat || 1 }, (_, i) => inputFor(f, i))}
+      {costs?.issues[f.name] && <small className="pm-f-error">{costs.issues[f.name]}</small>}
       {f.name === 'product_sku' && skuError && <small id="pm-sku-error" className="pm-f-error" role="alert">{skuError}</small>}
     </div>;
   }
@@ -331,7 +359,13 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
       {!!rest.length && <div className="pm-grid">{rest.map(fieldControl)}</div>}
       {!!measures.length && <div className="pm-measures">{measures.map((g, i) => measureBlock(g, `${title}:${i}`))}</div>}
       {bandBlocks.map(band => <div className="pm-band" key={band.title}>
-        <div className="pm-band-head"><span>{band.title}</span><i /></div>
+        <div className="pm-band-head"><span>{band.title}</span><i />
+          {band.title === '成本' && permissions.canViewPrice && product && <Button disabled={costLoading} onClick={() => void refreshCosts()} aria-label="刷新成本"><RefreshCw size={14} strokeWidth={1.75} />{costLoading ? '正在刷新…' : '刷新成本'}</Button>}
+        </div>
+        {band.title === '成本' && permissions.canViewPrice && <>
+          {costError && <Alert>{costError}</Alert>}
+          {costs && <p className="pm-caption" role="status">计算于 {new Date(costs.calculatedAt).toLocaleTimeString('zh-CN')} · 采用 FileMaker 已保存的 BOM、汇率及成本参数</p>}
+        </>}
         <div className="pm-grid pm-grid-bands">{band.fs.map(fieldControl)}</div>
       </div>)}
       {folds.map((g, i) => foldBlock(title, g, i))}
