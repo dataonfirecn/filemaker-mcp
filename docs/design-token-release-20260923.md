@@ -37,3 +37,17 @@ docker compose --env-file ../../.env -p starrc-filemaker -f docker-compose.yml -
 - 公网 `assets/App-a4pPr5KZ.js` 与本地构建 SHA-256 一致：`43d2a8ee93106af9643624d0491d483c2bd7999dd581c56e6eedc75242c128f2`。
 - 匿名 Playwright 检查（1440 / 1068 / 390px）：页面 200、无 JS 异常，仅预期的匿名 401（`/api/reports/dashboard`）与 400（`/api/webviewer/session`）；截图与汇总在 `artifacts/production-check-20260923-792c39e/`。
 - 登录后的 AG Grid 表格页面需凭据验证，token 定义与构建产物一致性已覆盖本次改动范围。
+
+## 同日第二次发布（`c1cdbbd`，镜像 `20260923-c1cdbbd`）
+
+`c1cdbbd` 修复侧边导航底色与滚动条：`.sidebar-nav` 背景从 `var(--surface)` 改为专用 token `var(--color-sidebar)`（亮 `#EFEDE4` / 暗 `#1F1E1D`），消除各页面导航栏观感色差（需求单页此前的局部补丁因此变为无操作）；滚动条改为细条、默认透明、仅在 hover / focus-within 时显示 `--line-strong`（别名 `--color-border-strong`）滑块，Firefox 与 WebKit 双实现。
+
+同样仅发布前端：镜像 `starrc-frontend:20260923-c1cdbbd` 继承 `starrc-frontend:20260923-792c39e`；发布目录 `/opt/starrc-filemaker/releases/20260923-c1cdbbd`（`backup/previous-release.yml` + 上一版本 git `792c39e` 源码快照）。发布前后 backend（`a390b2584f0d`）与 postgres（`f196c32c514b`）容器 ID 一致；frontend 由 `b0e7929362d7` 重建为 `fc3158fabe7f`。回退方法同上，恢复该目录 `backup/previous-release.yml` 后重建 frontend。
+
+验证：
+
+- `npm --prefix frontend run build`（tsc + vite）通过；`--color-sidebar` 与 `--color-border-strong` 在 tokens.css 亮、暗双主题均有定义。
+- 内网 / 公网 healthz 均 `ok: true`。
+- 公网 `index.html` 与本地构建逐字节一致（SHA-256 `9bf73042aefbe21995e585d6a8c718104156ea4e19d8cd8e5e8e4df0a536e1f8`）；公网 `assets/App-CF6q9rLc.js` 与本地 SHA-256 一致：`b670b50cb2a5965da581bf1d791f164ac0fe332cd97d2ec391dc7b07d40b4b81`。
+- 匿名 Playwright 检查（1440 / 1068 / 390px）：页面 200、无 JS 异常，仅预期的匿名 401 / 400；截图与汇总在 `artifacts/production-check-20260923-c1cdbbd/`。
+
