@@ -1352,7 +1352,6 @@ select {
 .sidebar-nav.collapsed .sidebar-brand-text,
 .sidebar-nav.collapsed .sidebar-group-header,
 .sidebar-nav.collapsed .sidebar-item-body,
-.sidebar-nav.collapsed .sidebar-channel-label span,
 .sidebar-nav.collapsed .sidebar-home-button > span:last-child {
   opacity: 0;
   width: 0;
@@ -1360,6 +1359,13 @@ select {
 }
 
 .sidebar-nav.collapsed .sidebar-header {
+  display: none;
+}
+
+/* Collapsed rail: this is a section label, not a nav target — a lone
+   icon in its own bordered chip reads as a dead/second nav button.
+   Hide the whole chip instead of just fading its text. */
+.sidebar-nav.collapsed .sidebar-channel-label {
   display: none;
 }
 
@@ -10435,11 +10441,14 @@ body.resizing-customer-columns * {
   .sidebar-nav.collapsed .sidebar-brand-text,
   .sidebar-nav.collapsed .sidebar-group-header,
   .sidebar-nav.collapsed .sidebar-item-body,
-  .sidebar-nav.collapsed .sidebar-channel-label span,
   .sidebar-nav.collapsed .sidebar-home-button span {
     opacity: 1;
     width: auto;
     pointer-events: auto;
+  }
+
+  .sidebar-nav.collapsed .sidebar-channel-label {
+    display: flex;
   }
 
   .sidebar-nav.collapsed .sidebar-home-button {
