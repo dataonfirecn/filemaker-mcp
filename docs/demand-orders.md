@@ -25,4 +25,8 @@ cd frontend
 npm run build
 ```
 
-截图自检：`artifacts/demand-orders-ui/`，列表与详情覆盖 1440、1068、390px × 亮暗主题。浏览器界面检查重放实际 API 返回数据；空状态和错误状态用受控响应验证，不向应用代码添加模拟数据。此变更尚未部署到服务器。
+截图自检：`artifacts/demand-orders-ui/`，列表与详情覆盖 1440、1068、390px × 亮暗主题。浏览器界面检查重放实际 API 返回数据；空状态和错误状态用受控响应验证，不向应用代码添加模拟数据。
+
+## 2026-09-23 上线
+
+已随 git `2d13b34` 发布：镜像 `starrc-backend:20260923-2d13b34`、`starrc-frontend:20260923-2d13b34`（同批含侧边栏折叠芯片与 logo/favicon 配色修正 `71fb534`）。发布目录 `/opt/starrc-filemaker/releases/20260923-2d13b34`，前版覆盖配置与源码快照在 `backup/`。发布前 22 项后端测试（需求单、Data API 凭证、OData 客户端）、前端生产构建与 5 组回归检查全部通过。上线后公网 index.html 与 `App-DeycFbzM.js` 和本地构建逐字节一致，内外网 healthz 正常，匿名访问 `/api/demand-orders` 返回 401。
