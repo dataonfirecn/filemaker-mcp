@@ -640,7 +640,7 @@ export default function InternalOrderMergePage({
                   <td>{row.orderDate || "—"}</td>
                   <td className="amount-col">{canViewPrice ? formatAmount(row.amount ?? 0, data?.currency || currency) : "无权限"}</td>
                   <td>
-                    <span className="internal-merge-tags">
+                    <span className="internal-merge-tags" title={rowTags.join(" · ")}>
                       {rowTags.length
                         ? rowTags.map((tag) => <span className="internal-merge-tag" key={tag}>{tag}</span>)
                         : <span className="internal-merge-tag muted">—</span>}

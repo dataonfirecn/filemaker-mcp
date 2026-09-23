@@ -5912,7 +5912,7 @@ body.resizing-bom-columns * {
 
 .internal-merge-table {
   width: 100%;
-  min-width: 1010px;
+  min-width: 1060px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -5939,7 +5939,8 @@ body.resizing-bom-columns * {
 .internal-merge-table th:nth-child(3) { width: 180px; }
 .internal-merge-table th:nth-child(4) { width: 100px; }
 .internal-merge-table th:nth-child(5) { width: 120px; }
-.internal-merge-table th:nth-child(6) { width: 125px; }
+/* 标签列：一行可能有多个标签 pill，125px 常态下会被 overflow:hidden 整个吞掉，加宽到 175px */
+.internal-merge-table th:nth-child(6) { width: 175px; }
 .internal-merge-table th:nth-child(7) { width: 130px; }
 .internal-merge-table th:nth-child(8) { width: auto; }
 
@@ -17081,7 +17082,7 @@ body.resizing-customer-columns * {
 
 .part-directory-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1140px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -17123,9 +17124,11 @@ body.resizing-customer-columns * {
 }
 
 .part-directory-table th:nth-child(1) { width: 280px; }
-.part-directory-table th:nth-child(2) { width: 165px; }
+/* 品种/材料：分类 + 材料规格两行拼接，165px 太容易被省略号截断，加宽到 195px */
+.part-directory-table th:nth-child(2) { width: 195px; }
 .part-directory-table th:nth-child(3) { width: 115px; }
-.part-directory-table th:nth-child(4) { width: 185px; }
+/* 采购信息：厂商名 + 部门/仓别拼接，185px 对长厂商名不够，加宽到 220px */
+.part-directory-table th:nth-child(4) { width: 220px; }
 .part-directory-table th:nth-child(5) { width: 105px; }
 .part-directory-table th:nth-child(6) { width: 95px; }
 .part-directory-table th:nth-child(7) { width: 105px; }
@@ -17442,13 +17445,13 @@ body.resizing-customer-columns * {
 
 @media (max-width: 1400px) {
   .part-directory-table {
-    min-width: 900px;
+    min-width: 950px;
   }
 
   .part-directory-table th:nth-child(1) { width: 230px; }
-  .part-directory-table th:nth-child(2) { width: 125px; }
+  .part-directory-table th:nth-child(2) { width: 150px; }
   .part-directory-table th:nth-child(3) { width: 90px; }
-  .part-directory-table th:nth-child(4) { width: 145px; }
+  .part-directory-table th:nth-child(4) { width: 170px; }
   .part-directory-table th:nth-child(5) { width: 85px; }
   .part-directory-table th:nth-child(7) { width: 85px; }
   .part-directory-table th:nth-child(8) { width: 90px; }
