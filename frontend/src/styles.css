@@ -65,17 +65,17 @@ body {
   min-height: 100vh;
   place-items: center;
   padding: 28px;
-  background: #0f1720;
+  background: var(--bg);
 }
 
 .remote-login-card {
   width: min(430px, 100%);
-  border: 1px solid rgba(255, 255, 255, .12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, .97);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, .32);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   padding: 34px;
-  color: #18212b;
+  color: var(--ink-strong);
 }
 
 .remote-login-brand {
@@ -90,23 +90,24 @@ body {
   display: block;
   width: 44px;
   height: 44px;
-  filter: drop-shadow(0 7px 14px rgba(15, 118, 110, .18));
+  filter: drop-shadow(0 7px 14px color-mix(in srgb, var(--teal) 18%, transparent));
 }
 
 .remote-login-brand-copy { display: grid; gap: 2px; }
-.remote-login-brand span { color: #0f766e; font-size: 18px; font-weight: 600; letter-spacing: .08em; }
-.remote-login-brand small { color: #667382; font-size: 12px; font-weight: 600; }
-.remote-login-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 13px; background: #e6f4f3; color: #0f766e; }
+.remote-login-brand span { color: var(--teal); font-size: 18px; font-weight: 600; letter-spacing: .08em; }
+.remote-login-brand small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.remote-login-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 13px; background: var(--teal-soft); color: var(--teal); }
 .remote-login-card h1 { margin: 18px 0 0; font-size: 27px; letter-spacing: -.03em; }
-.remote-login-card > p { margin: 9px 0 24px; color: #667382; font-size: 13px; line-height: 1.65; }
-.remote-login-field { display: grid; gap: 7px; margin-top: 15px; color: #364454; font-size: 12px; font-weight: 600; }
-.remote-login-input { display: flex; align-items: center; gap: 10px; min-height: 48px; border: 1px solid #c8d2db; border-radius: 10px; padding: 0 13px; color: #8a96a3; }
-.remote-login-input:focus-within { border-color: #0f766e; box-shadow: 0 0 0 3px #e6f4f3; color: #0f766e; }
-.remote-login-input input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #18212b; font: inherit; font-weight: 600; }
-.remote-login-error { margin-top: 15px; border: 1px solid #efb4ad; border-radius: 9px; background: #fff2ef; color: #b42318; padding: 10px 12px; font-size: 12px; font-weight: 600; }
-.remote-login-submit { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 22px; border: 0; border-radius: 10px; background: #0f766e; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.remote-login-card > p { margin: 9px 0 24px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.remote-login-field { display: grid; gap: 7px; margin-top: 15px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.remote-login-input { display: flex; align-items: center; gap: 10px; min-height: 48px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 0 13px; color: var(--muted-light); }
+.remote-login-input:focus-within { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); color: var(--teal); }
+.remote-login-input input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink-strong); font: inherit; font-weight: 600; }
+.remote-login-error { margin-top: 15px; border: 1px solid color-mix(in srgb, var(--red) 35%, var(--line)); border-radius: 9px; background: var(--red-soft); color: var(--red); padding: 10px 12px; font-size: 12px; font-weight: 600; }
+.remote-login-submit { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 22px; border: 0; border-radius: 10px; background: var(--teal); color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.12s ease; }
+.remote-login-submit:hover:not(:disabled) { background: var(--teal-dark); }
 .remote-login-submit:disabled { cursor: wait; opacity: .68; }
-.remote-login-note { display: block; margin-top: 16px; color: #8a96a3; font-size: 12px; line-height: 1.5; text-align: center; }
+.remote-login-note { display: block; margin-top: 16px; color: var(--muted-light); font-size: 12px; line-height: 1.5; text-align: center; }
 
 @media (max-width: 560px) {
   .remote-login-page { padding: 14px; }
