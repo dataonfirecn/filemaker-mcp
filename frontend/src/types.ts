@@ -292,6 +292,8 @@ export type Page =
   | "productMaster"
   | "internalOrderMerge"
   | "orderDetail"
+  | "demandOrders"
+  | "demandOrderDetail"
   | "bom" // 合并后的 BOM 计算单页工作台
   | "product" // 旧：产品 BOM 页（保留兼容，导航不再指向）
   | "issue" // 旧：计算单页（保留兼容，导航不再指向）

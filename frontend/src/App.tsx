@@ -26,6 +26,7 @@ import PartDetailPrototypePage from "./components/PartDetailPrototypePage";
 import DashboardPage from "./components/DashboardPage";
 import HomePage from "./components/HomePage";
 import RagControlPage from "./components/RagControlPage";
+import DemandOrdersPage from "./components/DemandOrdersPage";
 import OrderDetailPage from "./components/OrderDetailPage";
 import ProductMasterPage from "./components/ProductMasterPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
@@ -129,6 +130,8 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
     title: "内部订单合并",
     subtitle: "选择当前客户的内部订单并交给 FileMaker 汇总生成新订单。"
   },
+  demandOrders: { title: "需求单", subtitle: "查看零件需求、审核与采购进度。" },
+  demandOrderDetail: { title: "需求单详情", subtitle: "查看需求单资料与零件需求明细。" },
   orderDetail: {
     title: "订单详情",
     subtitle: "查看出货单与出货单明细，选择产品并生成 BOM 临时计算清单。"
@@ -234,10 +237,13 @@ type PageIdentifiers = Partial<Record<(typeof PAGE_IDENTIFIER_KEYS)[number], str
 function pageFromSearchParams(params: URLSearchParams): Page {
   const requestedPage = params.get("page");
   switch (requestedPage) {
+    case "demandOrderDetail":
+      return params.get("recordId") ? "demandOrderDetail" : "demandOrders";
     case "chat":
     case "productMaster":
     case "productInventory":
     case "internalOrderMerge":
+    case "demandOrders":
     case "orderDetail":
     case "bom":
     case "issue":
@@ -310,6 +316,7 @@ export default function App() {
   const [page, setPage] = useState<Page>(() =>
     pageFromSearchParams(new URLSearchParams(window.location.search))
   );
+  const [demandRecordId, setDemandRecordId] = useState(() => new URLSearchParams(window.location.search).get("recordId") ?? "");
   // BOM 单页工作台阶段与 SKU 输入
   const [bomStep, setBomStep] = useState<BomStep>("select");
   const [bomSkuInput, setBomSkuInput] = useState("");
@@ -996,6 +1003,7 @@ export default function App() {
       setPage(nextPage);
       setError(null);
       setSelectedPartIdentifier(params.get("partId") ?? "");
+      setDemandRecordId(params.get("recordId") ?? "");
       const recordId = params.get("recordId") ?? "";
       if (
         nextPage === "businessProductDetail"
@@ -1530,7 +1538,7 @@ export default function App() {
   const requestedOrderId =
     session?.context.orderId || orderIdQueryValue(new URLSearchParams(window.location.search));
   const calculationPageReady = Boolean(preview || document || calcLines.length > 0);
-  const activeNavPage: Page = page === "businessProductDetail"
+  const activeNavPage: Page = page === "demandOrderDetail" ? "demandOrders" : page === "businessProductDetail"
     ? "businessProducts"
     : page === "partDetail"
       ? "parts"
@@ -1542,6 +1550,14 @@ export default function App() {
         id: "order-center",
         label: "订单管理",
         items: [
+          {
+            id: "demandOrders",
+            label: "需求单",
+            description: "零件需求、审核与采购进度",
+            Icon: ClipboardList,
+            disabled: access ? !access.canViewOrders : false,
+            disabledReason: "当前账号角色未开放订单资料"
+          },
           {
             id: "orderDetail",
             label: "订单详情",
@@ -2065,6 +2081,16 @@ export default function App() {
                 onSearch={handleKitIssueSearch}
                 onReset={handleKitIssueReset}
                 onPageChange={handleKitIssuePageChange}
+              />
+            )}
+
+            {(page === "demandOrders" || page === "demandOrderDetail") && (
+              <DemandOrdersPage
+                apiBase={apiBase} token={session?.token ?? ""}
+                canView={session?.context.access.canViewOrders ?? false}
+                recordId={page === "demandOrderDetail" ? demandRecordId : ""}
+                onOpen={(recordId) => { setDemandRecordId(recordId); writePageUrl("demandOrderDetail", { recordId }); setPage("demandOrderDetail"); window.scrollTo(0, 0); }}
+                onBack={() => handleNavigate("demandOrders")}
               />
             )}
 

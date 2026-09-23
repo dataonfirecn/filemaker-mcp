@@ -1,0 +1,78 @@
+{
+  "checks": [
+    {
+      "page": "list",
+      "width": 1440,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 1440,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "list",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false
+    },
+    {
+      "page": "list",
+      "width": 1068,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 1068,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "list",
+      "width": 1068,
+      "theme": "dark",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 1068,
+      "theme": "dark",
+      "overflow": false
+    },
+    {
+      "page": "list",
+      "width": 390,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 390,
+      "theme": "light",
+      "overflow": false
+    },
+    {
+      "page": "list",
+      "width": 390,
+      "theme": "dark",
+      "overflow": false
+    },
+    {
+      "page": "detail",
+      "width": 390,
+      "theme": "dark",
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "emptyReset": true
+}

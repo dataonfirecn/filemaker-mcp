@@ -25,6 +25,7 @@ from app.api import (
     natural_language_query,
     odata,
     orders,
+    demand_orders,
     part_assets,
     part_creation,
     part_directory,
@@ -345,6 +346,7 @@ app.include_router(natural_language_query.router, prefix=settings.api_prefix)
 app.include_router(natural_query_analytics.router, prefix=settings.api_prefix)
 app.include_router(odata.router, prefix=settings.api_prefix)
 app.include_router(orders.router, prefix=settings.api_prefix)
+app.include_router(demand_orders.router, prefix=settings.api_prefix)
 app.include_router(receipt_history.router, prefix=settings.api_prefix)
 app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(rag_index.router, prefix=settings.api_prefix)

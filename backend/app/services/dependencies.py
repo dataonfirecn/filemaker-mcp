@@ -291,6 +291,8 @@ def _permission_for_request(request: Request) -> str | None:
         return "canViewInventory"
     if path.startswith("/api/business-products"):
         return "canViewProducts"
+    if path.startswith("/api/demand-orders"):
+        return "canViewOrders"
     if path.startswith("/api/orders"):
         if path.endswith("/bom-calculations") and method == "POST":
             return "canViewBom"
