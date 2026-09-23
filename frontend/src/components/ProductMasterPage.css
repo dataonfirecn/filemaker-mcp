@@ -1,38 +1,39 @@
 /* Product master editor — token layer.
    Every component below reads these variables; no component defines a raw colour.
-   Light is the base set, dark is redefined once for prefers-color-scheme and once for [data-theme]. */
+   --pm-* are aliases onto styles/tokens.css (see docs/ui-design-rules.md §8.1);
+   dark mode flows in automatically via [data-theme="dark"] in tokens.css — no local dark branch. */
 .product-master {
-  --pm-ground: #e9eeeb;
-  --pm-surface: #ffffff;
-  --pm-surface-2: #f4f7f5;
-  --pm-surface-3: #eaf0ec;
-  --pm-line: #d7e0da;
-  --pm-line-soft: #e6ece8;
-  --pm-line-strong: #b9c8c0;
-  --pm-ink: #16231e;
-  --pm-ink-2: #3d5149;
-  --pm-muted: #6f8279;
-  --pm-faint: #93a49b;
-  --pm-brand: #0d5c40;
-  --pm-brand-deep: #0a4530;
-  --pm-brand-soft: #e0efe7;
-  --pm-brand-line: #a9cdbb;
-  --pm-ok: #136b4f;
-  --pm-ok-soft: #e1f1e8;
-  --pm-warn: #8a6209;
-  --pm-warn-soft: #fbf1da;
-  --pm-warn-line: #e8d6a8;
-  --pm-danger: #a92b20;
-  --pm-danger-soft: #fbe9e7;
-  --pm-calc: #5b6f9a;
-  --pm-calc-soft: #eaeef7;
-  --pm-shadow: 0 1px 2px rgba(20, 40, 32, .05), 0 6px 18px -12px rgba(20, 40, 32, .22);
-  --pm-shadow-bar: 0 1px 0 var(--pm-line), 0 6px 16px -14px rgba(20, 40, 32, .5);
-  --pm-r: 10px;
-  --pm-r-s: 6px;
-  --pm-h: 33px;
-  --pm-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-  --pm-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "PingFang SC", monospace;
+  --pm-ground: var(--color-bg);
+  --pm-surface: var(--color-surface);
+  --pm-surface-2: var(--color-surface-muted);
+  --pm-surface-3: var(--color-surface-hover);
+  --pm-line: var(--color-border);
+  --pm-line-soft: var(--color-divider);
+  --pm-line-strong: var(--color-border-strong);
+  --pm-ink: var(--color-text);
+  --pm-ink-2: var(--color-text-secondary);
+  --pm-muted: var(--color-text-muted);
+  --pm-faint: var(--color-text-faint);
+  --pm-brand: var(--color-primary);
+  --pm-brand-deep: var(--color-primary-hover);
+  --pm-brand-soft: var(--color-primary-soft);
+  --pm-brand-line: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  --pm-ok: var(--color-success);
+  --pm-ok-soft: var(--color-success-soft);
+  --pm-warn: var(--color-warning);
+  --pm-warn-soft: var(--color-warning-soft);
+  --pm-warn-line: color-mix(in srgb, var(--color-warning) 32%, var(--color-border));
+  --pm-danger: var(--color-danger);
+  --pm-danger-soft: var(--color-danger-soft);
+  --pm-calc: var(--color-info);
+  --pm-calc-soft: var(--color-info-soft);
+  --pm-shadow: var(--shadow-sm);
+  --pm-shadow-bar: 0 1px 0 var(--pm-line), var(--shadow-sm);
+  --pm-r: var(--radius-lg);
+  --pm-r-s: var(--radius-sm);
+  --pm-h: var(--control-sm);
+  --pm-sans: var(--font-sans);
+  --pm-mono: var(--font-mono);
   box-sizing: border-box;
   min-height: 100vh;
   color: var(--pm-ink);
@@ -40,64 +41,6 @@
   font: 13px/1.5 var(--pm-sans);
   text-align: left;
   -webkit-font-smoothing: antialiased;
-}
-@media (prefers-color-scheme: dark) {
-  .product-master:not([data-theme="light"]) {
-    --pm-ground: #0e1513;
-    --pm-surface: #161f1c;
-    --pm-surface-2: #1b2522;
-    --pm-surface-3: #212d29;
-    --pm-line: #2a3833;
-    --pm-line-soft: #223029;
-    --pm-line-strong: #3b4c45;
-    --pm-ink: #e7efea;
-    --pm-ink-2: #b9c9c1;
-    --pm-muted: #8ba095;
-    --pm-faint: #6d8278;
-    --pm-brand: #4cb88a;
-    --pm-brand-deep: #7fd3ad;
-    --pm-brand-soft: rgba(22, 49, 37, .55);
-    --pm-brand-line: #2f6a51;
-    --pm-ok: #5cc196;
-    --pm-ok-soft: rgba(22, 48, 38, .5);
-    --pm-warn: #d9ac52;
-    --pm-warn-soft: rgba(49, 40, 19, .5);
-    --pm-warn-line: #4d3f1d;
-    --pm-danger: #e58a80;
-    --pm-danger-soft: rgba(51, 18, 16, .55);
-    --pm-calc: #9aaedd;
-    --pm-calc-soft: rgba(28, 36, 52, .5);
-    --pm-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px -12px rgba(0, 0, 0, .7);
-    --pm-shadow-bar: 0 1px 0 var(--pm-line), 0 6px 16px -14px rgba(0, 0, 0, .9);
-  }
-}
-.product-master[data-theme="dark"] {
-  --pm-ground: #0e1513;
-  --pm-surface: #161f1c;
-  --pm-surface-2: #1b2522;
-  --pm-surface-3: #212d29;
-  --pm-line: #2a3833;
-  --pm-line-soft: #223029;
-  --pm-line-strong: #3b4c45;
-  --pm-ink: #e7efea;
-  --pm-ink-2: #b9c9c1;
-  --pm-muted: #8ba095;
-  --pm-faint: #6d8278;
-  --pm-brand: #4cb88a;
-  --pm-brand-deep: #7fd3ad;
-  --pm-brand-soft: rgba(22, 49, 37, .55);
-  --pm-brand-line: #2f6a51;
-  --pm-ok: #5cc196;
-  --pm-ok-soft: rgba(22, 48, 38, .5);
-  --pm-warn: #d9ac52;
-  --pm-warn-soft: rgba(49, 40, 19, .5);
-  --pm-warn-line: #4d3f1d;
-  --pm-danger: #e58a80;
-  --pm-danger-soft: rgba(51, 18, 16, .55);
-  --pm-calc: #9aaedd;
-  --pm-calc-soft: rgba(28, 36, 52, .5);
-  --pm-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px -12px rgba(0, 0, 0, .7);
-  --pm-shadow-bar: 0 1px 0 var(--pm-line), 0 6px 16px -14px rgba(0, 0, 0, .9);
 }
 .product-master * { box-sizing: border-box; }
 .product-master h1, .product-master h2, .product-master h3, .product-master p { margin: 0; }

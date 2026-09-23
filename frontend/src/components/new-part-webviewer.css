@@ -1,14 +1,15 @@
 :root {
-  --npw-blue: #2867c7;
-  --npw-blue-dark: #1f55a8;
-  --npw-blue-soft: #edf4ff;
-  --npw-teal: #138b7e;
-  --npw-navy: #18324b;
-  --npw-text: #314a61;
-  --npw-muted: #7e8fa0;
-  --npw-line: #d5e0ea;
-  --npw-bg: #eef4f8;
-  --npw-error: #c43e32;
+  /* --npw-* are aliases onto styles/tokens.css; dark mode flows in via [data-theme="dark"], no local branch needed. */
+  --npw-blue: var(--color-primary);
+  --npw-blue-dark: var(--color-primary-hover);
+  --npw-blue-soft: var(--color-primary-soft);
+  --npw-teal: var(--color-success);
+  --npw-navy: var(--color-text);
+  --npw-text: var(--color-text-secondary);
+  --npw-muted: var(--color-text-muted);
+  --npw-line: var(--color-border);
+  --npw-bg: var(--color-bg);
+  --npw-error: var(--color-danger);
 }
 
 .npw-root,
@@ -176,7 +177,7 @@
 }
 
 .npw-close-error {
-  color: var(--npw-error) !important;
+  color: var(--npw-error);
 }
 
 .npw-page {

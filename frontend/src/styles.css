@@ -219,11 +219,11 @@ body {
 }
 
 .inbound {
-  color: #07834b !important;
+  color: #07834b;
 }
 
 .outbound {
-  color: #ed1c24 !important;
+  color: #ed1c24;
 }
 
 .inventory-chart-block {
@@ -3288,13 +3288,13 @@ select {
 }
 
 .diagnostic-duration.slow {
-  color: var(--amber) !important;
+  color: var(--amber);
   font-weight: 600;
 }
 
 .diagnostic-detail {
   max-width: 460px;
-  color: var(--ink) !important;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
@@ -3524,7 +3524,11 @@ select {
 
 .order-check-cell {
   width: 44px;
-  text-align: center !important;
+}
+
+.order-table th.order-check-cell,
+.order-table td.order-check-cell {
+  text-align: center;
 }
 
 .order-check-cell input {
@@ -3537,20 +3541,26 @@ select {
 .order-line-number {
   width: 42px;
   max-width: 42px;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
   color: var(--muted-light);
   font-size: 12px;
   font-weight: 600;
   text-align: center;
 }
 
+.order-table td.order-line-number {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
 .order-line-column {
   width: 42px;
   max-width: 42px;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
-  text-align: center !important;
+}
+
+.order-table th.order-line-column {
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: center;
 }
 
 .order-product-sku,
@@ -4184,9 +4194,12 @@ select {
 }
 
 .order-empty-row td {
-  height: 110px !important;
   color: var(--muted);
   text-align: center;
+}
+
+.order-table tbody tr.order-empty-row > td {
+  height: 110px;
 }
 
 .order-empty-row svg {
@@ -4221,7 +4234,10 @@ select {
 
 .bom-resizable-column {
   position: relative;
-  padding-right: 17px !important;
+}
+
+.order-table th.bom-resizable-column {
+  padding-right: 17px;
 }
 
 .bom-column-resize-handle {
@@ -4269,9 +4285,13 @@ body.resizing-bom-columns * {
 
 .expand-cell {
   width: 34px;
-  padding-left: 2px !important;
-  padding-right: 2px !important;
-  text-align: center !important;
+}
+
+.order-table th.expand-cell,
+.order-table td.expand-cell {
+  padding-left: 2px;
+  padding-right: 2px;
+  text-align: center;
 }
 
 .expand-cell button {
@@ -4321,7 +4341,7 @@ body.resizing-bom-columns * {
 }
 
 .calculation-column {
-  background: color-mix(in srgb, var(--amber-soft) 65%, transparent) !important;
+  background: color-mix(in srgb, var(--amber-soft) 65%, transparent);
 }
 
 .calculated-qty-input {
@@ -5275,7 +5295,7 @@ body.resizing-bom-columns * {
   height: auto;
   border-bottom: 1px solid var(--line);
   background: var(--surface-muted);
-  padding: 0 12px 12px !important;
+  padding: 0 12px 12px;
 }
 
 .bom-source-panel {
@@ -6036,7 +6056,7 @@ body.resizing-bom-columns * {
 }
 
 .internal-merge-status {
-  display: inline-block !important;
+  display: inline-block;
   max-width: 100%;
   width: max-content;
   padding: 3px 7px;
@@ -6056,7 +6076,7 @@ body.resizing-bom-columns * {
 }
 
 .internal-merge-tags {
-  display: flex !important;
+  display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -6064,7 +6084,7 @@ body.resizing-bom-columns * {
 }
 
 .internal-merge-tag {
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center;
   min-width: 0;
   max-width: 100%;
@@ -11299,9 +11319,9 @@ body.resizing-customer-columns * {
   line-height: 1.4;
 }
 
-.home-query-sold-total {
-  color: var(--teal-dark) !important;
-  font-weight: 600 !important;
+.home-query-row .home-query-sold-total {
+  color: var(--teal-dark);
+  font-weight: 600;
 }
 
 .home-query-row em {

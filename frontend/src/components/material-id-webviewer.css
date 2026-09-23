@@ -1,12 +1,13 @@
 .mid-root {
-  --mid-navy: #132e49;
-  --mid-blue: #2867c7;
-  --mid-blue-dark: #1d54aa;
-  --mid-teal: #138a7e;
-  --mid-ink: #172637;
-  --mid-muted: #6d7c8d;
-  --mid-line: #dce4ec;
-  --mid-soft: #f5f8fb;
+  /* --mid-* are aliases onto styles/tokens.css; dark mode flows in via [data-theme="dark"], no local branch needed. */
+  --mid-navy: var(--color-text);
+  --mid-blue: var(--color-primary);
+  --mid-blue-dark: var(--color-primary-hover);
+  --mid-teal: var(--color-success);
+  --mid-ink: var(--color-text-secondary);
+  --mid-muted: var(--color-text-muted);
+  --mid-line: var(--color-border);
+  --mid-soft: var(--color-surface-muted);
   min-height: 100vh;
   color: var(--mid-ink);
   background: #eef3f7;

@@ -106,8 +106,8 @@ button, input { font: inherit; }
 .rhw-summary-grid article.under { border-color: #fed7aa; background: #fff9ef; }
 .rhw-summary-grid article.under > strong { color: #b45309; }
 .rhw-summary-grid article.equal { border-color: #bfe6d4; }
-.rhw-ok { color: #16815d !important; }
-.rhw-warn { color: #a85b12 !important; }
+.rhw-summary-grid article p.rhw-ok { color: #16815d; }
+.rhw-summary-grid article p.rhw-warn { color: #a85b12; }
 
 .rhw-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; min-width: 0; align-items: stretch; }
 .rhw-history-panel,
@@ -152,7 +152,7 @@ button, input { font: inherit; }
 .rhw-table-wrap th { padding: 7px 8px; color: #687b90; background: #eef3f7; font-weight: 600; text-align: left; }
 .rhw-table-wrap td { max-width: 180px; padding: 8px; overflow: hidden; color: #40556b; border-top: 1px solid #e5ebf1; text-overflow: ellipsis; }
 .rhw-table-wrap tbody tr:hover { background: #f8fafc; }
-.rhw-inbound { color: #16815d !important; font-weight: 600; }
+.rhw-table-wrap td.rhw-inbound { color: #16815d; font-weight: 600; }
 .rhw-inline-warning { display: flex; align-items: center; gap: 7px; padding: 9px; color: #a15c0e; border-radius: 8px; background: #fff5e9; font-size: 12px; }
 
 .rhw-photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -162,7 +162,7 @@ button, input { font: inherit; }
 .rhw-photo-grid span { position: absolute; left: 6px; bottom: 21px; padding: 2px 6px; color: white; border-radius: 4px; background: rgba(16,36,59,.78); font-size: 12px; font-weight: 600; }
 .rhw-photo-grid small { position: absolute; left: 6px; bottom: 6px; color: white; font-size: 12px; text-shadow: 0 1px 3px #000; }
 .rhw-photo-grid a > svg:last-child { position: absolute; top: 6px; right: 6px; padding: 2px; color: white; border-radius: 4px; background: rgba(16,36,59,.68); }
-.rhw-source-section { background: #f8fafc !important; }
+.rhw-side-panel > section.rhw-source-section { background: #f8fafc; }
 .rhw-source-list { display: grid; gap: 8px; margin: 0; }
 .rhw-source-list div { min-width: 0; padding-bottom: 8px; border-bottom: 1px dashed #dfe6ed; }
 .rhw-source-list div:last-child { padding-bottom: 0; border-bottom: 0; }
