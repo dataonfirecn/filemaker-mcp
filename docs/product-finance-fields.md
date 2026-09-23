@@ -91,3 +91,36 @@ PATCH 仅含变更的售价字段并带 modId；读回实际值后才标记同�
 `prices-preview.json` / `prices-import.json`，目录和文件限制访问。
 导入曾为优化 UUID 索引读取中断后恢复，最终报告本轮 applied=23,252、unchanged=1,687；合计 24,939。
 价格映射和原始公式均未写入或修改 FileMaker。
+
+## 标准镜像发布（2026-09-23 晚，`f8e6fc1`）
+
+上述 `product-finance-20260923` 镜像构建后源码又有修改，生产运行的不是已提交代码。功能代码已提交为
+`f8e6fc13edc951ffab79e6f3bb48d3874e1e9c02`（17 个文件）并推送 `origin/main`，随后用提交源码重新构建并发布标准
+日期-SHA 镜像，替换非标准标签：
+
+- `starrc-backend:20260923-f8e6fc1`（继承 `starrc-backend:20260923-2d13b34`，覆盖 `backend/app`、`config`、`scripts`）
+- `starrc-frontend:20260923-f8e6fc1`（继承 `starrc-frontend:20260923-c1cdbbd`，覆盖 `dist/`）
+
+发布前复核：隔离 PostgreSQL 下后端测试 78 项全部通过（`test_product_finance.py` + `test_product_master.py`）；
+前端 tsc + vite 构建通过；Playwright 财务字段检查（权限过滤、3 宽度 × 2 主题）通过。
+
+容器变化：backend `ea9c91f067bb` → `5dc3b3d24e16`；frontend `557f92b541ef` → `c25af749f001`；
+postgres `f196c32c514b` 保持不变。
+
+发布后验证：内外网 `healthz` 均 `ok: true`；公网 `index.html` SHA-256 `72a3e7a8…fe698`、
+`assets/App-r1Sps9Zu.js` SHA-256 `0b9a2f66…e023`，均与本地构建逐字节一致；
+未登录 `GET /api/product-master/products/{id}/costs` 返回 401（路由存在、权限生效）。
+
+服务器发布目录：`/opt/starrc-filemaker/releases/20260923-f8e6fc1/`
+（`backup/previous-release.yml`、`backup/previous-src.tar.gz`、`build/`、`release.yml`、`containers.txt`、`health.json`）。
+注意：`product-finance-20260923` 运行的是未提交工作树，`previous-src.tar.gz` 只含该版本实际部署的
+`backend/` + `dist/` + 两个 Dockerfile（不含前端源码）；回退以镜像仓库中保留的
+`starrc-backend:product-finance-20260923`、`starrc-frontend:product-finance-20260923` 为准。
+
+回退步骤：
+
+```bash
+cd /opt/starrc-filemaker/current/deploy/starrc
+cp /opt/starrc-filemaker/releases/20260923-f8e6fc1/backup/previous-release.yml product-master.release.yml
+docker compose --env-file ../../.env -p starrc-filemaker -f docker-compose.yml -f product-master.release.yml up -d --no-deps --no-build backend frontend
+```
