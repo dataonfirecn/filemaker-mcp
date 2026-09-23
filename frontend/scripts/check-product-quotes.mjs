@@ -31,17 +31,18 @@ try {
   page.on('response', response => { if (response.status() >= 400) console.error('HTTP:', response.status(), response.url()); });
   page.on('pageerror', e => { errors.push(e.message); console.error('Browser error:', e.message); });
   page.setDefaultTimeout(10000);
-  let rows = [], revisions = [], writes = 0, forceConflict = false, writeEnabled = true;
-  const customers = [{ value: 'c1', name: '客户甲', code: '001' }, { value: 'c2', name: '客户乙', code: '002' }];
+  let rows = [], revisions = [], writes = 0, forceConflict = false, writeEnabled = true, admin = true;
+  const customers = [{ value: 'c1', name: '客户甲', code: '001' }, { value: 'c2', name: '客户乙', code: '002' },
+    { value: 'c3', name: '公司全称', code: '003', label: '公司全称（待完善：简称缺失）', selectable: false }];
   const schema = [{ name: 'product_sku', result: 'text', writable: true, maxRepeat: 1 },
     { name: 'Client', result: 'text', writable: true, maxRepeat: 1 }, { name: 'id_client', result: 'text', writable: true, maxRepeat: 1 }];
   await page.route('**/api/product-master/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/product-master', '');
     const send = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
-    if (path === '/schema') return send({ fields: schema, permissions: { canViewProducts: true, canViewPrice: true, canEditProductPrices: true, canEditProducts: true } });
+    if (path === '/schema') return send({ fields: schema, permissions: { canManageAccounts: admin, canViewProducts: true, canViewPrice: true, canEditProductPrices: true, canEditProducts: true } });
     if (path === '/editor-controls') return send({ controls: {} });
-    if (path === '/customers') return send({ rows: customers, total: 2 });
-    if (path === `/products/${pid}`) return send({ id: pid, version: 1, fields: { product_sku: 'TEST-QUOTE' }, assets: [] });
+    if (path === '/customers') return send({ rows: customers, total: customers.length });
+    if (path === `/products/${pid}`) return send({ id: pid, version: 1, previewMode: true, fields: { product_sku: 'TEST-QUOTE' }, assets: [] });
     if (path === `/products/${pid}/status`) return send({ filemaker: [], dms: [] });
     if (path === `/products/${pid}/history`) return send({ rows: [] });
     if (path.endsWith('/quotes/q1/history')) return send({ rows: revisions });
@@ -66,6 +67,7 @@ try {
   await page.getByLabel('报价名称／权限标识', { exact: true }).fill('经销商组');
   await page.getByLabel('金额', { exact: true }).fill('0.123456789012');
   await page.getByRole('checkbox', { name: '客户甲' }).check();
+  assert.equal(await page.getByRole('checkbox', { name: /公司全称（待完善/ }).isDisabled(), true);
   await page.getByRole('button', { name: '保存此报价' }).click();
   await page.getByText('USD 0.123456789012', { exact: true }).waitFor();
   assert.equal(writes, 1);
@@ -104,6 +106,10 @@ try {
   await page.getByText('CNY 22.50', { exact: true }).waitFor();
   assert(await page.getByRole('button', { name: '新增报价', exact: true }).isDisabled());
   assert(await page.getByRole('button', { name: '编辑', exact: true }).isDisabled());
+  admin = false;
+  await page.reload();
+  await page.getByRole('button', { name: '基础资料', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '客户群报价', exact: true }).count(), 0);
   assert.deepEqual(errors, []);
   console.log('PASS quote create, exact decimals, reload, members, currency, disable, history, leave guard, conflict, tablet layout and read-only switch');
 } finally { await browser?.close(); await server.close(); }

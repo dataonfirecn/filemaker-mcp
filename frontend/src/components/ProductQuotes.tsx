@@ -10,7 +10,7 @@ type Quote = {
 };
 type Revision = { version: number; actor: Quote['updatedBy']; createdAt: string; before: Quote | null; after: Quote };
 type Draft = { id?: string; version: number; title: string; amount: string; currency: string; enabled: boolean; customers: Customer[] };
-type Choice = { value: string; name: string; code: string };
+type Choice = { value: string; name: string; code: string; label?: string; selectable?: boolean };
 
 export default function ProductQuotes({ apiBase, token, productId, readOnly, onDirty, onBusy }: {
   apiBase: string; token: string; productId: string; readOnly: boolean; onDirty: (dirty: boolean) => void; onBusy: (busy: boolean) => void;
@@ -150,7 +150,7 @@ export default function ProductQuotes({ apiBase, token, productId, readOnly, onD
           <div className="pq-selected">{draft.customers.map(c => <button type="button" className="pq-member" key={c.id} aria-label={`移除客户 ${c.name}`} onClick={() => setDraft({ ...draft, customers: draft.customers.filter(m => m.id !== c.id) })}>{c.name} ({c.code}) ×</button>)}</div>
           <label>搜索客户<input value={query} placeholder="客户名称或代码" onChange={e => { setQuery(e.target.value); setOffset(0); }} /></label>
           {searchBusy ? <p role="status">正在搜索…</p> : searchError ? <p role="alert">{searchError} <button type="button" onClick={() => setSearchRetry(r => r + 1)}>重试</button></p> : <div className="pq-choices">
-            {choices.map(c => <label key={c.value}><input type="checkbox" checked={draft.customers.some(m => m.id === c.value)} onChange={e => setDraft({ ...draft, customers: e.target.checked ? [...draft.customers, { id: c.value, name: c.name, code: c.code }] : draft.customers.filter(m => m.id !== c.value) })} />{c.name} <small>{c.code}</small></label>)}
+            {choices.map(c => <label key={c.value}><input type="checkbox" disabled={c.selectable === false && !draft.customers.some(m => m.id === c.value)} checked={draft.customers.some(m => m.id === c.value)} onChange={e => setDraft({ ...draft, customers: e.target.checked ? [...draft.customers, { id: c.value, name: c.name, code: c.code }] : draft.customers.filter(m => m.id !== c.value) })} />{c.label || c.name} <small>{c.code}</small></label>)}
             {!choices.length && <p>未找到客户</p>}
           </div>}
           <div className="pq-actions"><button type="button" className="pm-btn pm-btn-sm" disabled={searchBusy || offset === 0} onClick={() => setOffset(n => n - 50)}>上一页</button>

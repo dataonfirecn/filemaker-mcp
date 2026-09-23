@@ -364,7 +364,7 @@ export default function BusinessProductsPage({
           );
         }
       },
-      { field: "modelName", colId: "modelName", headerName: "车款", width: 150 },
+      { field: "modelName", colId: "modelName", headerName: "车款", minWidth: 160, flex: 1 },
       { field: "scale", colId: "scale", headerName: "比例", width: 90 },
       { field: "category", colId: "category", headerName: "类别", width: 110 },
       {
@@ -388,7 +388,7 @@ export default function BusinessProductsPage({
         headerClass: "numeric-header",
         valueFormatter: ({ value }) => formatQty(value)
       },
-      { field: "customer", colId: "customer", headerName: "客户", width: 150 },
+      { field: "customer", colId: "customer", headerName: "客户", minWidth: 160, flex: 1 },
       {
         field: "bomCount",
         colId: "bomCount",

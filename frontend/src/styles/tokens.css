@@ -1,0 +1,136 @@
+/*
+ * StarRC 设计 Token —— 唯一来源
+ * 规则文档：docs/ui-design-rules.md（v0.2 暖调纸感风格）
+ * 视觉参照：docs/ui-style-preview.html
+ *
+ * 组件 CSS 里只允许写 var(--*)，不写 hex / rgba 字面值。
+ * 需要新增 token 时先改规则文档，再改这里。
+ */
+
+:root {
+  /* ---- 颜色：背景层次 ---- */
+  --color-bg:             #F5F4EE;  /* 页面底（象牙色） */
+  --color-sidebar:        #EFEDE4;  /* 侧边导航 */
+  --color-surface:        #FFFFFF;  /* 卡片、表格、弹窗、输入框 */
+  --color-surface-muted:  #FAF9F5;  /* 卡片内分区、只读字段、代码块 */
+  --color-surface-hover:  #F2F0E8;  /* 行悬停、菜单悬停 */
+  --color-surface-active: #E9E6DB;  /* 导航选中、按下 */
+
+  /* ---- 颜色：文字 ---- */
+  --color-text:           #141413;  /* 标题、正文 */
+  --color-text-secondary: #3D3D3A;  /* 次级正文、表格正文 */
+  --color-text-muted:     #6B6A64;  /* 标签、说明、表头 */
+  --color-text-faint:     #A3A29A;  /* 占位符、禁用 */
+
+  /* ---- 颜色：线 ---- */
+  --color-border:         #E3E0D5;
+  --color-border-strong:  #D1CDBF;
+  --color-divider:        #ECEAE2;
+
+  /* ---- 颜色：强调色（陶土橙，全站唯一彩色主色） ---- */
+  --color-accent:         #C96442;
+  --color-primary:        #B5573A;
+  --color-primary-hover:  #A34E33;
+  --color-on-primary:     #FFFFFF;
+  --color-primary-text:   #AE5234;
+  --color-primary-soft:   #F6E7DF;
+  --color-focus-ring:     rgba(201, 100, 66, 0.25);
+
+  /* ---- 颜色：语义 ---- */
+  --color-success:      #2F7D4F;
+  --color-success-soft: #E6F0E6;
+  --color-warning:      #9A6210;
+  --color-warning-soft: #F8EDD5;
+  --color-danger:        #B3372E;
+  --color-danger-soft:   #F7E3DF;
+  --color-info:          #2F6690;
+  --color-info-soft:     #E3ECF3;
+  --color-neutral:       #6B6A64;
+  --color-neutral-soft:  #EFEDE6;
+
+  /* ---- 字体 ---- */
+  --font-serif: "Source Serif 4", "Songti SC", "Noto Serif SC", "STSong", Georgia, serif;
+  --font-sans:  "Inter", -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono:  ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs:   12px;
+  --text-sm:   13px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  28px;
+  --text-3xl:  32px;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+
+  /* ---- 间距（4px 网格） ---- */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+
+  /* ---- 圆角 ---- */
+  --radius-sm:   6px;    /* 徽章、表格内按钮 */
+  --radius-md:   8px;    /* 按钮、输入框、下拉 */
+  --radius-lg:   12px;   /* 卡片、表格容器 */
+  --radius-xl:   16px;   /* 弹窗、搜索大输入框 */
+  --radius-full: 999px;  /* 胶囊、头像 */
+
+  /* ---- 阴影（几乎不用，靠边框分层） ---- */
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.04);
+  --shadow-md: 0 4px 20px rgba(20, 20, 19, 0.06);
+  --shadow-lg: 0 16px 48px rgba(20, 20, 19, 0.14);
+
+  /* ---- 尺寸、图标、断点、层级 ---- */
+  --control-sm: 30px; --control-md: 36px; --control-lg: 44px;
+  --table-row: 44px;  --table-row-compact: 36px;
+
+  --icon-sm: 14px; --icon-md: 16px; --icon-lg: 20px;
+
+  --bp-tablet: 1180px; --bp-narrow: 900px; --bp-mobile: 640px;
+  --z-sticky: 10; --z-dropdown: 100; --z-drawer: 200; --z-modal: 300; --z-toast: 400;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg:             #262624;
+  --color-sidebar:        #1F1E1D;
+  --color-surface:        #30302E;
+  --color-surface-muted:  #2B2A28;
+  --color-surface-hover:  #383835;
+  --color-surface-active: #41403C;
+
+  --color-text:           #FAF9F5;
+  --color-text-secondary: #DDDBD2;
+  --color-text-muted:     #A6A49B;
+  --color-text-faint:     #75736C;
+
+  --color-border:         #43423E;
+  --color-border-strong:  #55534E;
+  --color-divider:        #3A3936;
+
+  --color-accent:         #D97757;
+  --color-primary:        #D97757;
+  --color-primary-hover:  #E38A6C;
+  --color-on-primary:     #1F1E1D;
+  --color-primary-text:   #E8927A;
+  --color-primary-soft:   rgba(217, 119, 87, 0.16);
+  --color-focus-ring:     rgba(217, 119, 87, 0.35);
+
+  --color-success:      #7DBE8F;
+  --color-success-soft: rgba(125, 190, 143, 0.14);
+  --color-warning:      #E0B25C;
+  --color-warning-soft: rgba(224, 178, 92, 0.14);
+  --color-danger:        #EB8B80;
+  --color-danger-soft:   rgba(235, 139, 128, 0.14);
+  --color-info:          #8DB6D9;
+  --color-info-soft:     rgba(141, 182, 217, 0.14);
+  --color-neutral:       #A6A49B;
+  --color-neutral-soft:  rgba(166, 164, 155, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+}

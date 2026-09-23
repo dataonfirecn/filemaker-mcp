@@ -304,6 +304,7 @@ export type Page =
   | "accessAdmin"
   | "settings"
   | "serviceDirectory"
+  | "customerDirectory"
   | "qualityInspections"
   | "diagnosticLogs"
   | "reports";

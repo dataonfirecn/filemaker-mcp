@@ -210,7 +210,8 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const changeCount = Object.entries(fields).filter(([name, v]) => JSON.stringify(product?.fields[name]) !== JSON.stringify(v)).length
     + (JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []) ? 1 : 0);
   const heroAsset = assets.find(a => a.field === 'image_main');
-  const quoteTabs = product && permissions.canViewPrice ? ['客户群报价'] : [];
+  const canViewQuotes = !!permissions.canManageAccounts && !!permissions.canViewPrice;
+  const quoteTabs = product && canViewQuotes ? ['客户群报价'] : [];
   const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
   const find = (name: string) => schema.find(f => f.name === name && f.result !== 'container');
   const writableField = (f: Field) => !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
@@ -481,7 +482,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
 
     {error && <div role="alert" className="pm-notice pm-notice-error"><AlertCircle size={15} />{error}</div>}
     {message && <div className="pm-notice pm-notice-ok" role="status"><CircleCheck size={15} />{message}</div>}
-    {!readOnly && product?.previewMode && <div className="pm-notice"><LockKeyhole size={14} /><span>预览模式：字段可试填，保存与回写 FileMaker 尚未开放，修改仅保留在当前窗口。</span></div>}
+    {!readOnly && product?.previewMode && <div className="pm-notice"><LockKeyhole size={14} /><span>产品资料预览：基础字段可试填，产品保存与回写尚未开放；客户群报价使用独立保存权限。</span></div>}
     {product?.assetImportError && <div role="alert" className="pm-notice pm-notice-error"><AlertCircle size={15} />{product.assetImportError}</div>}
     {loading && <div className="pm-notice" role="status"><RotateCw className="pm-spin" size={15} /> 正在读取当前产品并校验全部容器；首次加载图片可能需要较长时间。</div>}
 
@@ -530,7 +531,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
           {tab === '生產注意事項' && docList('包装与标签', containers.filter(f => assetGroup(f.name) === '包装与标签'))}
         </>}
 
-        {tab === '客户群报价' && product && permissions.canViewPrice && <ProductQuotes key={`${product.id}:${token}`} apiBase={apiBase} token={token} productId={product.id} readOnly={readOnly || !!product.previewMode} onDirty={setQuoteDirty} onBusy={setQuoteBusy} />}
+        {tab === '客户群报价' && product && canViewQuotes && <ProductQuotes key={`${product.id}:${token}`} apiBase={apiBase} token={token} productId={product.id} readOnly={readOnly} onDirty={setQuoteDirty} onBusy={setQuoteBusy} />}
         {tab === '修改历史' && <section className="pm-card"><div className="pm-card-head"><i className="pm-card-rule" /><h2>修改历史</h2></div><div className="pm-card-body">
           {history.length ? history.map(h => <details className="pm-history" key={h.version}><summary>版本 {h.version} · {h.actor.name || h.actor.account} · {new Date(h.created_at).toLocaleString()}</summary><pre>{JSON.stringify({ 修改前: h.before_data, 修改后: h.after_data }, null, 2)}</pre><div className="pm-history-actions"><button type="button" className="pm-btn pm-btn-sm" disabled={!canEdit || busy} onClick={() => void restore(h.version)}>恢复为新版本</button>{h.after_data.assets.map(a => <button type="button" className="pm-btn pm-btn-sm" key={a.id} onClick={() => void download(a)}>下载 {a.filename}</button>)}</div></details>)
             : <p className="pm-empty-text">预览期间未开放编辑；启用后，每次保存的修改与原文件都可在这里追溯。</p>}

@@ -21,9 +21,7 @@
   min-height: 100vh;
   margin: 0;
   color: var(--npw-text);
-  background:
-    radial-gradient(circle at 90% 0, rgba(71, 128, 205, 0.08), transparent 28%),
-    var(--npw-bg);
+  background: var(--npw-bg);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 12px;
@@ -61,7 +59,7 @@
   place-items: center;
   border-radius: 12px;
   color: #fff;
-  background: linear-gradient(145deg, var(--npw-blue), var(--npw-teal));
+  background: var(--npw-blue);
   box-shadow: 0 8px 18px rgba(40, 103, 199, 0.2);
 }
 
@@ -74,14 +72,14 @@
 .npw-title strong {
   color: var(--npw-navy);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .npw-title small {
   color: var(--npw-muted);
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-header-actions {
@@ -96,8 +94,8 @@
   align-items: center;
   gap: 7px;
   color: #477166;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -119,8 +117,8 @@
   border-radius: 9px;
   color: #42627b;
   background: #f7fafc;
-  font-size: 9px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -147,8 +145,8 @@
   border-radius: 9px;
   color: #a13f37;
   background: #fff6f5;
-  font-size: 9px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
@@ -218,21 +216,21 @@
   border-radius: 8px;
   color: var(--npw-blue);
   background: var(--npw-blue-soft);
-  font-size: 10px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-section-title strong {
   color: var(--npw-navy);
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .npw-section-title > em {
   color: #8c9bab;
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .npw-field {
@@ -245,8 +243,8 @@
 
 .npw-label {
   color: #435b70;
-  font-size: 10px;
-  font-weight: 820;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-label b {
@@ -296,7 +294,7 @@
   color: var(--npw-navy);
   background: transparent;
   padding: 0 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -311,9 +309,9 @@
   flex: 0 0 auto;
   padding: 0 11px 0 5px;
   color: #8593a0;
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .npw-select-wrap {
@@ -412,8 +410,8 @@
 
 .npw-field-error {
   color: var(--npw-error);
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -432,7 +430,7 @@
   height: 46px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 15px;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
@@ -446,8 +444,8 @@
   color: #16745f;
   background: #e8f7f1;
   padding: 5px 8px;
-  font-size: 8px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -461,8 +459,8 @@
   border-radius: 9px;
   cursor: pointer;
   padding: 0 13px;
-  font-size: 10px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   transition: transform 100ms ease, opacity 100ms ease, box-shadow 100ms ease;
 }
 
@@ -478,7 +476,7 @@
 .npw-btn-generate {
   min-height: 48px;
   color: #fff;
-  background: linear-gradient(135deg, var(--npw-blue), var(--npw-blue-dark));
+  background: var(--npw-blue);
   box-shadow: 0 6px 14px rgba(40, 103, 199, 0.18);
 }
 
@@ -530,12 +528,12 @@
 .npw-check strong {
   align-self: end;
   color: var(--npw-navy);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .npw-check small {
   color: #8493a1;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .npw-classification-grid {
@@ -636,9 +634,9 @@
   flex: 0 0 auto;
   border-radius: 999px;
   padding: 3px 6px;
-  font-size: 8px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -666,18 +664,18 @@
 }
 
 .npw-customer-results strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .npw-customer-results small {
   color: #778899;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .npw-customer-results em {
   color: #8b99a6;
   padding: 12px;
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
   text-align: center;
 }
@@ -692,14 +690,14 @@
   flex: 1;
   overflow: hidden;
   color: var(--npw-navy);
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .npw-customer-selected small {
   color: #7a8a98;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .npw-customer-selected button {
@@ -721,9 +719,7 @@
   overflow: hidden;
   border: 1px dashed #bfd0df;
   border-radius: 12px;
-  background:
-    linear-gradient(135deg, rgba(244, 248, 252, 0.7), rgba(255, 255, 255, 0.7)),
-    repeating-linear-gradient(45deg, #f7fafc, #f7fafc 12px, #fbfcfd 12px, #fbfcfd 24px);
+  background: #f7fafc;
 }
 
 .npw-photo-zone.has-error {
@@ -754,12 +750,12 @@
 
 .npw-photo-zone > button strong {
   color: #456078;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .npw-photo-zone > button small {
   color: #8a99a7;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .npw-photo-zone.has-photo {
@@ -793,7 +789,7 @@
 
 .npw-photo-zone.has-photo > span small {
   color: #82919e;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .npw-photo-zone.has-photo > span button {
@@ -809,8 +805,8 @@
   background: #fff;
   cursor: pointer;
   padding: 0 10px;
-  font-size: 9px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-photo-remove {
@@ -844,8 +840,8 @@
   border: 1px solid;
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -879,12 +875,12 @@
 }
 
 .npw-success strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .npw-success small {
   color: #527d72;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .npw-complete-root {
@@ -905,9 +901,7 @@
   overflow: hidden;
   border: 1px solid #cbdbe5;
   border-radius: 22px;
-  background:
-    radial-gradient(circle at 50% 0, rgba(37, 167, 138, 0.1), transparent 38%),
-    #fff;
+  background: #fff;
   box-shadow: 0 22px 60px rgba(22, 54, 79, 0.13);
   padding: 34px 38px 30px;
 }
@@ -918,7 +912,7 @@
   right: 0;
   left: 0;
   height: 5px;
-  background: linear-gradient(90deg, var(--npw-blue), #22a58e, var(--npw-teal));
+  background: var(--npw-blue);
   content: "";
 }
 
@@ -937,7 +931,7 @@
   border: 7px solid #e4f6f0;
   border-radius: 999px;
   color: #fff;
-  background: linear-gradient(145deg, #2cb390, #108274);
+  background: #2cb390;
   box-shadow: 0 14px 30px rgba(19, 139, 126, 0.24);
 }
 
@@ -947,8 +941,8 @@
 
 .npw-complete-kicker {
   color: #18816e;
-  font-size: 9px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.12em;
 }
 
@@ -957,7 +951,7 @@
   color: var(--npw-navy);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: clamp(24px, 3vw, 34px);
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 0.015em;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -966,8 +960,8 @@
 .npw-complete-heading p {
   margin: 7px 0 0;
   color: #6e8192;
-  font-size: 10px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -982,8 +976,8 @@
   border-radius: 12px;
   color: #8b9ba8;
   background: #f6f9fb;
-  font-size: 8px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-complete-photo.has-photo {
@@ -1015,8 +1009,8 @@
   color: #34546b;
   background: #f6f9fb;
   padding: 9px 13px;
-  font-size: 9px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -1041,8 +1035,8 @@
 
 .npw-complete-section dt {
   color: #8a99a6;
-  font-size: 8px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-complete-section dd {
@@ -1050,8 +1044,8 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: #29475e;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1078,8 +1072,8 @@
 
 .npw-complete-details dt {
   color: #8292a1;
-  font-size: 8px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-complete-details dd {
@@ -1088,8 +1082,8 @@
   overflow: hidden;
   color: #2f4a61;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1116,7 +1110,7 @@
 
 .npw-complete-actions .npw-btn {
   min-height: 48px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .npw-complete-another {
@@ -1133,7 +1127,7 @@
 
 .npw-complete-open {
   color: #fff;
-  background: linear-gradient(135deg, var(--npw-blue), var(--npw-teal));
+  background: var(--npw-blue);
   box-shadow: 0 9px 20px rgba(27, 112, 151, 0.22);
 }
 
@@ -1173,7 +1167,7 @@
 .npw-btn-create {
   min-height: 44px;
   color: #fff;
-  background: linear-gradient(135deg, var(--npw-teal), #0b746a);
+  background: var(--npw-teal);
   box-shadow: 0 7px 16px rgba(19, 139, 126, 0.18);
 }
 
@@ -1234,7 +1228,7 @@
   place-items: center;
   border-radius: 11px;
   color: #fff;
-  background: linear-gradient(145deg, var(--npw-blue), var(--npw-teal));
+  background: var(--npw-blue);
 }
 
 .npw-modal-header > span:nth-child(2) {
@@ -1250,7 +1244,7 @@
 
 .npw-modal-header small {
   color: var(--npw-muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1373,7 +1367,7 @@
 .npw-confirm-modal p {
   margin: 0;
   color: #718293;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -1402,7 +1396,7 @@
 .npw-centered > small,
 .npw-centered p {
   color: var(--npw-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .npw-centered h1 {
@@ -1429,12 +1423,12 @@
   background: #fff;
   cursor: pointer;
   padding: 0 14px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .npw-error-icon {
-  background: linear-gradient(145deg, #d6584d, #a73a32);
+  background: #d6584d;
 }
 
 .npw-spin {

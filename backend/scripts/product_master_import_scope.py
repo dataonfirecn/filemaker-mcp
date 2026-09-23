@@ -102,7 +102,12 @@ async def run(args):
       req=SimpleNamespace(app=SimpleNamespace(state=state))
       for name,payload in [('controls',await native_controls(req)),('customers',await customer_options(req))]:
         if name=='controls':payload={k:v for k,v in payload.items() if k in schema.fields}
-        await store.pool.execute('INSERT INTO pm_reference(source,name,payload) VALUES($1,$2,$3::jsonb) ON CONFLICT(source,name) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()',args.source,name,dumps(payload))
+        async with store.pool.acquire() as c, c.transaction():
+          await c.fetchrow('SELECT payload FROM pm_reference WHERE source=$1 AND name=$2 FOR UPDATE',args.source,name)
+          if name=='customers' and await c.fetchval("SELECT to_regclass('public.pm_customer_sync')"):
+            if await c.fetchval('SELECT 1 FROM pm_customer_sync WHERE source=$1 LIMIT 1',args.source):
+              continue  # Dedicated customer sync owns the expanded directory after cutover.
+          await c.execute('INSERT INTO pm_reference(source,name,payload) VALUES($1,$2,$3::jsonb) ON CONFLICT(source,name) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()',args.source,name,dumps(payload))
       actual={str(r['id']) for r in await store.pool.fetch('SELECT id FROM pm_product WHERE source=$1',args.source)}
       report['missingIds']=sorted(known-actual)
       if mode in ('full','scope'):report['extraIds']=sorted(actual-known)

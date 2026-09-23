@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarRC 暖调风格预览</title>
+<style>
+:root, [data-theme="light"] {
+  --color-bg:#F5F4EE; --color-sidebar:#EFEDE4; --color-surface:#FFFFFF; --color-surface-muted:#FAF9F5;
+  --color-surface-hover:#F2F0E8; --color-surface-active:#E9E6DB;
+  --color-text:#141413; --color-text-secondary:#3D3D3A; --color-text-muted:#6B6A64; --color-text-faint:#A3A29A;
+  --color-border:#E3E0D5; --color-border-strong:#D1CDBF; --color-divider:#ECEAE2;
+  --color-accent:#C96442; --color-primary:#B5573A; --color-primary-hover:#A34E33; --color-on-primary:#FFFFFF;
+  --color-primary-text:#AE5234; --color-primary-soft:#F6E7DF; --color-focus-ring:rgba(201,100,66,.25);
+  --color-success:#2F7D4F; --color-success-soft:#E6F0E6; --color-warning:#9A6210; --color-warning-soft:#F8EDD5;
+  --color-danger:#B3372E; --color-danger-soft:#F7E3DF; --color-info:#2F6690; --color-info-soft:#E3ECF3;
+  --color-neutral:#6B6A64; --color-neutral-soft:#EFEDE6;
+  --chart-2:#6B8E9B; --chart-3:#B8A07E;
+}
+[data-theme="dark"] {
+  --color-bg:#262624; --color-sidebar:#1F1E1D; --color-surface:#30302E; --color-surface-muted:#2B2A28;
+  --color-surface-hover:#383835; --color-surface-active:#41403C;
+  --color-text:#FAF9F5; --color-text-secondary:#DDDBD2; --color-text-muted:#A6A49B; --color-text-faint:#75736C;
+  --color-border:#43423E; --color-border-strong:#55534E; --color-divider:#3A3936;
+  --color-accent:#D97757; --color-primary:#D97757; --color-primary-hover:#E38A6C; --color-on-primary:#1F1E1D;
+  --color-primary-text:#E8927A; --color-primary-soft:rgba(217,119,87,.16); --color-focus-ring:rgba(217,119,87,.35);
+  --color-success:#7DBE8F; --color-success-soft:rgba(125,190,143,.14); --color-warning:#E0B25C; --color-warning-soft:rgba(224,178,92,.14);
+  --color-danger:#EB8B80; --color-danger-soft:rgba(235,139,128,.14); --color-info:#8DB6D9; --color-info-soft:rgba(141,182,217,.14);
+  --color-neutral:#A6A49B; --color-neutral-soft:rgba(166,164,155,.14);
+  --chart-2:#8FB1BD; --chart-3:#CDB894;
+}
+:root {
+  --font-serif:"Source Serif 4","Songti SC","Noto Serif SC","STSong",Georgia,serif;
+  --font-sans:"Inter",-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --radius-sm:6px; --radius-md:8px; --radius-lg:12px; --radius-xl:16px; --radius-full:999px;
+  --shadow-md:0 4px 20px rgba(20,20,19,.06); --shadow-lg:0 16px 48px rgba(20,20,19,.14);
+  --ease:cubic-bezier(.2,0,0,1);
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--color-bg);color:var(--color-text);font:400 14px/1.55 var(--font-sans);-webkit-font-smoothing:antialiased}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mono{font-family:var(--font-mono);font-size:13px}
+.serif{font-family:var(--font-serif);font-weight:500}
+.muted{color:var(--color-text-muted)}
+.num{font-variant-numeric:tabular-nums}
+
+/* shell */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.sidebar{background:var(--color-sidebar);border-right:1px solid var(--color-border);padding:16px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:var(--color-accent);color:#fff;display:grid;place-items:center}
+.brand-mark svg{width:18px;height:18px}
+.brand b{font:500 18px/1 var(--font-serif)}
+.nav-group{font-size:12px;font-weight:500;color:var(--color-text-muted);padding:14px 10px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;color:var(--color-text-secondary);font-size:13px;font-weight:500;cursor:pointer;transition:background .15s var(--ease)}
+.nav-item:hover{background:var(--color-surface-hover)}
+.nav-item.active{background:var(--color-surface-active);color:var(--color-text);font-weight:600}
+.nav-item .count{margin-left:auto;font-size:12px;color:var(--color-text-muted)}
+.sidebar-foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-top:1px solid var(--color-border)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--color-primary-soft);color:var(--color-primary-text);display:grid;place-items:center;font-size:12px;font-weight:600}
+
+.main{padding:28px 32px 64px;min-width:0}
+.topbar{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.search{flex:1;max-width:560px;display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);box-shadow:var(--shadow-md);color:var(--color-text-muted)}
+.search input{border:0;outline:0;background:transparent;flex:1;font:inherit;color:var(--color-text)}
+.search kbd{font:12px var(--font-sans);color:var(--color-text-faint);border:1px solid var(--color-border);border-radius:6px;padding:1px 6px}
+.spacer{flex:1}
+
+.page-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:24px}
+.page-head h1{font:500 24px/1.3 var(--font-serif)}
+.page-head p{font-size:13px;color:var(--color-text-muted);margin-top:4px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--radius-md);font:500 13px var(--font-sans);border:1px solid transparent;cursor:pointer;transition:background .15s var(--ease),border-color .15s var(--ease);white-space:nowrap}
+.btn-primary{background:var(--color-primary);color:var(--color-on-primary)}
+.btn-primary:hover{background:var(--color-primary-hover)}
+.btn-secondary{background:var(--color-surface);color:var(--color-text);border-color:var(--color-border-strong)}
+.btn-secondary:hover{background:var(--color-surface-hover)}
+.btn-ghost{background:transparent;color:var(--color-text-secondary)}
+.btn-ghost:hover{background:var(--color-surface-hover)}
+.btn-danger{background:var(--color-surface);color:var(--color-danger);border-color:var(--color-danger)}
+.btn-sm{height:30px;padding:0 10px}
+.btn-lg{height:44px;padding:0 18px;font-size:14px}
+.btn:focus-visible,.field:focus{outline:0;border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-focus-ring)}
+
+/* badge */
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.t-success{background:var(--color-success-soft);color:var(--color-success)}
+.t-warning{background:var(--color-warning-soft);color:var(--color-warning)}
+.t-danger{background:var(--color-danger-soft);color:var(--color-danger)}
+.t-info{background:var(--color-info-soft);color:var(--color-info)}
+.t-neutral{background:var(--color-neutral-soft);color:var(--color-neutral)}
+.t-accent{background:var(--color-primary-soft);color:var(--color-primary-text)}
+
+/* card */
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg)}
+.card-pad{padding:20px}
+.card-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}
+.card-head h3{font-size:15px;font-weight:600}
+.card-head p{font-size:12px;color:var(--color-text-muted);margin-top:2px}
+.grid{display:grid;gap:16px}
+.g-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px}
+.kv dt{font-size:12px;font-weight:500;color:var(--color-text-muted)}
+.kv dd{font-size:14px;margin-top:2px}
+.kpi .label{font-size:12px;font-weight:500;color:var(--color-text-muted)}
+.kpi .value{font:500 32px/1.1 var(--font-serif);margin:8px 0 4px;font-variant-numeric:tabular-nums}
+.kpi .value small{font:400 13px var(--font-sans);color:var(--color-text-muted);margin-left:4px}
+.kpi .note{font-size:12px;color:var(--color-text-muted)}
+
+/* detail hero (within card) */
+.detail{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:start}
+.thumb{width:104px;height:104px;border-radius:var(--radius-md);background:var(--color-surface-muted);border:1px solid var(--color-border);display:grid;place-items:center;color:var(--color-text-faint)}
+.thumb svg{width:32px;height:32px;stroke-width:1.25}
+.detail h2{font:500 28px/1.25 var(--font-serif);margin:6px 0 10px}
+.meta{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--color-text-muted)}
+.meta span{display:inline-flex;align-items:center;gap:6px}
+.code-chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:6px;background:var(--color-surface-muted);border:1px solid var(--color-border);font:13px var(--font-mono)}
+
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--color-border);margin:24px 0 16px}
+.tab{padding:10px 12px;font-size:13px;font-weight:500;color:var(--color-text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer}
+.tab.active{color:var(--color-text);border-color:var(--color-accent)}
+
+/* table */
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:12px;font-weight:500;color:var(--color-text-muted);padding:0 16px;height:40px;border-bottom:1px solid var(--color-border);white-space:nowrap}
+td{padding:0 16px;height:44px;border-bottom:1px solid var(--color-divider);color:var(--color-text-secondary);white-space:nowrap}
+tbody tr{transition:background .12s var(--ease)}
+tbody tr:hover{background:var(--color-surface-hover)}
+tbody tr.sel{background:var(--color-primary-soft)}
+tbody tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.pos{color:var(--color-success)} .neg{color:var(--color-danger)}
+.empty-val{color:var(--color-text-faint)}
+.table-foot{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--color-border);font-size:12px;color:var(--color-text-muted)}
+.pager{margin-left:auto;display:flex;gap:4px}
+.pager button{min-width:30px;height:30px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--color-text-secondary);font:500 12px var(--font-sans);cursor:pointer}
+.pager button.on{background:var(--color-surface-active);color:var(--color-text)}
+.checkbox{width:16px;height:16px;border-radius:4px;border:1px solid var(--color-border-strong);display:inline-grid;place-items:center;background:var(--color-surface)}
+.checkbox.on{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-on-primary)}
+.checkbox svg{width:12px;height:12px;stroke-width:2.5}
+
+/* form */
+.form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.label{display:block;font-size:12px;font-weight:500;color:var(--color-text-muted);margin-bottom:6px}
+.label i{color:var(--color-danger);font-style:normal}
+.field{width:100%;height:36px;padding:0 12px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-text);font:14px var(--font-sans);transition:border-color .15s,box-shadow .15s}
+.field::placeholder{color:var(--color-text-faint)}
+.field.ro{background:var(--color-surface-muted);border-color:transparent;color:var(--color-text-secondary)}
+
+/* section title for spec */
+.section{margin-top:48px}
+.section > h2{font:500 20px/1.3 var(--font-serif);margin-bottom:4px}
+.section > p{font-size:13px;color:var(--color-text-muted);margin-bottom:16px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.sw{border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface)}
+.sw div{height:56px}
+.sw p{padding:8px 10px;font-size:12px;line-height:1.4}
+.sw p b{display:block;font-weight:600;color:var(--color-text)}
+.sw p span{color:var(--color-text-muted);font-family:var(--font-mono)}
+.type-row{display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:baseline;padding:12px 0;border-bottom:1px solid var(--color-divider)}
+.type-row:last-child{border-bottom:0}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+
+/* empty + skeleton + modal */
+.empty{text-align:center;padding:40px 20px}
+.empty svg{width:22px;height:22px;color:var(--color-text-muted);margin-bottom:12px}
+.empty h4{font:500 20px var(--font-serif);margin-bottom:6px}
+.empty p{font-size:13px;color:var(--color-text-muted);margin-bottom:16px}
+.sk{height:12px;border-radius:6px;background:var(--color-surface-hover);animation:pulse 1.6s ease-in-out infinite;margin-bottom:10px}
+@keyframes pulse{50%{opacity:.5}}
+.alert{display:flex;gap:10px;padding:12px 14px;border-radius:var(--radius-md);font-size:13px}
+.alert b{font-weight:600}
+.modal-demo{position:relative;border-radius:var(--radius-lg);background:rgba(20,20,19,.4);padding:32px;display:grid;place-items:center}
+.modal{width:100%;max-width:440px;background:var(--color-surface);border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);padding:24px}
+.modal h3{font:500 20px var(--font-serif);margin-bottom:8px}
+.modal p{font-size:13px;color:var(--color-text-secondary);margin-bottom:20px}
+.modal .actions{display:flex;justify-content:flex-end;gap:8px}
+
+.chart{height:160px}
+.theme-toggle{position:fixed;right:20px;bottom:20px;z-index:10;box-shadow:var(--shadow-md)}
+
+@media (max-width:1180px){.app{grid-template-columns:64px 1fr}.sidebar .txt,.nav-group,.brand b,.sidebar-foot .txt,.nav-item .count{display:none}.nav-item{justify-content:center}.g-4{grid-template-columns:repeat(2,minmax(0,1fr))}.g-3{grid-template-columns:1fr}.form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.app{grid-template-columns:1fr}.sidebar{display:none}.main{padding:20px 16px 64px}.detail{grid-template-columns:1fr}.g-4,.g-2,.form,.kv{grid-template-columns:1fr}.page-head{flex-wrap:wrap}.type-row{grid-template-columns:1fr}.search kbd{display:none}.topbar{flex-wrap:wrap}.topbar .spacer{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.5 12h11L21 7H6"/></symbol>
+  <symbol id="box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+  <symbol id="layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="download" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14"/></symbol>
+  <symbol id="refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></symbol>
+  <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="factory" viewBox="0 0 24 24"><path d="M3 21V10l6 4V10l6 4V4h6v17z"/></symbol>
+  <symbol id="image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="inbox" viewBox="0 0 24 24"><path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></symbol>
+  <symbol id="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+  <symbol id="star" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark"><svg class="i"><use href="#star"/></svg></div><b>Star-RC</b></div>
+    <div class="nav-item"><svg class="i"><use href="#home"/></svg><span class="txt">首页</span></div>
+    <div class="nav-group">订单管理</div>
+    <div class="nav-item"><svg class="i"><use href="#cart"/></svg><span class="txt">订单详情</span></div>
+    <div class="nav-item"><svg class="i"><use href="#layers"/></svg><span class="txt">内部订单合并</span><span class="count">33</span></div>
+    <div class="nav-group">BOM 计算中心</div>
+    <div class="nav-item"><svg class="i"><use href="#calc"/></svg><span class="txt">BOM 计算</span></div>
+    <div class="nav-group">产品资料</div>
+    <div class="nav-item"><svg class="i"><use href="#box"/></svg><span class="txt">产品资料</span></div>
+    <div class="nav-item active"><svg class="i"><use href="#factory"/></svg><span class="txt">零件资料</span></div>
+    <div class="nav-group">发料管理</div>
+    <div class="nav-item"><svg class="i"><use href="#inbox"/></svg><span class="txt">零件包发料</span></div>
+    <div class="sidebar-foot"><div class="avatar">RC</div><div class="txt" style="font-size:13px">starrc-team<div class="muted" style="font-size:12px">操作员</div></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <label class="search"><svg class="i"><use href="#search"/></svg><input placeholder="搜索零件编号、名称、订单或 PI"><kbd>⌘K</kbd></label>
+      <div class="spacer"></div>
+      <span class="badge t-info">FileMaker 只读</span>
+    </div>
+
+    <!-- ============ 示例页面：零件详情 ============ -->
+    <div class="page-head">
+      <div><h1>零件详细资料</h1><p>采购视角的零件主数据、图片、图面、成本、包装和质量信息</p></div>
+      <div class="spacer"></div>
+      <button class="btn btn-secondary"><svg class="i"><use href="#refresh"/></svg>刷新</button>
+      <button class="btn btn-primary"><svg class="i"><use href="#plus"/></svg>新建采购单</button>
+    </div>
+
+    <div class="card card-pad">
+      <div class="detail">
+        <div class="thumb"><svg class="i"><use href="#image"/></svg></div>
+        <div>
+          <div class="row"><span class="badge t-success">可量产</span><span class="badge t-neutral">已审核</span></div>
+          <h2>0051/8 油车开关（线到接收 20cm，线到电池 4cm）</h2>
+          <div class="row" style="margin-bottom:12px"><span class="code-chip">005-AHM-002<svg class="i" style="width:14px;height:14px;color:var(--color-text-muted)"><use href="#copy"/></svg></span></div>
+          <div class="meta"><span><svg class="i"><use href="#factory"/></svg>求尚电子公司</span><span><svg class="i"><use href="#inbox"/></svg>发料</span><span><svg class="i"><use href="#pin"/></svg><span class="mono">D04-D-09</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g-4" style="margin-top:16px">
+      <div class="card card-pad kpi"><div class="label">当前库存</div><div class="value">153<small>pcs</small></div><div class="note">实时 OData</div></div>
+      <div class="card card-pad kpi"><div class="label">安全库存</div><div class="value">0<small>pcs</small></div><div class="note">库存状态正常</div></div>
+      <div class="card card-pad kpi"><div class="label">已下单</div><div class="value">300<small>pcs</small></div><div class="note">零件主表</div></div>
+      <div class="card card-pad kpi"><div class="label">本月净变化</div><div class="value pos">+50<small>pcs</small></div><div class="note">入库 358 · 出库 308</div></div>
+    </div>
+
+    <div class="tabs"><div class="tab active">概览</div><div class="tab">采购与成本</div><div class="tab">规格与标识</div><div class="tab">质量与流程</div><div class="tab">关联记录</div></div>
+
+    <div class="grid g-3">
+      <div class="card card-pad"><div class="card-head"><div><h3>基础资料</h3><p>零件主表的核心识别与分类字段</p></div></div>
+        <dl class="kv"><div><dt>零件编号</dt><dd class="mono">005-AHM-002</dd></div><div><dt>系统 ID</dt><dd class="mono">S51011</dd></div><div><dt>材料分类</dt><dd>周边电子产品</dd></div><div><dt>零件品种</dt><dd class="empty-val">—</dd></div></dl></div>
+      <div class="card card-pad"><div class="card-head"><div><h3>库存与位置</h3><p>零件主表中的实时库存摘要</p></div></div>
+        <dl class="kv"><div><dt>主要仓位</dt><dd class="mono">D04-D-09</dd></div><div><dt>次要仓位</dt><dd class="empty-val">—</dd></div><div><dt>库存周转</dt><dd>400 天</dd></div><div><dt>COS 资产</dt><dd>2 个文件</dd></div></dl></div>
+      <div class="card card-pad"><div class="card-head"><div><h3>库存趋势</h3><p>近 12 个月结存（pcs）</p></div></div>
+        <svg class="chart" viewBox="0 0 300 160" width="100%" preserveAspectRatio="none">
+          <g stroke="var(--color-divider)" stroke-width="1"><line x1="0" y1="30" x2="300" y2="30"/><line x1="0" y1="80" x2="300" y2="80"/><line x1="0" y1="130" x2="300" y2="130"/></g>
+          <path d="M0 110 L25 104 L50 96 L75 100 L100 80 L125 84 L150 70 L175 60 L200 72 L225 50 L250 44 L275 40 L300 36 L300 160 L0 160Z" fill="var(--color-primary-soft)"/>
+          <path d="M0 110 L25 104 L50 96 L75 100 L100 80 L125 84 L150 70 L175 60 L200 72 L225 50 L250 44 L275 40 L300 36" fill="none" stroke="var(--color-accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+          <path d="M0 125 L50 120 L100 118 L150 110 L200 108 L250 100 L300 98" fill="none" stroke="var(--chart-2)" stroke-width="1.5" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+        </svg></div>
+    </div>
+
+    <!-- ============ 示例：列表页 ============ -->
+    <div class="section">
+      <h2>列表页：内部订单合并</h2>
+      <p>表头无底色、细分割线、数字右对齐、编号等宽、状态用柔和徽章。</p>
+      <div class="card">
+        <div class="row" style="padding:16px;border-bottom:1px solid var(--color-border)">
+          <div class="row" style="gap:4px;background:var(--color-surface-muted);border:1px solid var(--color-border);border-radius:8px;padding:3px">
+            <button class="btn btn-sm btn-ghost">全部</button><button class="btn btn-sm btn-secondary">内部订单</button>
+          </div>
+          <label class="search" style="height:36px;border-radius:8px;box-shadow:none;max-width:320px"><svg class="i"><use href="#search"/></svg><input placeholder="内部单号 / PI / 客户 PO"></label>
+          <div class="spacer"></div>
+          <button class="btn btn-secondary"><svg class="i"><use href="#download"/></svg>导出 CSV</button>
+          <button class="btn btn-primary">合并所选 2 单</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th style="width:40px"></th><th>内部单号</th><th>PI / 客户 PO</th><th>下单日期</th><th class="r">金额</th><th>状态</th><th>概要</th></tr></thead>
+          <tbody>
+            <tr class="sel"><td><span class="checkbox on"><svg class="i"><use href="#check"/></svg></span></td><td class="mono" style="color:var(--color-text)">NB261490</td><td>PI-IM260717 100 个马达 补给</td><td class="num">2026-07-17</td><td class="r num">US$380.00</td><td><span class="badge t-warning">还没好</span></td><td>法国零件包</td></tr>
+            <tr class="sel"><td><span class="checkbox on"><svg class="i"><use href="#check"/></svg></span></td><td class="mono" style="color:var(--color-text)">NB261446</td><td>PI-IM20260713 1/12 Tires</td><td class="num">2026-07-13</td><td class="r num">US$10,400.00</td><td><span class="badge t-warning">还没好</span></td><td>法国零件包</td></tr>
+            <tr><td><span class="checkbox"></span></td><td class="mono" style="color:var(--color-text)">NB261409</td><td>PI-IM260709 CRX3 零件包</td><td class="num">2026-07-09</td><td class="r num">US$1,236.70</td><td><span class="badge t-success">包好</span></td><td>法国零件包</td></tr>
+            <tr><td><span class="checkbox"></span></td><td class="mono" style="color:var(--color-text)">NB261404</td><td>PI-IM260708 G0804-TX</td><td class="num">2026-07-08</td><td class="r num">US$0.00</td><td><span class="badge t-neutral">暂无状态</span></td><td class="empty-val">—</td></tr>
+            <tr><td><span class="checkbox"></span></td><td class="mono" style="color:var(--color-text)">NB261395</td><td>PI-IM260707 1/12 大脚车</td><td class="num">2026-07-07</td><td class="r num">US$96,900.00</td><td><span class="badge t-danger">缺料</span></td><td>法国 1/12 大脚车</td></tr>
+          </tbody>
+        </table></div>
+        <div class="table-foot">共 33 条 · 当前 1–25 条<div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>›</button></div></div>
+      </div>
+    </div>
+
+    <!-- ============ 规范：颜色 ============ -->
+    <div class="section">
+      <h2>颜色</h2>
+      <p>米色页面、白色卡片、暖灰文字，陶土橙是唯一的强调色。色值标注为亮色模式，暗色值见规则文档。</p>
+      <div class="swatches">
+        <div class="sw"><div style="background:var(--color-bg)"></div><p><b>bg</b><span>#F5F4EE</span></p></div>
+        <div class="sw"><div style="background:var(--color-sidebar)"></div><p><b>sidebar</b><span>#EFEDE4</span></p></div>
+        <div class="sw"><div style="background:var(--color-surface);border-bottom:1px solid var(--color-divider)"></div><p><b>surface</b><span>#FFFFFF</span></p></div>
+        <div class="sw"><div style="background:var(--color-surface-active)"></div><p><b>surface-active</b><span>#E9E6DB</span></p></div>
+        <div class="sw"><div style="background:var(--color-text)"></div><p><b>text</b><span>#141413</span></p></div>
+        <div class="sw"><div style="background:var(--color-text-muted)"></div><p><b>text-muted</b><span>#6B6A64</span></p></div>
+        <div class="sw"><div style="background:var(--color-border-strong)"></div><p><b>border-strong</b><span>#D1CDBF</span></p></div>
+        <div class="sw"><div style="background:var(--color-accent)"></div><p><b>accent</b><span>#C96442</span></p></div>
+        <div class="sw"><div style="background:var(--color-primary)"></div><p><b>primary</b><span>#B5573A</span></p></div>
+        <div class="sw"><div style="background:var(--color-primary-soft)"></div><p><b>primary-soft</b><span>#F6E7DF</span></p></div>
+      </div>
+      <div class="row" style="margin-top:16px"><span class="badge t-success">入库 · 完成</span><span class="badge t-warning">待处理 · 缺料预警</span><span class="badge t-danger">出库 · 错误</span><span class="badge t-info">只读 · 说明</span><span class="badge t-neutral">草稿 · 未知</span><span class="badge t-accent">选中 · 强调</span></div>
+    </div>
+
+    <!-- ============ 规范：字体 ============ -->
+    <div class="section">
+      <h2>字体</h2>
+      <p>衬线体用于标题和大数字，其余全部无衬线。最小 12px，字重只用 400 / 500 / 600。</p>
+      <div class="card card-pad">
+        <div class="type-row"><span class="muted" style="font-size:12px">详情名称 · serif 28/500</span><span style="font:500 28px/1.25 var(--font-serif)">0051/8 油车开关</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">页面标题 · serif 24/500</span><span style="font:500 24px/1.3 var(--font-serif)">零件详细资料</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">KPI · serif 32/500</span><span style="font:500 32px/1.1 var(--font-serif)" class="num">96,900.00</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">卡片标题 · sans 15/600</span><span style="font-size:15px;font-weight:600">库存与位置</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">正文 · sans 14/400</span><span>核心资料来自零件表；成本、采购、库存和关联记录按选项卡分别读取。</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">标签 · sans 12/500</span><span style="font-size:12px;font-weight:500;color:var(--color-text-muted)">仓库分工</span></div>
+        <div class="type-row"><span class="muted" style="font-size:12px">编号 · mono 13</span><span class="mono">PI-IM260717 · F7AE08F0-7208-4357</span></div>
+      </div>
+    </div>
+
+    <!-- ============ 规范：控件 ============ -->
+    <div class="section">
+      <h2>按钮与表单</h2>
+      <p>同一行控件同高；聚焦是陶土色描边 + 柔和光圈；只读字段用浅底无边框。</p>
+      <div class="card card-pad">
+        <div class="row"><button class="btn btn-primary">主要操作</button><button class="btn btn-secondary">次要操作</button><button class="btn btn-ghost">文字按钮</button><button class="btn btn-danger">删除</button><button class="btn btn-secondary btn-sm">小按钮 30</button><button class="btn btn-primary btn-lg">大按钮 44</button></div>
+        <div class="form" style="margin-top:24px">
+          <div><label class="label">零件编号 <i>*</i></label><input class="field" placeholder="输入或生成零件编号"></div>
+          <div><label class="label">仓库分工 <i>*</i></label><div style="position:relative"><select class="field" style="appearance:none"><option>发料</option></select><svg class="i" style="position:absolute;right:10px;top:10px;color:var(--color-text-muted)"><use href="#chev"/></svg></div></div>
+          <div><label class="label">系统 ID（只读）</label><input class="field ro" value="S51011" readonly></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 规范：状态 ============ -->
+    <div class="section">
+      <h2>空状态、加载、报错、弹窗</h2>
+      <p>空状态用衬线标题、无插画；加载用骨架条；报错写清原因和下一步。</p>
+      <div class="grid g-2">
+        <div class="card"><div class="empty"><svg class="i"><use href="#inbox"/></svg><h4>暂无入库记录</h4><p>这个零件还没有通过 PDA 入库。</p><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#refresh"/></svg>重新查询</button></div></div>
+        <div class="card card-pad"><div class="sk" style="width:40%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div><div class="sk" style="width:85%;margin-bottom:20px"></div>
+          <div class="alert t-danger"><svg class="i" style="margin-top:2px"><use href="#alert"/></svg><div><b>无法连接 FileMaker</b><br>Data API 返回 401。请重新登录后再试；如果持续出现，联系管理员检查账号权限。</div></div></div>
+      </div>
+      <div class="modal-demo" style="margin-top:16px"><div class="modal"><h3>合并 2 张内部订单？</h3><p>NB261490 和 NB261446 将合并为一张订单，合计 US$10,780.00。合并后原订单会标记为"已合并"。</p><div class="actions"><button class="btn btn-secondary">取消</button><button class="btn btn-primary">确认合并</button></div></div></div>
+    </div>
+  </main>
+</div>
+
+<button class="btn btn-secondary theme-toggle" onclick="var r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'"><svg class="i"><use href="#moon"/></svg>切换亮 / 暗</button>
+</body>
+</html>

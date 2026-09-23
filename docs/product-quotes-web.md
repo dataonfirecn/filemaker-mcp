@@ -1,5 +1,7 @@
 # 客户群报价 Web 维护
 
+**2026-09-23：管理员报价 Tab 已上线，当前只读且未导入旧报价。** 最新部署与核验见 [上线记录](product-quotes-release-20260923.md)。下方保留实现及导入说明。
+
 ## 行为与边界
 
 产品编辑页的“客户群报价”支持独立新增、编辑、调整客户成员、停用和查看历史。
@@ -8,7 +10,9 @@
 
 金额通过 API 使用十进制字符串，PostgreSQL 使用 numeric，允许零、不允许负数、空值、非有限值；
 最多 20 位整数、12 位小数。客户按目录 ID 选择，不接收浏览器提供的名称或代码。
-读取需 `canViewProducts` 与 `canViewPrice`；保存另需 `canEditProductPrices`。
+产品详情和编辑页均以独立“客户群报价”Tab 呈现，仅管理员可见。管理员判定复用系统管理接口的 `canManageAccounts` 权限。
+列表、历史、新增、修改接口全部强制管理员校验；仅有价格权限的非管理员不能访问。
+读取同时需 `canViewProducts` 与 `canViewPrice`；保存另需 `canEditProductPrices`。
 不要求 `canEditProducts`，因此可单独授权价格维护。产品浏览入口保持只读。
 
 报价及历史使用 `pm_quote`、`pm_quote_customer`、`pm_quote_revision`，由 ProductStore 初始化。
@@ -82,7 +86,8 @@ verified=quoteCount 才算完成。Web 后续修改不会被重跑覆盖，核�
 
 ## 启用、备份与回退
 
-核对完成后，在已有 `PRODUCT_MASTER_ENABLED=true` 的环境设置 `PRODUCT_QUOTE_WRITE_ENABLED=true` 并重启后端。
+核对完成后，在已有产品主库或产品主库预览存储的环境设置 `PRODUCT_QUOTE_WRITE_ENABLED=true` 并重启后端。
+产品资料可以继续保持预览模式，报价保存不依赖 `PRODUCT_MASTER_ENABLED`，也不开放产品基础资料保存。
 此开关独立于产品资料回写开关。无需启用 FileMaker 写入或变更 DMS。
 旧报价入口作为历史参考，避免继续在两处维护；FileMaker 内可转到现有 WebViewer 产品编辑入口。
 

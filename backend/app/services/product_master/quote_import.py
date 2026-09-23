@@ -82,6 +82,8 @@ def preflight(quotes, members, products, customers):
                 matches = customer_index.get(code, [])
                 if len(matches) != 1:
                     raise ValueError(f'客户代码 {code} 未找到或不唯一')
+                if matches[0].get('selectable') is False:
+                    raise ValueError(f'客户代码 {code} 资料待完善，不能自动关联报价')
                 resolved.append(matches[0]['value'])
             currency = str(f.get('currency') or '').strip().upper()
             currency = {'RMB': 'CNY', 'NTD': 'TWD'}.get(currency, currency)

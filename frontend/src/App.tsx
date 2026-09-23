@@ -30,6 +30,7 @@ import OrderDetailPage from "./components/OrderDetailPage";
 import ProductMasterPage from "./components/ProductMasterPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
 import InternalOrderMergePage from "./components/InternalOrderMergePage";
+import CustomerDirectoryPage from "./components/CustomerDirectoryPage";
 import InternalAccountAdminPage from "./components/InternalAccountAdminPage";
 import InternalSettingsPage from "./components/InternalSettingsPage";
 import InternalServiceDirectoryPage from "./components/InternalServiceDirectoryPage";
@@ -180,6 +181,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
     title: "应用与接口目录",
     subtitle: "区分浏览器入口、FileMaker 内嵌页面与受控集成 API。"
   },
+  customerDirectory: { title: "客户资料", subtitle: "查看已导入的客户基础资料和待完善记录。仅管理员可见。" },
   qualityInspections: {
     title: "来料品检记录",
     subtitle: "查看保存在网站数据库中的检查单、FileMaker 来源快照与完整追溯事件。"
@@ -248,6 +250,7 @@ function pageFromSearchParams(params: URLSearchParams): Page {
     case "settings":
     case "accessAdmin":
     case "serviceDirectory":
+    case "customerDirectory":
     case "qualityInspections":
     case "diagnosticLogs":
     case "reports":
@@ -1103,7 +1106,7 @@ export default function App() {
   useEffect(() => {
     if (
       session
-      && (page === "accessAdmin" || page === "serviceDirectory" || page === "qualityInspections" || page === "diagnosticLogs")
+      && (page === "customerDirectory" || page === "accessAdmin" || page === "serviceDirectory" || page === "qualityInspections" || page === "diagnosticLogs")
       && !session.context.access.canManageAccounts
     ) {
       setPage("home");
@@ -1456,10 +1459,10 @@ export default function App() {
         valueFormatter: ({ value }) => formatQty(value)
       },
       { field: "productionReceiptStatus", headerName: "收料状态", width: 120 },
-      { field: "customer", headerName: "客户", width: 140 },
+      { field: "customer", headerName: "客户", minWidth: 160, flex: 1 },
       { field: "orderDate", headerName: "日期", width: 115 },
       { field: "productSku", headerName: "产品编号", width: 130 },
-      { field: "productNameCn", headerName: "产品名称", minWidth: 240 },
+      { field: "productNameCn", headerName: "产品名称", minWidth: 240, flex: 1 },
       {
         field: "productQty",
         headerName: "产品数",
@@ -1674,6 +1677,10 @@ export default function App() {
                 description: "Web 账号角色与 StarRC 授权",
                 Icon: ShieldCheck,
                 badge: access.canViewPrice ? "可看价格" : "价格受限"
+              },
+              {
+                id: "customerDirectory" as Page,
+                label: "客户资料", description: "客户基础资料、联系方式与待完善记录", Icon: UserRound, badge: "只读"
               },
               {
                 id: "qualityInspections" as Page,
@@ -2175,6 +2182,10 @@ export default function App() {
 
             {page === "diagnosticLogs" && session?.context.access.canManageAccounts && (
               <InternalDiagnosticLogsPage apiBase={apiBase} token={session.token} />
+            )}
+
+            {page === "customerDirectory" && session?.context.access.canManageAccounts && (
+              <CustomerDirectoryPage apiBase={apiBase} token={session.token} />
             )}
 
             {page === "qualityInspections" && session?.context.access.canManageAccounts && (

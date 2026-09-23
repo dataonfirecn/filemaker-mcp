@@ -25,6 +25,8 @@ class QuoteBody(BaseModel):
 
 
 async def quote_runtime(request, context, product_id, *, write=False):
+    # Use the same administrator boundary as /webviewer/admin/* endpoints.
+    access(context, 'canManageAccounts')
     access(context, 'canViewProducts')
     access(context, 'canViewPrice')
     if write:
@@ -32,7 +34,7 @@ async def quote_runtime(request, context, product_id, *, write=False):
         if not getattr(request.app.state.settings, 'product_quote_write_enabled', False):
             raise HTTPException(403, '客户群报价尚未开放保存')
     store = getattr(request.app.state, 'product_master_store', None)
-    if not store and not write:
+    if not store:
         store = getattr(request.app.state, 'product_master_preview_store', None)
     if not store:
         raise HTTPException(503, '产品主库尚未启用')
@@ -45,8 +47,7 @@ async def quote_runtime(request, context, product_id, *, write=False):
 @router.get('/products/{product_id}/quotes')
 async def list_quotes(product_id: UUID, request: Request, context=Depends(get_webviewer_session_context)):
     store = await quote_runtime(request, context, product_id)
-    writable = bool(getattr(request.app.state, 'product_master_store', None)
-                    and request.app.state.settings.product_quote_write_enabled
+    writable = bool(request.app.state.settings.product_quote_write_enabled
                     and context.get('access', {}).get('canEditProductPrices'))
     return {'rows': await store.list(product_id), 'writeEnabled': writable}
 

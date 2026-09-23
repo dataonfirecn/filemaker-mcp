@@ -17,7 +17,7 @@ from app.services.product_master.store import ProductStore, Conflict, dumps
 
 CUSTOMERS = [{'value': 'customer-a', 'name': '客户甲', 'code': '001'}, {'value': 'customer-b', 'name': '客户乙', 'code': '002'}]
 DATA = {'title': '经销商组', 'amount': '0.123456789012', 'currency': 'USD', 'enabled': True, 'customerIds': ['customer-a']}
-PERMISSIONS = {'canViewProducts': True, 'canViewPrice': True, 'canEditProductPrices': True}
+PERMISSIONS = {'canManageAccounts': True, 'canViewProducts': True, 'canViewPrice': True, 'canEditProductPrices': True}
 
 
 @pytest_asyncio.fixture
@@ -140,7 +140,7 @@ async def test_routes_permissions_switch_and_history(runtime):
     body = {**DATA, 'requestId': str(uuid4()), 'expectedVersion': 0}
     path = f'/api/product-master/products/{pid}/quotes'
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
-        for permission in ('canViewProducts', 'canViewPrice', 'canEditProductPrices'):
+        for permission in ('canManageAccounts', 'canViewProducts', 'canViewPrice', 'canEditProductPrices'):
             context['access'] = {**PERMISSIONS, permission: False}
             assert (await client.post(path, json=body)).status_code == 403
         context['access'] = dict(PERMISSIONS)
@@ -152,6 +152,11 @@ async def test_routes_permissions_switch_and_history(runtime):
         created = await client.post(path, json=body)
         assert created.status_code == 201, created.text
         qid = created.json()['id']
+        context['access']['canManageAccounts'] = False
+        assert (await client.get(path)).status_code == 403
+        assert (await client.get(f'{path}/{qid}/history')).status_code == 403
+        assert (await client.patch(f'{path}/{qid}', json={**body, 'expectedVersion': 1})).status_code == 403
+        context['access']['canManageAccounts'] = True
         context['access']['canViewPrice'] = False
         assert (await client.get(path)).status_code == 403
         assert (await client.get(f'{path}/{qid}/history')).status_code == 403
@@ -159,6 +164,14 @@ async def test_routes_permissions_switch_and_history(runtime):
         conflict = await client.patch(f'{path}/{qid}', json={**body, 'requestId': str(uuid4())})
         assert conflict.status_code == 409 and conflict.json()['detail']['current']['id'] == qid
         assert (await client.get(f'{path}/{qid}/history')).json()['rows'][0]['after']['id'] == qid
+        # A product preview store still supports independently authorized quotes.
+        app.state.product_master_store = None
+        app.state.product_master_preview_store = products
+        assert (await client.get(path)).json()['writeEnabled']
+        saved = await client.post(path, json={**body, 'requestId': str(uuid4()), 'currency': 'CNY'})
+        assert saved.status_code == 201
+        app.state.settings.product_quote_write_enabled = False
+        assert (await client.post(path, json={**body, 'requestId': str(uuid4())})).status_code == 403
 
 
 def source_fixture():
@@ -252,3 +265,22 @@ async def test_import_command_preview_apply_verify_and_rerun(runtime, monkeypatc
     result = await command.run(SimpleNamespace(apply=True, expected_digest=newer['digest']))
     assert not result['complete'] and '禁止覆盖' in result['issues'][0]['error']
     assert (await store.list(pid))[0] == edited
+
+
+@pytest.mark.asyncio
+async def test_incomplete_customer_cannot_be_added_but_existing_member_can_be_retained(runtime):
+    _, store, pid = runtime
+    directory = [{**c, 'selectable': False} for c in CUSTOMERS]
+    kwargs = dict(product_id=pid, expected_version=0, quote_id=None, request_id=uuid4(),
+                  data=DATA, actor={'account': 'tester'}, directory=directory)
+    with pytest.raises(ValueError, match='客户'):
+        await store.save(**kwargs)
+    row = await save(store, pid)
+    changed = await store.save(**{**kwargs, 'quote_id': row['id'], 'expected_version': row['version'],
+                                 'request_id': uuid4(), 'data': {**DATA, 'enabled': False}})
+    assert not changed['enabled'] and changed['customers'] == row['customers']
+
+
+def test_import_rejects_incomplete_customers():
+    quotes, members, products = source_fixture()
+    assert preflight(quotes, members, products, [{**c, 'selectable': False} for c in CUSTOMERS])['issues']

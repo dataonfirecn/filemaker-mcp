@@ -135,6 +135,9 @@ class QuoteStore:
                 if key in directory_ids:
                     raise ValueError('客户目录标识重复')
                 directory_ids.add(key)
+                if member.get('selectable') is False:
+                    # Existing membership can be retained/removed without legitimizing new links.
+                    continue
                 known[key] = {'id': key, 'name': member.get('name', member.get('label', '')),
                               'code': member.get('code', '')}
             if any(key not in known for key in data['customerIds']):
