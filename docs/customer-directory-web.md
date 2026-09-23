@@ -43,3 +43,5 @@
 ## 2026-09-23 最终发布
 
 当日后续改动（UI 设计 token 重构、客户群报价管理员边界等）一并提交为 git `b7fa726`，并以镜像 `starrc-backend:20260923-b7fa726`、`starrc-frontend:20260923-b7fa726` 重新发布（前版 `customer-directory-20260923-r1`）。发布目录 `/opt/starrc-filemaker/releases/20260923-b7fa726`，前版覆盖配置与源码快照保存在其 `backup/`。发布前 94 项后端测试（隔离 PostgreSQL）、前端生产构建及 5 组浏览器检查全部通过。上线后公网 index.html 与 `App-*.js` 和本地构建逐字节一致（SHA-256 见发布目录 `public-index.sha256`），内外网 healthz 正常，匿名访问 `/api/admin/customers` 与报价接口均返回 401。
+
+同日再发前端样式修正（git `f1e0ddc`，含 `c0ce37b`、`54f38e2`：token 字面色值迁移、表格列宽、`!important` 清理）：仅发布前端镜像 `starrc-frontend:20260923-f1e0ddc`（继承前版保留 Nginx 配置），后端保持 `20260923-b7fa726` 未重建。发布目录 `/opt/starrc-filemaker/releases/20260923-f1e0ddc`。5 组前端检查全部通过，上线后公网 index.html 与 `App-Cd4q5cbu.js` 和本地构建逐字节一致，内外网 healthz 正常。
