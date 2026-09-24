@@ -21,6 +21,33 @@ export const numberFilterParams = {
   debounceMs: 150
 };
 
+// The backend hands dates back as "YYYY-MM-DD" strings (sometimes with a time
+// suffix), but AG Grid's date filter assumes Date cell values. Normalize both
+// sides to local midnight so string dates compare correctly.
+function dateAtMidnight(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  return null;
+}
+
+export const dateFilterParams = {
+  buttons: ["reset", "apply"],
+  closeOnApply: true,
+  debounceMs: 150,
+  isValidDate: (value: unknown) => dateAtMidnight(value) != null,
+  comparator: (filterDate: Date, cellValue: unknown) => {
+    const cellDate = dateAtMidnight(cellValue);
+    if (!cellDate) return 0;
+    const fromMidnight = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate()).getTime();
+    return cellDate.getTime() < fromMidnight ? -1 : cellDate.getTime() > fromMidnight ? 1 : 0;
+  }
+};
+
 export const defaultTableColDef: ColDef = {
   sortable: true,
   filter: "agTextColumnFilter",

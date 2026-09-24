@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Select } from "./ui";
 import DataGrid from "./DataGrid";
-import { numberFilterParams } from "./grid-config";
+import { dateFilterParams, numberFilterParams } from "./grid-config";
 import { demandStatusTone } from "../utils/statusTone";
 import { parseError } from "../utils/error";
 import type { DemandDetail, DemandLine, DemandList, DemandOrder } from "./demandOrders";
@@ -48,8 +48,8 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
     { colId: "internalOrderNo", field: "internalOrderNo", headerName: "内部订单", width: 150, valueFormatter: ({ value }) => value || "—" },
     { colId: "summary", field: "summary", headerName: "需求概要", minWidth: 220, flex: 1, valueFormatter: ({ value }) => value || "—" },
     { colId: "company", field: "company", headerName: "需求公司", minWidth: 160, flex: 1, valueFormatter: ({ value }) => value || "—" },
-    { colId: "orderDate", field: "orderDate", headerName: "开单日期", width: 120, valueFormatter: ({ value }) => value || "—" },
-    { colId: "dueDate", field: "dueDate", headerName: "需求期限", width: 120, valueFormatter: ({ value }) => value || "—" },
+    { colId: "orderDate", field: "orderDate", headerName: "开单日期", width: 120, filter: "agDateColumnFilter", filterParams: dateFilterParams, valueFormatter: ({ value }) => value || "—" },
+    { colId: "dueDate", field: "dueDate", headerName: "需求期限", width: 120, filter: "agDateColumnFilter", filterParams: dateFilterParams, valueFormatter: ({ value }) => value || "—" },
     {
       colId: "reviewStatus", field: "reviewStatus", headerName: "审核状态", width: 130,
       cellRenderer: ({ value }: ICellRendererParams<DemandOrder, string>) => <Status text={value ?? ""} />
@@ -58,7 +58,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
       colId: "purchaseStatus", field: "purchaseStatus", headerName: "采购状态", width: 130,
       cellRenderer: ({ value }: ICellRendererParams<DemandOrder, string>) => <Status text={value ?? ""} />
     },
-    { colId: "completedDate", field: "completedDate", headerName: "完成日期", width: 120, valueFormatter: ({ value }) => value || "—" }
+    { colId: "completedDate", field: "completedDate", headerName: "完成日期", width: 120, filter: "agDateColumnFilter", filterParams: dateFilterParams, valueFormatter: ({ value }) => value || "—" }
   ], [onOpen]);
 
   const lineColumns = useMemo<ColDef<DemandLine>[]>(() => [
@@ -79,7 +79,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
       filterParams: numberFilterParams, cellClass: "numeric-cell", headerClass: "numeric-header",
       valueFormatter: ({ value }) => quantity(value)
     },
-    { colId: "dueDate", field: "dueDate", headerName: "需求日期", width: 120, valueFormatter: ({ value }) => value || "—" },
+    { colId: "dueDate", field: "dueDate", headerName: "需求日期", width: 120, filter: "agDateColumnFilter", filterParams: dateFilterParams, valueFormatter: ({ value }) => value || "—" },
     {
       colId: "status", field: "status", headerName: "需求状态", width: 120,
       cellRenderer: ({ value }: ICellRendererParams<DemandLine, string>) => <Status text={value ?? ""} />
