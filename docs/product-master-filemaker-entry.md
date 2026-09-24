@@ -32,7 +32,7 @@ Case (
 
 关闭对话框返回原报价窗口。此次未修改产品记录、原生字段权限或生产主数据功能开关。
 
-## 保存反馈与关闭回调（2026-09-24，本地实现待发布）
+## 保存反馈与关闭回调（2026-09-24，已发布）
 
 保存产品资料成功后弹出「产品资料已保存」弹框，按本次保存版本的同步任务显示等待、成功、重试或冲突状态。Web 保存失败时保留输入并显示原有错误提示，不弹出成功反馈。
 
@@ -51,3 +51,16 @@ window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
 `saved` 表示 Web 已保存；只有同步任务为 `synced` 才显示「已写回 FileMaker」。后台同步不会因关闭窗口而停止。关闭不再次询问取消编辑；仅另有未保存的客户群报价时保留离开确认。浏览器不允许关闭或脚本调用抛出错误时，弹框内提供错误提示。
 
 本地验收：TypeScript / Vite 构建通过；使用隔离模拟接口在 1068、1440、390px 的亮暗主题下检查弹框；验证关闭 callback 名称和参数，以及等待、重试、冲突和保存失败保留输入。未为验收额外修改生产产品数据。
+
+### 标准镜像发布
+
+- 代码提交 `d12494a` 已推送 `origin/main`，仅前端和文档改动，无数据库迁移或 FileMaker 布局变更。
+- 镜像 `starrc-frontend:20260924-d12494a` 继承 `starrc-frontend:20260924-12aff38`。
+- frontend 容器 `02e3944a7267` → `35b019f4517f`；backend `a4fd3392dca5`、postgres `f196c32c514b` 保持不变。
+- 前端构建通过；内外网健康检查均 `ok: true`。公网 `index.html` 和两个入口 JS 与本地构建 SHA-256 一致：
+  - `index.html`：`6d2e11c767bceddd3a1e0ef54e5db0291d347870f17ef8bd3b384e737eb71fe5`
+  - `index-DQvpAy5K.js`：`3a77063fe245d0b05ce73af5bd842237ddf402533bfaa8a65223760130282c90`
+  - `App-DoiVmNqO.js`：`ccb5c9f56eecca22dad892814e2491d30a0b3e383959fa2c8f146b7f6e82fe7c`
+- 已从 FileMaker 的「产品报价」重新打开「产品编辑」，当前产品成功载入且可编辑；留给用户直接修改保存查看弹框，发布验收未额外改写产品内容。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-d12494a/`。
+- 回滚：恢复该目录的 `backup/previous-release.yml` 到当前 Compose 目录，按 release-playbook 执行 `up -d --no-deps frontend`，回到 `starrc-frontend:20260924-12aff38`。
