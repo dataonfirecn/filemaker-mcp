@@ -1,7 +1,7 @@
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, RefreshCw, Search } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Pagination, usePageSize } from "./ui";
+import { Alert, Badge, Button, Card, EmptyState, Input, Loading, Pagination, usePageSize } from "./ui";
 import DataGrid from "./DataGrid";
 import { numberFilterParams } from "./grid-config";
 import { orderStatusTone } from "../utils/statusTone";
@@ -38,7 +38,7 @@ function formatAmount(value: number | null | undefined, currency: string): strin
 export default function OrderListPage({ apiBase, token, canView, canViewPrice, currency, onOpen }: Props) {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const [sort, setSort] = useState<"newest" | "oldest">("oldest");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("orders:page-size", PAGE_SIZES, 25);
   const [revision, setRevision] = useState(0);
@@ -100,10 +100,6 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
 
   if (!canView) return <div className="demand-page"><Alert>当前账号没有查看订单的权限，请联系管理员开放订单资料权限。</Alert></div>;
   return <div className="demand-page">
-    <div className="demand-toolbar">
-      <div className="demand-actions"><span className="demand-muted">全部订单</span></div>
-      <IconButton label="刷新数据" loading={loading} disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw /></IconButton>
-    </div>
     <Card><form className="demand-filters" onSubmit={event => { event.preventDefault(); setPage(1); setQuery(draft.trim()); }}>
       <label className="demand-search">搜索订单<Input value={draft} onChange={e => setDraft(e.target.value)} placeholder="订单号、内部订单、PI、客户订单号、客户或概要" maxLength={100} /></label>
       <Button type="submit" variant="primary"><Search />搜索</Button>
@@ -116,7 +112,7 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
       : loading && !list ? <Card><Loading label="正在读取订单列表" /></Card>
       : list && <Card className="demand-list-card">{list.rows.length ? <>
         <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张订单 · 按订单日期由{sort === "newest" ? "新到旧" : "旧到新"}排列 · 点击订单号查看出货单明细</span></div>
-        <DataGrid gridKey="orders" columns={columns} rows={list.rows} getRowId={r => r.recordId || r.internalOrderNo} loading={loading} csvFileName="orders"
+        <DataGrid gridKey="orders" columns={columns} rows={list.rows} getRowId={r => r.recordId || r.internalOrderNo} loading={loading} csvFileName="orders" onRefresh={() => setRevision(n => n + 1)}
           onRowDoubleClicked={r => { if (r.orderId) openRef.current(r.orderId); }} />
         <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}
           pageSizeOptions={PAGE_SIZES} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />

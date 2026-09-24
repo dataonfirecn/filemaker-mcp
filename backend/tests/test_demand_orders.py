@@ -130,3 +130,42 @@ async def test_sort_direction_defaults_to_newest_and_can_flip(setup_api):
     assert fm.find_records.call_args.kwargs["sort"] == [
         {"fieldName": "日期", "sortOrder": "ascend"}, {"fieldName": "id", "sortOrder": "ascend"}]
     assert (await client.get('/api/demand-orders', params={"sort": "bogus"})).status_code == 422
+
+
+def _bom_rows():
+    return {"foundCount": 3, "rows": [
+        {"@id": "https://fm.test/需求單BOM(1)", "零件編號": "RU0654-403-S", "零件名稱": ""},
+        {"@id": "https://fm.test/需求單BOM(2)", "零件編號": "OWN-1", "零件名稱": "自带名称"},
+        {"@id": "https://fm.test/需求單BOM(3)", "零件編號": "USB-7.4V-2000mA", "零件名稱": None},
+    ]}
+
+
+@pytest.mark.asyncio
+async def test_empty_part_names_are_filled_from_part_master_internal_name(setup_api):
+    _, client, _, od = setup_api
+
+    async def records(table, **kwargs):
+        if table == "需求單BOM":
+            return _bom_rows()
+        assert table == "零件" and kwargs["select"] == ["part_number", "part_name_internal"]
+        assert "OWN-1" not in kwargs["filter_expr"]  # 自带名称的行不再查
+        return {"rows": [{"part_number": "RU0654-403-S", "part_name_internal": "内部品名"}]}
+
+    od.records.side_effect = records
+    items = (await client.get('/api/demand-orders/12')).json()["items"]
+    assert [i["partName"] for i in items] == ["内部品名", "自带名称", ""]
+
+
+@pytest.mark.asyncio
+async def test_part_name_lookup_failure_does_not_break_the_order(setup_api):
+    _, client, _, od = setup_api
+
+    async def records(table, **kwargs):
+        if table == "需求單BOM":
+            return _bom_rows()
+        raise FileMakerODataError("part table unavailable")
+
+    od.records.side_effect = records
+    response = await client.get('/api/demand-orders/12')
+    assert response.status_code == 200
+    assert [i["partName"] for i in response.json()["items"]] == ["", "自带名称", ""]

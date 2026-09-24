@@ -1,6 +1,6 @@
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ColumnState, GridReadyEvent, RowDoubleClickedEvent } from "ag-grid-community";
-import { Columns3, Download } from "lucide-react";
+import { Columns3, Download, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   adaptiveGridStyle,
@@ -11,6 +11,7 @@ import {
   gridHeaderHeight,
   gridRowHeight
 } from "./grid-config";
+import { IconButton } from "./ui";
 
 /**
  * Shared AG Grid wrapper for the demand-order and order tables: sortable, per-column
@@ -27,9 +28,11 @@ export type DataGridProps<T> = {
   loading?: boolean;
   csvFileName: string;
   onRowDoubleClicked?: (row: T) => void;
+  /** 传入后在「导出 CSV」旁显示刷新按钮，刷新的就是这张表。 */
+  onRefresh?: () => void;
 };
 
-export default function DataGrid<T>({ gridKey, columns, rows, getRowId, loading, csvFileName, onRowDoubleClicked }: DataGridProps<T>) {
+export default function DataGrid<T>({ gridKey, columns, rows, getRowId, loading, csvFileName, onRowDoubleClicked, onRefresh }: DataGridProps<T>) {
   const gridRef = useRef<AgGridReact<T>>(null);
   const stateKey = `ag-grid-state:${gridKey}:v1`;
   const menuRef = useRef<HTMLDivElement>(null);
@@ -121,9 +124,12 @@ export default function DataGrid<T>({ gridKey, columns, rows, getRowId, loading,
             </div>
           )}
         </div>
-        <button className="btn ghost" type="button" disabled={rows.length === 0} onClick={exportCsv}>
-          <Download size={15} />导出 CSV
-        </button>
+        <div className="demand-grid-actions">
+          {onRefresh && <IconButton label="刷新列表" loading={loading} disabled={loading} onClick={onRefresh}><RefreshCw /></IconButton>}
+          <button className="btn ghost" type="button" disabled={rows.length === 0} onClick={exportCsv}>
+            <Download size={15} />导出 CSV
+          </button>
+        </div>
       </div>
       <div className="demand-ag-grid ag-theme-quartz" style={adaptiveGridStyle(rows.length, 4, 25)}>
         <AgGridReact

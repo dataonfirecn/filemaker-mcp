@@ -18,7 +18,7 @@ function Status({ text }: { text: string }) { return text ? <Badge tone={demandS
 
 export default function DemandOrdersPage({ apiBase, token, recordId, canView, onOpen, onBack }: Props) {
   const [draft, setDraft] = useState("");
-  const [filters, setFilters] = useState<{ q: string; completion: string; sort: "newest" | "oldest" }>({ q: "", completion: "all", sort: "newest" });
+  const [filters, setFilters] = useState<{ q: string; completion: string; sort: "newest" | "oldest" }>({ q: "", completion: "all", sort: "oldest" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("demand-orders:page-size", PAGE_SIZES, 25);
   const [linePage, setLinePage] = useState(1);
@@ -102,10 +102,10 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
   const order = detail?.order;
   if (!canView) return <div className="demand-page"><Alert>当前账号没有查看需求单的权限，请联系管理员开放订单资料权限。</Alert></div>;
   return <div className="demand-page">
-    <div className="demand-toolbar">
-      <div className="demand-actions">{recordId && <IconButton label="返回列表" onClick={onBack}><ArrowLeft /></IconButton>}<span className="demand-muted">{recordId ? "需求单资料" : "零件需求清单"}</span></div>
+    {recordId && <div className="demand-toolbar">
+      <div className="demand-actions"><IconButton label="返回列表" onClick={onBack}><ArrowLeft /></IconButton><span className="demand-muted">需求单资料</span></div>
       <IconButton label="刷新数据" loading={loading} disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw /></IconButton>
-    </div>
+    </div>}
     {!recordId && <Card><form className="demand-filters" onSubmit={event => { event.preventDefault(); setPage(1); setFilters(current => ({ ...current, q: draft.trim() })); }}>
       <label className="demand-search">搜索需求单<Input value={draft} onChange={e => setDraft(e.target.value)} placeholder="需求单号、内部订单、概要或公司" maxLength={100} /></label>
       <label>完成日期<Select value={filters.completion} onChange={e => { setPage(1); setFilters(current => ({ ...current, completion: e.target.value })); }}><option value="all">全部需求单</option><option value="open">未填写完成日期</option><option value="completed">已填写完成日期</option></Select></label>
@@ -128,7 +128,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
         <Pagination page={linePage} pageSize={LINE_PAGE_SIZE} totalCount={detail.foundCount} rowCount={detail.items.length} loading={loading} onPageChange={setLinePage} /></> : <EmptyState title="暂无零件明细" description="这张需求单尚未关联零件需求记录。" />}</Card>
     </> : !recordId && list && <Card className="demand-list-card">{list.rows.length ? <>
       <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张需求单 · 按开单日期由{filters.sort === "newest" ? "新到旧" : "旧到新"}排列</span></div>
-      <DataGrid gridKey="demand-orders" columns={orderColumns} rows={list.rows} getRowId={r => r.recordId} loading={loading} csvFileName="demand-orders" onRowDoubleClicked={r => onOpen(r.recordId)} />
+      <DataGrid gridKey="demand-orders" columns={orderColumns} rows={list.rows} getRowId={r => r.recordId} loading={loading} csvFileName="demand-orders" onRefresh={() => setRevision(n => n + 1)} onRowDoubleClicked={r => onOpen(r.recordId)} />
       <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}
         pageSizeOptions={PAGE_SIZES} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
     </> : <EmptyState title="没有找到需求单" description="试试其他单号或公司名称，或重置筛选条件。" />}</Card>}

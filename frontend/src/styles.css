@@ -3307,12 +3307,10 @@ select {
 
 .order-overview-card {
   margin: 0 22px 16px;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--teal);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  padding: 18px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-5);
 }
 
 .order-overview-main {

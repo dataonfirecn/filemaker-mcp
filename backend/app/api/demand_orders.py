@@ -1,4 +1,5 @@
 """Read-only demand orders from FileMaker; no raw records or cost fields exposed."""
+import asyncio
 import math
 from datetime import datetime
 from typing import Any, Literal
@@ -15,6 +16,8 @@ router = APIRouter(prefix="/demand-orders", tags=["demand-orders"],
                    dependencies=[Depends(get_webviewer_session_context)])
 HEADER_LAYOUT = "@需求單"
 LINE_TABLE = "需求單BOM"
+PART_TABLE = "零件"
+PART_LOOKUP_CHUNK = 10  # OData 单次返回条数受服务端上限约束，按小批查询。
 LINE_FIELDS = ['ID_需求單', '零件編號', '零件名稱', '數量', '額外數量',
                '入庫數量', '需求日期', '需求狀態', '採購已下單', '加工廠商', '需求備註', '額外備註']
 
@@ -71,6 +74,33 @@ def _line(fields: dict) -> dict:
     result["id"] = _text(fields.get("@id")).rsplit("(", 1)[-1].rstrip(")")
     result["dueDate"] = _date(fields.get("需求日期"))
     return result
+
+
+async def _fill_part_names(odata: FileMakerODataClient, lines: list[dict]) -> None:
+    """明细行自身没有零件名称时，按零件编号到零件资料补「内部名称」。
+
+    只补空值；零件资料里也查不到（例如手填的临时品名）就保持为空。查询失败不影响需求单本身。
+    """
+    numbers = list(dict.fromkeys(line["partNo"] for line in lines if line["partNo"] and not line["partName"]))
+    if not numbers:
+        return
+
+    async def lookup(chunk: list[str]) -> list[dict]:
+        try:
+            result = await odata.records(
+                PART_TABLE, select=["part_number", "part_name_internal"],
+                filter_expr=" or ".join("part_number eq '" + n.replace("'", "''") + "'" for n in chunk),
+                top=len(chunk), count=False)
+        except FileMakerODataError:
+            return []
+        return result.get("rows", [])
+
+    chunks = [numbers[i:i + PART_LOOKUP_CHUNK] for i in range(0, len(numbers), PART_LOOKUP_CHUNK)]
+    names = {_text(row.get("part_number")): _text(row.get("part_name_internal"))
+             for rows in await asyncio.gather(*(lookup(chunk) for chunk in chunks)) for row in rows}
+    for line in lines:
+        if line["partNo"] and not line["partName"]:
+            line["partName"] = names.get(line["partNo"], "")
 
 
 def _literal_find(text: str) -> str:
@@ -136,6 +166,8 @@ async def get_demand_order(
     except FileMakerODataError as exc:
         raise _source_error(exc) from exc
     count = int(result.get("foundCount") or 0)
-    return {"order": order, "items": [_line(row) for row in result.get("rows", [])],
+    items = [_line(row) for row in result.get("rows", [])]
+    await _fill_part_names(odata, items)
+    return {"order": order, "items": items,
             "foundCount": count, "page": page, "pageSize": page_size,
             "totalPages": max(1, math.ceil(count / page_size))}
