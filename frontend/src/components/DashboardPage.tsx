@@ -128,50 +128,58 @@ export default function DashboardPage({
         ) : !reportData?.hasReports ? (
           <div className="dashboard-report-empty"><FileText size={18} />夜间任务运行后，重要指标和异常会显示在这里。</div>
         ) : (
-          <div className="dashboard-report-content">
-            <div className="dashboard-report-overview">
-              <article className={`dashboard-report-state ${reportData.overallStatus}`}>
-                <span className="dashboard-report-state-icon">
-                  {reportData.overallStatus === "success"
-                    ? <CheckCircle2 size={22} />
-                    : <AlertTriangle size={22} />}
-                </span>
-                <div>
-                  <small>截至 {reportData.latestDate} 的最新夜间任务</small>
-                  <strong>{statusCopy[reportData.overallStatus]}</strong>
-                  <span>{reportData.reportCount} 份报告 · 数据完整度 {reportData.dataCompleteness}%</span>
-                </div>
-              </article>
-              <div className="dashboard-report-counts">
-                <div><strong>{reportData.successCount}</strong><span>正常</span></div>
-                <div><strong>{reportData.warningCount}</strong><span>需关注</span></div>
-                <div><strong>{reportData.failedCount}</strong><span>失败</span></div>
+          <div className="report-brief">
+            <div className="report-brief-summary">
+              <span className={`report-brief-state ${reportData.overallStatus}`} aria-hidden="true">
+                {reportData.overallStatus === "success" ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
+              </span>
+              <div className="report-brief-state-copy">
+                <small>截至 {reportData.latestDate} 的最新夜间任务</small>
+                <strong>{statusCopy[reportData.overallStatus]}</strong>
+                <span>{reportData.reportCount} 份报告 · 数据完整度 {reportData.dataCompleteness}%</span>
               </div>
+              <dl className="report-brief-counts">
+                <div><dt><i className="success" />正常</dt><dd>{reportData.successCount}</dd></div>
+                <div><dt><i className="warning" />需关注</dt><dd>{reportData.warningCount}</dd></div>
+                <div><dt><i className="failed" />失败</dt><dd>{reportData.failedCount}</dd></div>
+              </dl>
             </div>
 
-            <div className="dashboard-report-metrics">
-              {reportData.metrics.slice(0, 6).map((metric) => (
-                <article className={metric.severity} key={`${metric.reportType}-${metric.metricCode}`}>
-                  <span>{metric.metricName}</span>
-                  <strong>{metric.displayValue || `${metric.metricValue ?? "-"}${metric.unit}`}</strong>
-                  <small>{metric.reportTitle}</small>
-                </article>
-              ))}
-            </div>
-
-            <div className="dashboard-report-bottom">
-              <section className="dashboard-report-exceptions">
-                <header><strong>重要异常</strong><span>{reportData.exceptions.length} 项</span></header>
-                {reportData.exceptions.length ? reportData.exceptions.slice(0, 4).map((item) => (
-                  <button type="button" key={item.id} onClick={() => onNavigate("reports")}>
-                    <span className={`report-status-dot ${item.severity === "critical" ? "failed" : "warning"}`} />
-                    <span><strong>{item.title}</strong><small>{item.reportTitle || item.category}</small></span>
-                    <ArrowRight size={14} />
-                  </button>
-                )) : <div className="dashboard-report-no-exception"><CheckCircle2 size={16} />没有未处理的重要异常</div>}
-              </section>
-              <section className="dashboard-report-trend">
-                <header><strong>最近运行</strong><span>14天</span></header>
+            <div className="report-brief-body">
+              <div className="report-brief-main">
+                {reportData.metrics.length > 0 && (
+                  <section aria-label="关键指标">
+                    <h3>关键指标</h3>
+                    <div className="report-brief-metrics">
+                      {reportData.metrics.slice(0, 6).map((metric) => (
+                        <div className={metric.severity} key={`${metric.reportType}-${metric.metricCode}`}>
+                          <span>{metric.metricName}</span>
+                          <strong>{metric.displayValue || `${metric.metricValue ?? "-"}${metric.unit}`}</strong>
+                          <small>{metric.reportTitle}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                <section aria-label="重要异常">
+                  <h3>重要异常<span>{reportData.exceptions.length} 项</span></h3>
+                  {reportData.exceptions.length ? (
+                    <ul className="report-brief-exceptions">
+                      {reportData.exceptions.slice(0, 4).map((item) => (
+                        <li key={item.id}>
+                          <button type="button" onClick={() => onNavigate("reports")}>
+                            <i className={item.severity === "critical" ? "failed" : "warning"} />
+                            <span><strong>{item.title}</strong><small>{item.reportTitle || item.category}</small></span>
+                            <ArrowRight size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="report-brief-none"><CheckCircle2 size={16} />没有未处理的重要异常</p>}
+                </section>
+              </div>
+              <section className="report-brief-trend" aria-label="最近运行">
+                <h3>最近运行<span>{reportData.trends.length} 天</span></h3>
                 <ReportTrendChart trends={reportData.trends} />
               </section>
             </div>
