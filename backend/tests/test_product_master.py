@@ -871,3 +871,79 @@ async def test_business_catalog_recent_sort_on_filemaker_falls_back_without_crea
     await list_business_products(**common)
     await list_business_products(sort='recent', **common)
     assert calls == [None, [{'fieldName': 'created_at', 'sortOrder': 'descend'}], None]
+
+
+REVIEW_SCHEMA = ProductSchema({'fields': [*SCHEMA.document['fields'],
+    {'name': '審核', 'result': 'text', 'writable': True, 'writePermission': 'canApproveProducts', 'readPermission': 'canViewProducts'}]})
+
+
+@pytest.mark.asyncio
+async def test_review_status_needs_its_own_permission_and_new_products_start_unreviewed(api, store):
+    client, app = api
+    app.state.product_master_schema = REVIEW_SCHEMA
+    created = await client.post('/api/product-master/products', json={'requestId': str(uuid4()), 'expectedVersion': 0, 'changes': {'product_sku': 'REVIEW-1'}})
+    assert created.status_code == 200, created.text
+    assert created.json()['fields']['審核'] == '未審核'
+    pid = created.json()['id']
+    url = f'/api/product-master/products/{pid}'
+    # An editor without canApproveProducts cannot flip it, neither through a normal save nor the review endpoint.
+    assert (await client.patch(url, json={'requestId': str(uuid4()), 'expectedVersion': 1, 'changes': {'審核': '已審核'}})).status_code == 422
+    assert (await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 1, 'status': '已審核'})).status_code == 403
+    assert (await store.get(pid))['fields']['審核'] == '未審核'
+    # An approver who cannot edit product data can still approve; only that one field changes.
+    app.dependency_overrides[get_webviewer_session_context] = lambda: {'operator': {'account': 'boss', 'name': 'Boss'}, 'sessionId': 's',
+        'access': {'canViewProducts': True, 'canApproveProducts': True}}
+    request_id = str(uuid4())
+    body = {'requestId': request_id, 'expectedVersion': 1, 'status': '已審核'}
+    approved = await client.post(url + '/review', json=body)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()['fields']['審核'] == '已審核' and approved.json()['version'] == 2
+    assert (await client.post(url + '/review', json=body)).json() == approved.json()
+    assert len(await store.history(pid)) == 2
+    assert (await client.patch(url, json={'requestId': str(uuid4()), 'expectedVersion': 2, 'changes': {'product_name': 'x'}})).status_code == 403
+    withdrawn = await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 2, 'status': '未審核'})
+    assert withdrawn.status_code == 200 and withdrawn.json()['fields']['審核'] == '未審核'
+    assert (await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 3, 'status': '其他'})).status_code == 422
+    assert (await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 1, 'status': '已審核'})).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_approved_product_is_frozen_until_approval_is_withdrawn(api, store):
+    client, app = api
+    app.state.product_master_schema = REVIEW_SCHEMA
+    created = await client.post('/api/product-master/products', json={'requestId': str(uuid4()), 'expectedVersion': 0, 'changes': {'product_sku': 'FROZEN-1', 'product_name': 'A'}})
+    pid = created.json()['id']; url = f'/api/product-master/products/{pid}'
+    boss = {'operator': {'account': 'boss', 'name': 'Boss'}, 'sessionId': 's', 'access': {**PERMISSIONS, 'canApproveProducts': True}}
+    editor = app.dependency_overrides[get_webviewer_session_context]
+    app.dependency_overrides[get_webviewer_session_context] = lambda: boss
+    assert (await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 1, 'status': '已審核'})).status_code == 200
+    # Nobody, approver included, can edit data, attach files or restore while it is approved.
+    for who in (boss, None):
+        if who is None: app.dependency_overrides[get_webviewer_session_context] = editor
+        locked = await client.patch(url, json={'requestId': str(uuid4()), 'expectedVersion': 2, 'changes': {'product_name': 'B'}})
+        assert locked.status_code == 423 and '已审核' in locked.text
+    assert (await client.post(url + '/restore/1', json={'requestId': str(uuid4()), 'expectedVersion': 2})).status_code == 423
+    upload = {'requestId': str(uuid4()), 'filename': 'a.pdf', 'mimeType': 'application/pdf', 'size': 10, 'sha256': 'a' * 64, 'field': '说明书', 'repetition': 1}
+    assert (await client.post(url + '/uploads', json=upload)).status_code == 423
+    assert (await store.get(pid))['fields']['product_name'] == 'A'
+    # Withdrawing the approval unlocks editing again.
+    app.dependency_overrides[get_webviewer_session_context] = lambda: boss
+    assert (await client.post(url + '/review', json={'requestId': str(uuid4()), 'expectedVersion': 2, 'status': '未審核'})).status_code == 200
+    app.dependency_overrides[get_webviewer_session_context] = editor
+    assert (await client.patch(url, json={'requestId': str(uuid4()), 'expectedVersion': 3, 'changes': {'product_name': 'B'}})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_editor_restore_never_rewrites_the_review_status(api, store):
+    client, app = api
+    app.state.product_master_schema = REVIEW_SCHEMA
+    pid = uuid4(); boss = {**PERMISSIONS, 'canApproveProducts': True}
+    async def save(version, changes, permissions):
+        return await store.save(product_id=pid, expected_version=version, request_id=uuid4(), changes=changes, assets=None,
+                                actor={'account': 'x'}, schema=REVIEW_SCHEMA, permissions=permissions, defaults={'審核': '已審核'} if version == 0 else None)
+    await save(0, {'product_sku': 'REVIEW-2', 'product_name': 'A'}, PERMISSIONS)   # v1: 已審核 (old data)
+    await save(1, {'審核': '未審核'}, boss)                                          # v2: approval withdrawn
+    await save(2, {'product_name': 'B'}, PERMISSIONS)                              # v3: edited
+    restored = await client.post(f'/api/product-master/products/{pid}/restore/1', json={'requestId': str(uuid4()), 'expectedVersion': 3})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['fields']['product_name'] == 'A' and restored.json()['fields']['審核'] == '未審核'

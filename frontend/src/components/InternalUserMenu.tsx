@@ -1,6 +1,7 @@
-import { LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
+import { Languages, LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ThemeMode } from "../types";
+import { ChineseVariantToggle } from "../i18n/ChineseVariantToggle";
 
 export type InternalUserMenuUser = {
   username: string;
@@ -120,6 +121,11 @@ export default function InternalUserMenu({
                 </span>
               </button>
             )}
+          </div>
+
+          <div className="internal-user-language">
+            <span><Languages size={16} />中文显示</span>
+            <ChineseVariantToggle />
           </div>
 
           <div className="internal-user-signout">

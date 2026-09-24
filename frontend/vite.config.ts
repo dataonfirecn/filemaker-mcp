@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { uiStringsPlugin } from "./vite-plugins/uiStrings";
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8000";
 const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? "")
@@ -8,7 +9,7 @@ const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? "")
   .filter(Boolean);
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), uiStringsPlugin()],
   server: {
     port: 5173,
     allowedHosts,

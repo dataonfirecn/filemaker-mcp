@@ -26,6 +26,7 @@ import type {
   SessionResponse
 } from "../types";
 import { parseError } from "../utils/error";
+import { ChineseVariantSwitchButton } from "../i18n/ChineseVariantToggle";
 import "./receipt-history-webviewer.css";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -327,6 +328,7 @@ export default function ReceiptHistoryWebViewerApp() {
           </span>
           <span className="rhw-top-actions">
             <span className="rhw-live"><i />实时数据</span>
+            <ChineseVariantSwitchButton />
             <button type="button" onClick={() => void refresh()} disabled={refreshing}>
               <RefreshCw className={refreshing ? "rhw-spin" : ""} size={15} />刷新
             </button>

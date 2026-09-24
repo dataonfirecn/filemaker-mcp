@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionResponse } from "../types";
 import { parseError } from "../utils/error";
 import { MaterialIdSearchSelect } from "./MaterialIdWebViewerApp";
+import { ChineseVariantSwitchButton } from "../i18n/ChineseVariantToggle";
 import "./new-part-webviewer.css";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -1048,6 +1049,7 @@ export default function NewPartWebViewerApp() {
             <small>资料已经保存到 FileMaker</small>
           </span>
           <span className="npw-header-actions">
+            <ChineseVariantSwitchButton />
             <span className="npw-connected"><i /> 已连接 FileMaker</span>
             <button
               className="npw-close-webviewer"
@@ -1186,7 +1188,8 @@ export default function NewPartWebViewerApp() {
               {cacheRefreshing ? "刷新中…" : cacheNotice || "刷新选项"}
             </button>
           )}
-          <span className="npw-connected"><i /> 已连接 FileMaker</span>
+          <ChineseVariantSwitchButton />
+            <span className="npw-connected"><i /> 已连接 FileMaker</span>
           <button
             className="npw-close-webviewer"
             type="button"

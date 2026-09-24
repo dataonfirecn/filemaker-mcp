@@ -105,6 +105,7 @@ export type WebViewerPermissions = {
   canEditProducts: boolean;
   canEditProductPrices: boolean;
   canManageProductSync: boolean;
+  canApproveProducts: boolean;
   canViewOrders: boolean;
   canViewQuality: boolean;
   canAddCompletedReceipts: boolean;

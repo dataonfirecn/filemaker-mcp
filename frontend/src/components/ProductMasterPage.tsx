@@ -96,7 +96,12 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const [quoteBusy, setQuoteBusy] = useState(false);
   const productDirty = JSON.stringify(fields) !== JSON.stringify(product?.fields ?? {}) || JSON.stringify(assets) !== JSON.stringify(product?.assets ?? []);
   const dirty = productDirty || quoteDirty;
-  const canEdit = !readOnly && !!permissions.canEditProducts && !product?.previewMode;
+  // 审核状态不是表单里可填的字段：只显示状态，有审核权限的人用按钮切换（后端另行校验 canApproveProducts）。
+  // 已审核的产品整体锁定，不能编辑；要改必须先「撤销审核」。草稿预览不受影响。
+  const reviewState = String(fields['審核'] ?? '') || '未審核';
+  const locked = !readOnly && !!product && !product.previewMode && String(product.fields['審核'] ?? '') === '已審核';
+  const canEdit = !readOnly && !!permissions.canEditProducts && !product?.previewMode && !locked;
+  const canApprove = !readOnly && !!product && !product.previewMode && !!permissions.canApproveProducts;
 
   async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     if (readOnly && method !== 'GET') throw new Error('产品浏览页不支持修改');
@@ -234,6 +239,12 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (pending.current.fingerprint !== fingerprint) pending.current = { fingerprint, id: crypto.randomUUID() };
     try { show(await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id })); setMessage('Web 已保存，已进入同步队列'); } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请稍后重试。'); } finally { setBusy(false); }
   }
+  async function review(status: '已審核' | '未審核') {
+    if (!product) return;
+    setError(''); setMessage(''); setBusy(true);
+    try { show(await api<Product>(`/products/${product.id}/review`, 'POST', { requestId: crypto.randomUUID(), expectedVersion: product.version, status })); setMessage(status === '已審核' ? '已标记为已审核' : '已撤销审核'); }
+    catch (e) { setError(e instanceof Error ? e.message : '审核状态更新失败，请稍后重试。'); } finally { setBusy(false); }
+  }
   async function download(a: Asset) {
     try {
       const local = localFiles.current.get(a.id); if (local) { const url = URL.createObjectURL(local); const link = document.createElement('a'); link.href = url; link.download = a.filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 10000); return; }
@@ -261,7 +272,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const quoteTabs = product && canViewQuotes ? ['客户群报价'] : [];
   const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
   const find = (name: string) => schema.find(f => f.name === name && f.result !== 'container');
-  const writableField = (f: Field) => !(f.externalSource && !product?.previewMode && !product?.financePriceBound) && !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
+  const writableField = (f: Field) => f.name !== '審核' && !(f.externalSource && !product?.previewMode && !product?.financePriceBound) && !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
   const label = (name: string) => fieldLabels[name] ?? name;
 
   function readOnlyTag(f: Field) {
@@ -270,7 +281,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (f.externalSource && !product?.financeImported) return '待同步';
     if (f.externalSource?.startsWith('產品 BOM::')) return 'BOM计算';
     if (f.name === 'ID') return '标识';
-    if (/CBM|Stock_USD|PrePaid_stock_USD|^stock$|有現貨|建議報價|報價積數|組裝成本|工錢|工時單包|總人工成本/.test(f.name)) return '计算';
+    if (/CBM|Stock_USD|PrePaid_stock_USD|lastOrderElapsedDays|^stock$|有現貨|建議報價|報價積數|組裝成本|工錢|工時單包|總人工成本/.test(f.name)) return '计算';
     return '只读';
   }
 
@@ -322,7 +333,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
       <span className="pm-f-label">
         <span className="pm-f-label-text" title={label(f.name)}>{label(f.name)}</span>
         {!readOnly && f.required && <em className="pm-req"> *</em>}
-        {!readOnly && !writable && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
+        {!readOnly && !writable && f.name !== '審核' && !(locked && f.writable) && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
       </span>
       {!readOnly && f.name === '系統產品編號' ? <div className="pm-field-action">
         {inputFor(f, 0)}
@@ -412,13 +423,29 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     </>;
   }
 
+  /** 审核状态自己占一整行：本身不可点选编辑，只有状态和（有权限时的）按钮，放在产品信息最上面，不和普通字段挤在一起。 */
+  function reviewBar() {
+    const approved = reviewState === '已審核';
+    const saved = !!product && !product.previewMode;
+    const hint = approved ? '已锁定，不能编辑；如需修改请先撤销审核。'
+      : canApprove ? '确认资料无误后标记为已审核，审核后将锁定编辑。'
+      : saved ? '待有审核权限的同事审核，审核后将锁定编辑。' : '保存后由有审核权限的同事审核。';
+    return <div className={`pm-reviewbar${approved ? ' is-approved' : ''}`} role="group" aria-label="审核状态">
+      {approved ? <CircleCheck size={18} aria-hidden="true" /> : <AlertCircle size={18} aria-hidden="true" />}
+      <div className="pm-reviewbar-text"><b>审核状态 · {approved ? '已审核' : '未审核'}</b><span>{hint}</span></div>
+      {canApprove && <button type="button" className={`pm-btn${approved ? '' : ' pm-btn-primary'}`} disabled={busy || loading || productDirty}
+        title={productDirty ? '请先保存当前修改，再更改审核状态' : undefined} onClick={() => void review(approved ? '未審核' : '已審核')}>{approved ? '撤销审核' : '标记为已审核'}</button>}
+    </div>;
+  }
+
   function formCard(title: string, names: string[], caption?: string) {
-    const inner = sectionInner(title, names);
+    const withReview = !readOnly && title === '产品信息' && names.includes('審核') && !!find('審核');
+    const inner = sectionInner(title, withReview ? names.filter(n => n !== '審核') : names);
     if (!inner) return null;
     return <section className="pm-card" id={`pm-section-${title}`} key={title}>
       <div className="pm-card-head"><i className="pm-card-rule" /><h2>{title}</h2></div>
       {caption && <p className="pm-caption">{caption}</p>}
-      <div className="pm-card-body">{inner}</div>
+      <div className="pm-card-body">{withReview && reviewBar()}{inner}</div>
     </section>;
   }
 
@@ -536,7 +563,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
       <div className="pm-identity">
         <div className="pm-identity-top">
           <span className="pm-sku">{value('product_sku') || '当前产品'}</span>
-          {value('審核') && <span className={`pm-chip ${value('審核') === '已審核' ? 'pm-chip-ok' : 'pm-chip-warn'}`}>{value('審核')}</span>}
+          {(value('審核') || (!readOnly && product && !product.previewMode)) && <span className={`pm-chip ${reviewState === '已審核' ? 'pm-chip-ok' : 'pm-chip-warn'}`}>{reviewState}</span>}
         </div>
         <div className="pm-identity-sub">
           {[value('產品名稱_中文') || value('product_name'), value('Client') && `${value('Client')}${value('id_client') ? ` (${value('id_client')})` : ''}`, value('系統產品編號') && `系统编号 ${value('系統產品編號')}`, schema.some(f => f.name === 'created_at') && `建立于 ${formatStamp(value('created_at')) || '—'}`].filter(Boolean).join(' · ') || '—'}
@@ -546,13 +573,14 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
         {readOnly ? <span className="pm-chip"><LockKeyhole size={12} />只读浏览</span> : <>
         <div className="pm-save-state">
           <b className={dirty ? 'is-dirty' : ''}>{loading ? '正在载入' : quoteDirty ? '报价尚未保存' : dirty ? `${changeCount} 处未保存` : product ? `Web 版本 ${product.version}` : '新产品'}</b>
-          <span>{product?.previewMode ? '草稿预览 · 本地' : canEdit ? '可保存' : '只读'}</span>
+          <span>{product?.previewMode ? '草稿预览 · 本地' : !product ? '新产品 · 未審核' : locked ? '已审核 · 已锁定' : `${canEdit ? '可保存' : '只读'} · ${reviewState === '已審核' ? '已审核' : '未审核'}`}</span>
         </div>
         <button type="button" className="pm-btn" disabled={busy || quoteBusy} onClick={cancelEditing}>取消</button>
         <button type="button" className="pm-btn pm-btn-primary" disabled={!canEdit || busy || loading || (!productDirty && !!product)} onClick={() => void save()}><Save size={14} />{busy ? '处理中…' : '保存产品资料'}</button></>}
       </div>
     </header>
 
+    {locked && <div className="pm-notice" role="status"><LockKeyhole size={14} /><span>该产品已审核，不能编辑。{canApprove ? '如需修改，请先在「产品信息」顶部的审核状态处撤销审核。' : '如需修改，请联系有审核权限的同事撤销审核。'}</span></div>}
     {error && <div role="alert" className="pm-notice pm-notice-error"><AlertCircle size={15} />{error}</div>}
     {message && <div className="pm-notice pm-notice-ok" role="status"><CircleCheck size={15} />{message}</div>}
     {!readOnly && product?.previewMode && <div className="pm-notice"><LockKeyhole size={14} /><span>产品资料预览：基础字段可试填，产品保存与回写尚未开放；客户群报价使用独立保存权限。</span></div>}
@@ -612,7 +640,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
             onUpload={(files, field) => replaceFile(files, field, null, '')} />}
         </>}
 
-        {tab === '客户群报价' && product && canViewQuotes && <ProductQuotes key={`${product.id}:${token}`} apiBase={apiBase} token={token} productId={product.id} readOnly={readOnly} onDirty={setQuoteDirty} onBusy={setQuoteBusy} />}
+        {tab === '客户群报价' && product && canViewQuotes && <ProductQuotes key={`${product.id}:${token}`} apiBase={apiBase} token={token} productId={product.id} readOnly={readOnly || locked} onDirty={setQuoteDirty} onBusy={setQuoteBusy} />}
         {tab === '修改历史' && <section className="pm-card"><div className="pm-card-head"><i className="pm-card-rule" /><h2>修改历史</h2></div><div className="pm-card-body">
           {history.length ? history.map(h => <details className="pm-history" key={h.version}><summary>版本 {h.version} · {h.actor.name || h.actor.account} · {new Date(h.created_at).toLocaleString()}</summary><pre>{JSON.stringify({ 修改前: h.before_data, 修改后: h.after_data }, null, 2)}</pre><div className="pm-history-actions"><button type="button" className="pm-btn pm-btn-sm" disabled={!canEdit || busy} onClick={() => void restore(h.version)}>恢复为新版本</button>{h.after_data.assets.map(a => <button type="button" className="pm-btn pm-btn-sm" key={a.id} onClick={() => void download(a)}>下载 {a.filename}</button>)}</div></details>)
             : <p className="pm-empty-text">预览期间未开放编辑；启用后，每次保存的修改与原文件都可在这里追溯。</p>}

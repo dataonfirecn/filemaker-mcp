@@ -39,8 +39,11 @@ async def quote_runtime(request, context, product_id, *, write=False):
     if not store:
         raise HTTPException(503, '产品主库尚未启用')
     # UUID-only lookup: no SKU/record-id aliases for write targets.
-    if not await store.pool.fetchval('SELECT 1 FROM pm_product WHERE source=$1 AND id=$2', store.source, product_id):
+    product = await store.pool.fetchrow("SELECT fields->>'審核' AS review FROM pm_product WHERE source=$1 AND id=$2", store.source, product_id)
+    if not product:
         raise HTTPException(404, '产品不存在')
+    if write and product['review'] == '已審核':
+        raise HTTPException(423, '产品已审核，不能修改客户群报价。需要修改请先由有审核权限的同事撤销审核。')
     return QuoteStore(store)
 
 

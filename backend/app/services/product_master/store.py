@@ -110,6 +110,14 @@ async def connection_for(store, connection=None):
             yield acquired
 
 
+LOCKED_MESSAGE = '产品已审核，不能编辑。需要修改请先由有审核权限的同事撤销审核。'
+
+
+class ProductLocked(ValueError):
+    def __init__(self):
+        super().__init__(LOCKED_MESSAGE)
+
+
 class Conflict(ValueError):
     def __init__(self, current):
         self.current = current
@@ -174,7 +182,7 @@ class ProductStore:
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",self.source,pid,a['field'],a['repetition'],UUID(a['id']),a['sortOrder'],a['role'])
 
     async def save(self, *, product_id, expected_version, request_id, changes, assets,
-                   actor, schema, permissions, origin='web', imported=None, connection=None, command=None, sku_validator=None):
+                   actor, schema, permissions, origin='web', imported=None, connection=None, command=None, sku_validator=None, defaults=None):
         pid, rid = UUID(str(product_id)), UUID(str(request_id))
         digest = request_digest(pid,expected_version,changes,assets,actor,origin,command)
         async with connection_for(self, connection) as c, c.transaction():
@@ -190,11 +198,15 @@ class ProductStore:
             old = await self.hydrate(old, c)
             if (old['version'] if old else 0) != expected_version:
                 raise Conflict(old)
+            # An approved product is frozen: only the review status itself may change (withdrawing the approval).
+            if old and not imported and old['fields'].get('審核') == '已審核' and not (assets is None and set(changes) <= {'審核'}):
+                raise ProductLocked()
             if not imported:
                 schema.validate(changes, permissions)
                 from .finance import validate_binding
                 await validate_binding(c, self.source, pid, changes, old['fields'] if old else {})
-            fields = {**(old['fields'] if old else {}), **changes, 'ID': str(pid)}
+            # Server-side defaults (e.g. 审核=未審核) apply to a brand-new product only and never bypass field permissions.
+            fields = {**(old['fields'] if old else (defaults or {})), **changes, 'ID': str(pid)}
             if not imported:
                 schema.validate_complete(fields)
             if 'product_sku' in schema.fields:

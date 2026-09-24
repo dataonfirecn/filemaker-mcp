@@ -9,6 +9,7 @@ class WebViewerPermissions(BaseModel):
     can_view_price: bool = Field(alias="canViewPrice")
     can_manage_accounts: bool = Field(alias="canManageAccounts")
     can_view_products: bool = Field(alias="canViewProducts")
+    can_approve_products: bool = Field(default=False, alias="canApproveProducts")
     can_view_orders: bool = Field(alias="canViewOrders")
     can_view_quality: bool = Field(default=False, alias="canViewQuality")
     can_add_completed_receipts: bool = Field(alias="canAddCompletedReceipts")

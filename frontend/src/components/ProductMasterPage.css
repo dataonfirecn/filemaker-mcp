@@ -162,6 +162,14 @@
 .product-master .pm-field-action > button:hover:not(:disabled) { background: var(--pm-brand-soft); border-color: var(--pm-brand-line); }
 .product-master .pm-field-action > button:focus-visible { outline: 2px solid var(--pm-brand); outline-offset: 2px; }
 .product-master .pm-field-action > button:disabled { color: var(--pm-faint); cursor: not-allowed; }
+.pm-reviewbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--pm-warn-line); border-radius: var(--pm-r-s); background: var(--pm-warn-soft); color: var(--pm-warn); }
+.pm-reviewbar.is-approved { border-color: var(--pm-brand-line); background: var(--pm-ok-soft); color: var(--pm-ok); }
+.pm-reviewbar > svg { flex-shrink: 0; }
+.pm-reviewbar-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex: 1; min-width: 0; }
+.pm-reviewbar-text b { font-size: 13px; font-weight: 600; }
+.pm-reviewbar-text span { font-size: 12px; color: var(--pm-muted); }
+.pm-reviewbar .pm-btn { flex-shrink: 0; }
+@media (max-width: 560px) { .pm-reviewbar { flex-wrap: wrap; } .pm-reviewbar .pm-btn { width: 100%; } }
 
 .product-master .pm-f input, .product-master .pm-f textarea, .product-master .pm-f select {
   width: 100%; height: var(--pm-h); padding: 0 9px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s);

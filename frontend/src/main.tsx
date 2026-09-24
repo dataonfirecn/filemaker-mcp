@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
+import { initChineseVariant } from "./i18n/chineseVariant";
 
 const App = lazy(() => import("./App"));
 const MaterialIdWebViewerApp = lazy(
@@ -23,6 +24,7 @@ const RootApp =
       ? ReceiptHistoryWebViewerApp
     : App;
 
+function renderApp() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <Suspense
@@ -46,3 +48,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </Suspense>
   </React.StrictMode>
 );
+}
+
+// 偏好是繁体时，先等转换字典加载完再渲染，避免先闪一下简体；字典加载失败也照常渲染（保持简体）。
+void initChineseVariant().catch(() => undefined).finally(renderApp);

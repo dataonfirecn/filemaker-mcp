@@ -40,6 +40,7 @@ import InternalDiagnosticLogsPage from "./components/InternalDiagnosticLogsPage"
 import InternalQualityInspectionsPage from "./components/InternalQualityInspectionsPage";
 import ReportsPage from "./components/ReportsPage";
 import InternalUserMenu from "./components/InternalUserMenu";
+import { ChineseVariantToggle } from "./i18n/ChineseVariantToggle";
 import GenerateDialog from "./components/GenerateDialog";
 import PartSearchDialog from "./components/PartSearchDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
@@ -1845,6 +1846,7 @@ export default function App() {
             </button>
           </form>
           <small className="remote-login-note">访问及合并操作会记录操作账号和时间。</small>
+          <div className="remote-login-language"><ChineseVariantToggle /></div>
         </section>
       </main>
     );

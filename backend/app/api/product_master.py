@@ -8,11 +8,13 @@ from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import Response
+from typing import Literal
 from pydantic import BaseModel, Field
 from PIL import Image
 from app.services.dependencies import get_webviewer_session_context
-from app.services.product_master.store import Conflict, dumps, unpack, connection_for, request_digest
+from app.services.product_master.store import Conflict, ProductLocked, LOCKED_MESSAGE, dumps, unpack, connection_for, request_digest
 from app.services.product_master.schema import ProductValidationError, SKUValidationError
 from app.services.product_image_fields import canonical_container_field
 
@@ -34,6 +36,12 @@ class UploadBody(BaseModel):
     sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     field: str
     repetition: int = Field(default=1, ge=1)
+
+
+class ReviewBody(BaseModel):
+    requestId: UUID
+    expectedVersion: int = Field(ge=1)
+    status: Literal['已審核', '未審核']
 
 
 class ActionBody(BaseModel):
@@ -236,20 +244,23 @@ async def check_filemaker_sku(request, sku, product_id):
             'message': '暂时无法完成 SKU 重复校验，本次未保存，请稍后重试。'}) from exc
 
 
-async def commit(request, context, product_id, body, origin='web', connection=None, command=None):
+async def commit(request, context, product_id, body, origin='web', connection=None, command=None, permission='canEditProducts', defaults=None, check_sku=True):
     store, schema = runtime(request)
-    permissions = access(context, 'canEditProducts')
+    permissions = access(context, permission)
     access(context, 'canViewProducts')
     try:
         value = await store.save(product_id=product_id, expected_version=body.expectedVersion,
             request_id=body.requestId, changes=body.changes, assets=body.assets,
             actor=actor(context), schema=schema, permissions=permissions, origin=origin, connection=connection, command=command,
-            sku_validator=lambda sku, pid: check_filemaker_sku(request, sku, pid))
+            sku_validator=(lambda sku, pid: check_filemaker_sku(request, sku, pid)) if check_sku else None, defaults=defaults)
         return await finance_detail(value, store, schema, permissions)
     except SKUValidationError as exc:
         raise HTTPException(422, {'code': exc.code, 'field': 'product_sku', 'message': str(exc)}) from exc
     except Conflict as exc:
-        raise HTTPException(409, {'message': str(exc), 'current': filtered(exc.current or {}, schema, permissions)}) from exc
+        # The snapshot carries UUID/datetime values that a plain JSON response cannot encode.
+        raise HTTPException(409, jsonable_encoder({'message': str(exc), 'current': filtered(exc.current or {}, schema, permissions)})) from exc
+    except ProductLocked as exc:
+        raise HTTPException(423, str(exc)) from exc
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -265,12 +276,14 @@ async def command_replay(request,context,product_id,request_id,origin,command):
 
 @router.post('/products')
 async def create_product(body: SaveBody, request: Request, context=Depends(get_webviewer_session_context)):
-    store, _ = runtime(request)
+    store, schema = runtime(request)
     if body.expectedVersion != 0:
         raise HTTPException(422, '新产品版本必须为 0')
     # Generated on the server, repeatable only for the same create request.
     product_id = uuid5(NAMESPACE_URL, f'{store.source}:product:{body.requestId}')
-    return await commit(request, context, product_id, body)
+    # FileMaker's auto-enter gave new products 未審核; the Web store has to do the same because 审核 is not editable in the form.
+    defaults = {'審核': '未審核'} if '審核' in schema.fields else None
+    return await commit(request, context, product_id, body, defaults=defaults)
 
 
 @router.patch('/products/{product_id}')
@@ -278,6 +291,23 @@ async def save_product(product_id: UUID, body: SaveBody, request: Request, conte
     store,_=runtime(request)
     if body.expectedVersion<1 or not await store.get(product_id): raise HTTPException(404,'请使用新建接口由 Web 生成产品 UUID')
     return await commit(request, context, product_id, body)
+
+
+@router.post('/products/{product_id}/review')
+async def review_product(product_id: UUID, body: ReviewBody, request: Request, context=Depends(get_webviewer_session_context)):
+    """Approve (or withdraw approval of) a saved product. Needs canApproveProducts, not canEditProducts."""
+    store, schema = runtime(request)
+    access(context, 'canApproveProducts')
+    if '審核' not in schema.fields:
+        raise HTTPException(404, '此产品库没有审核字段')
+    if not await store.get(product_id):
+        raise HTTPException(404, '产品不存在')
+    command = {'operation': 'review', 'status': body.status, 'expectedVersion': body.expectedVersion}
+    replay = await command_replay(request, context, product_id, body.requestId, 'review', command)
+    if replay is not None:
+        return replay
+    save = SaveBody(requestId=body.requestId, expectedVersion=body.expectedVersion, changes={'審核': body.status}, assets=None)
+    return await commit(request, context, product_id, save, origin='review', command=command, permission='canApproveProducts', check_sku=False)
 
 
 @router.get('/products/{product_id}/history')
@@ -304,7 +334,8 @@ async def restore(product_id: UUID, version: int, body: SaveBody, request: Reque
         raise HTTPException(404, '历史版本不存在')
     current = await store.get(product_id)
     # Restore is a new transaction. Protected fields cannot be restored indirectly.
-    body.changes = {k: v for k, v in target['fields'].items() if schema.editable(k) and schema.fields[k]['result'] != 'container' and current['fields'].get(k) != v}
+    body.changes = {k: v for k, v in target['fields'].items() if schema.editable(k) and schema.fields[k]['result'] != 'container' and current['fields'].get(k) != v
+                    and permissions.get(schema.fields[k].get('writePermission', 'canEditProducts'), False)}
     body.assets = target['assets']
     return await commit(request, context, product_id, body, origin=f'restore:{version}',command=command)
 
@@ -319,6 +350,8 @@ async def presign_impl(product_id, body, request, context, connection=None):
     product = await store.get(product_id, connection)
     if not product:
         raise HTTPException(404, '请先保存产品，再上传附件')
+    if product['fields'].get('審核') == '已審核':
+        raise HTTPException(423, LOCKED_MESSAGE)
     settings = request.app.state.settings
     if body.size > settings.product_master_max_file_bytes:
         raise HTTPException(413, '文件超过大小限制')

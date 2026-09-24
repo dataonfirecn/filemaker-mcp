@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionResponse } from "../types";
 import { parseError } from "../utils/error";
+import { ChineseVariantSwitchButton } from "../i18n/ChineseVariantToggle";
 import "./material-id-webviewer.css";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -439,6 +440,7 @@ export default function MaterialIdWebViewerApp() {
           <small>FileMaker Data API · 实时规则</small>
         </span>
         <span className="mid-connected"><i /> 已连接 FileMaker</span>
+        <ChineseVariantSwitchButton />
       </header>
 
       <div className="mid-workspace">
