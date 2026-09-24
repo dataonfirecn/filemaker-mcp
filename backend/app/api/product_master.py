@@ -434,12 +434,19 @@ async def retry(product_id: UUID, version: int, body: ActionBody, request: Reque
 
 
 def consumer_auth(request):
-    store, schema = runtime(request)
+    # Publishing the read-only Web store must not enable editing or FM writeback.
+    store = getattr(request.app.state, 'product_master_store', None)
+    if store is None and request.app.state.settings.product_master_web_only:
+        store = getattr(request.app.state, 'product_master_preview_store', None)
+    if store is None:
+        raise HTTPException(503, '产品主库尚未启用')
+    schema = request.app.state.product_master_schema
     settings = request.app.state.settings
     consumers = json.loads(settings.product_master_consumers_json)
     consumer = request.headers.get('X-Product-Consumer', '')
     supplied = request.headers.get('Authorization', '').removeprefix('Bearer ')
-    expected = consumers.get(consumer, '')
+    entry = consumers.get(consumer, '')
+    expected = entry.get('token', '') if isinstance(entry, dict) else entry
     if not expected or len(expected) < 32 or not hmac.compare_digest(supplied, expected):
         raise HTTPException(401, 'Invalid product consumer')
     if request.headers.get('X-Product-Source') != store.source:
@@ -448,11 +455,11 @@ def consumer_auth(request):
 
 
 @router.get('/changes')
-async def changes(request: Request, cursor: int = Query(0, ge=0)):
+async def changes(request: Request, cursor: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1000)):
     store, schema, consumer = consumer_auth(request)
     maximum=await store.pool.fetchval('SELECT coalesce(max(sequence),0) FROM pm_publication WHERE source=$1',store.source)
     if cursor>maximum: raise HTTPException(422,'发布游标超出范围')
-    rows = await store.feed(cursor)
+    rows = await store.feed(cursor, limit=limit)
     allowed = {f['name'] for f in schema.fields.values() if f.get('publish', False)}
     for row in rows:
         payload = row['payload']
@@ -466,8 +473,13 @@ async def changes(request: Request, cursor: int = Query(0, ge=0)):
                     except ValueError: pass
         payload['fieldPermissions'] = {name: schema.fields[name].get('readPermission','canViewProducts') for name in allowed}
         payload['assets'] = [{k: v for k, v in a.items() if k != 'stagingKey'} for a in payload['assets'] if a['field'] in allowed]
+    entry = json.loads(request.app.state.settings.product_master_consumers_json).get(consumer)
+    if isinstance(entry, dict) and entry.get('profile') == 'dms-catalog':
+        from app.services.product_catalog_contract import catalog_snapshot
+        for row in rows:
+            row['payload'] = catalog_snapshot(row['payload'])
     fingerprint = hashlib.sha256((request.app.state.settings.filemaker_host.rstrip('/').lower() + '|' + request.app.state.settings.filemaker_database).encode()).hexdigest()
-    return {'source': store.source, 'fingerprint': fingerprint, 'events': rows, 'caughtUp': len(rows) < 100, 'cursor': rows[-1]['sequence'] if rows else cursor}
+    return {'source': store.source, 'fingerprint': fingerprint, 'events': rows, 'caughtUp': len(rows) < limit, 'cursor': rows[-1]['sequence'] if rows else cursor}
 
 
 @router.post('/changes/ack')
