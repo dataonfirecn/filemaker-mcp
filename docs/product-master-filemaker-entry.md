@@ -93,3 +93,15 @@ window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
 - 回滚：恢复该目录的 `backup/previous-release.yml` 到当前 Compose 目录，按
   release-playbook 执行 `up -d --no-deps frontend`，回到
   `starrc-frontend:20260924-d12494a`。
+
+## 产品编辑 Debug 下拉（2026-09-25，本地实现）
+
+版本旁新增 Debug 按钮，展开显示登录会话的账号、用户名、传入权限集，
+产品接口返回的查看/编辑/审核/价格/同步权限，以及产品 UUID、Web 版本和锁定状态。
+权限集通过已有 `session.context.operator.privilege` 传入，无须增加 FileMaker 脚本。
+若入口仍传 `filemaker` 等占位值，面板提示未提供真实权限集；入口应按现有约定
+把 `Get ( AccountPrivilegeSetName )` 放进签名载荷的 `operator.privilege`。
+面板只用于诊断，不参与授权；不显示 token、签名或完整 URL。
+
+本地验证：前端构建通过；模拟产品接口下检查 1068 / 1440 / 390px 与亮暗主题，
+页面及下拉没有水平溢出，Escape 可关闭并返回按钮焦点。尚未部署。

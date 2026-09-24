@@ -1853,7 +1853,7 @@ export default function App() {
   }
 
   if (page === "productMaster") {
-    return <ProductMasterPage apiBase={apiBase} token={session?.token ?? ""} initialRef={new URLSearchParams(window.location.search).get("productId") ?? ""} />;
+    return <ProductMasterPage apiBase={apiBase} operator={session?.context.operator} token={session?.token ?? ""} initialRef={new URLSearchParams(window.location.search).get("productId") ?? ""} />;
   }
   if (page === "productInventory") {
     return (

@@ -4,6 +4,8 @@ import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Down
 import { productPhotoFields, specFieldOrder, packagingFieldOrder, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups, derivedValue } from './productMasterLayout';
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
+import ProductDebug from './ProductDebug';
+import type { SessionResponse } from '../types';
 import ProductSaveFeedback from './ProductSaveFeedback';
 import ProductSelect from './ProductSelect';
 import { Alert, Badge, Button } from './ui';
@@ -57,7 +59,7 @@ function dateInputValue(v: string): string {
   return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
 }
 
-export default function ProductMasterPage({ apiBase, token, initialRef = '', readOnly = false }: { apiBase: string; token: string; initialRef?: string; readOnly?: boolean }) {
+export default function ProductMasterPage({ apiBase, token, initialRef = '', readOnly = false, operator }: { apiBase: string; token: string; initialRef?: string; readOnly?: boolean; operator?: SessionResponse['context']['operator'] }) {
   const [costs, setCosts] = useState<Costs | null>(null);
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState('');
@@ -605,6 +607,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
           <b className={dirty ? 'is-dirty' : ''}>{loading ? '正在载入' : quoteDirty ? '报价尚未保存' : dirty ? `${changeCount} 处未保存` : product ? `Web 版本 ${product.version}` : '新产品'}</b>
           <span>{product?.previewMode ? '草稿预览 · 本地' : !product ? '新产品 · 未審核' : locked ? '已审核 · 已锁定' : `${canEdit ? '可保存' : '只读'} · ${reviewState === '已審核' ? '已审核' : '未审核'}`}</span>
         </div>
+        <ProductDebug operator={operator} permissions={permissions} productId={product?.id} version={product?.version} locked={locked} canEdit={canEdit} preview={!!product?.previewMode} />
         <button type="button" className="pm-btn" disabled={busy || quoteBusy} onClick={cancelEditing}>取消</button>
         <button type="button" className="pm-btn pm-btn-primary" disabled={!canEdit || busy || loading || (!productDirty && !!product)} onClick={() => void save()}><Save size={14} />{busy ? '处理中…' : '保存产品资料'}</button></>}
       </div>

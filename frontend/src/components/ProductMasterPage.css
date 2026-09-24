@@ -335,7 +335,7 @@
 }
 @media (max-width: 620px) {
   .pm-bar { flex-wrap: wrap; padding: 10px 16px; }
-  .pm-bar-actions { width: 100%; justify-content: flex-end; }
+  .pm-bar-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
   .pm-notice, .pm-foot { padding-left: 16px; padding-right: 16px; }
   .pm-customer { flex-wrap: wrap; }
   .pm-modal { padding: 12px; }
