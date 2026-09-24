@@ -94,7 +94,7 @@ window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
   release-playbook 执行 `up -d --no-deps frontend`，回到
   `starrc-frontend:20260924-d12494a`。
 
-## 产品编辑 Debug 下拉（2026-09-25，本地实现）
+## 产品编辑 Debug 下拉（2026-09-25，`412cfa4`）
 
 版本旁新增 Debug 按钮，展开显示登录会话的账号、用户名、传入权限集，
 产品接口返回的查看/编辑/审核/价格/同步权限，以及产品 UUID、Web 版本和锁定状态。
@@ -104,4 +104,18 @@ window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
 面板只用于诊断，不参与授权；不显示 token、签名或完整 URL。
 
 本地验证：前端构建通过；模拟产品接口下检查 1068 / 1440 / 390px 与亮暗主题，
-页面及下拉没有水平溢出，Escape 可关闭并返回按钮焦点。尚未部署。
+页面及下拉没有水平溢出，Escape 可关闭并返回按钮焦点。
+
+### 标准镜像发布
+
+- 代码提交 `412cfa4` 已推送 `origin/main`，仅前端和文档改动，无数据库迁移或
+  FileMaker 布局变更。
+- 镜像 `starrc-frontend:20260925-412cfa4` 继承 `starrc-frontend:20260924-4ad9fdd`。
+- frontend 容器 `7f9c518d9bb9` → `05b871dad599`；backend `a4fd3392dca5`、
+  postgres `f196c32c514b` 保持不变。
+- 前端 tsc + vite 构建通过；内外网健康检查均 `ok: true`。公网 `index.html` 与
+  本地构建 SHA-256 一致：`cc8a0eecd1953347ac786a3ef3d9747be9aa4fe7756514ebf67f5efca4eb2201`。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260925-412cfa4/`。
+- 回滚：恢复该目录的 `backup/previous-release.yml` 到当前 Compose 目录，按
+  release-playbook 执行 `up -d --no-deps frontend`，回到
+  `starrc-frontend:20260924-4ad9fdd`。

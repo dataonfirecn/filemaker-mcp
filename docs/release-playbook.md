@@ -214,7 +214,21 @@ EOF
   `20260924-dms-web-catalog-v2`（未改动）。
 - 容器 ID：frontend `1cd629fc5a3c` → `93efe14a387a`；backend `8fb64e9e6055`、
   postgres `f196c32c514b` 保持不变。
-- 验证：前端 tsc + vite 通过；内网 + 公网 `healthz` 均 `ok: true`；`index.html` 与两个入口
-  JS 的 SHA-256 与本地构建逐字节一致。
+- 验证：前端 tsc + vite 通过；内网 + 公网 `healthz` 均 `ok: true`；`index.html`
+  SHA-256 与本地构建一致（`cc8a0eec…`）。
 - 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-cf8034c/`。
+- 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps frontend`。
+
+## 上线记录（2026-09-25，`412cfa4`，仅前端）
+
+- 范围：产品编辑页 Debug 下拉（`ProductDebug` 新组件 + `ProductMasterPage` 接入
+  `operator` 会话信息）。提交 `412cfa4` 已推送 `origin/main`。细节见
+  `docs/product-master-filemaker-entry.md`「产品编辑 Debug 下拉」一节。
+- 镜像：`starrc-frontend:20260925-412cfa4`（继承 `20260924-4ad9fdd`）；backend 继续
+  `20260924-98afc25`（未改动）。
+- 容器 ID：frontend `7f9c518d9bb9` → `05b871dad599`；backend `a4fd3392dca5`、
+  postgres `f196c32c514b` 保持不变。
+- 验证：前端 tsc + vite 通过；内网 + 公网 `healthz` 均 `ok: true`；`index.html`
+  SHA-256 与本地构建一致（`cc8a0eec…`）。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260925-412cfa4/`。
 - 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps frontend`。
