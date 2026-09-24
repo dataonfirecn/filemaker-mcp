@@ -204,3 +204,17 @@ EOF
   （见该文档「回退」一节）。
 - 过程注记：首次部署 SSH 会话在 `compose up` 中途超时，frontend 停在「Created」；
   重跑同一条幂等 `up -d` 恢复。第 4 步已补充超时/重跑注意事项。
+
+## 上线记录（2026-09-24，`cf8034c`，仅前端）
+
+- 范围：导航首页「最近运行」趋势图（recharts 堆叠柱状图 `ReportTrendChart`）+ 移除首页
+  「浏览器登录工作台」导航块 + 顶栏用户菜单 / 侧栏设计 token 清理。提交 `cf8034c` 已推送
+  `origin/main`。细节见 `docs/dashboard-report-trend-release-20260924.md`。
+- 镜像：`starrc-frontend:20260924-cf8034c`（继承 `20260924-fc12b6f`）；backend 继续
+  `20260924-dms-web-catalog-v2`（未改动）。
+- 容器 ID：frontend `1cd629fc5a3c` → `93efe14a387a`；backend `8fb64e9e6055`、
+  postgres `f196c32c514b` 保持不变。
+- 验证：前端 tsc + vite 通过；内网 + 公网 `healthz` 均 `ok: true`；`index.html` 与两个入口
+  JS 的 SHA-256 与本地构建逐字节一致。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-cf8034c/`。
+- 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps frontend`。
