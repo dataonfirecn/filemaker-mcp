@@ -99,3 +99,23 @@ EOF
 - 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps backend`
   （回到 `20260924-12aff38`，回写开关仍为 true；要完全关闭回写需把
   `PRODUCT_MASTER_WRITE_ENABLED` 改回 false 再重建）。
+
+## UUID 大小写规范化（2026-09-24，`b2769de`，仅后端）
+
+- 修复：`ProductStore.get()` 对传入的 ref 做 UUID 规范化（`str(UUID(ref))`，
+  小写）。FileMaker 的 `Get(UUID)` 返回大写，PostgreSQL 的 uuid 文本是小写，
+  之前大写 UUID 永远查不到 `pm_product`；顺带 trim 首尾空白。非 UUID 的
+  ref（如 SKU）原样保留。
+- 测试：新增 `test_get_accepts_the_uppercase_uuid_filemaker_sends`
+  （大写 / 带空白 / SKU / 不存在的大写 UUID 四种情况）。
+- 镜像：`starrc-backend:20260924-b2769de`（继承 `20260924-d148515`）；
+  frontend 继续 `20260924-12aff38`（未改动）。
+- 容器 ID：backend `ea23d252d3a3` → `15d2439bcbfa`（重建）；frontend
+  `02e3944a7267`、postgres `f196c32c514b` 保持不变。
+- 验证：后端 401 过 / 61 跳过（仓库根目录运行）；内网 + 公网 `healthz`
+  均 `ok: true`。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-b2769de/`
+  （`backup/previous-release.yml`、`backup/.env.bak`、`backup/previous-src.tar.gz`、
+  `build/`、`release.yml`、`containers-before.txt`、`containers.txt`、`health.json`）。
+- 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps backend`
+  （回到 `starrc-backend:20260924-d148515`）
