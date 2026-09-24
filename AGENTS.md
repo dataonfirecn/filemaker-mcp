@@ -23,3 +23,8 @@
 - 不要参考或复制 `frontend/src/components/.pm-backup-*` 等备份目录中的代码。
 
 需要规则里没有的新 token 或新组件时，先修改 `docs/ui-design-rules.md`，再写代码。
+
+## 发布上线：推送 GitHub 并部署到服务器
+
+用户说「推送」「部署」「上线」「发布到生产」一类的话时，**先完整阅读**
+`docs/release-playbook.md`，按里面的步骤一次执行完，不要逐步向用户确认。
