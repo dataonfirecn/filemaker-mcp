@@ -37,3 +37,33 @@ cd /opt/starrc-filemaker/current/deploy/starrc
 cp /opt/starrc-filemaker/releases/20260924-c4245f6/backup/previous-release.yml product-master.release.yml
 docker compose --env-file ../../.env -p starrc-filemaker -f docker-compose.yml -f product-master.release.yml up -d --no-deps --no-build frontend
 ```
+
+## 网格、成本问题与计量行改进（2026-09-24，`0eaa74d`）
+
+在只读版式基础上继续优化字段网格、成本计算问题与计量行（提交 `0eaa74d`，3 个文件）：
+
+- 字段网格轨道加上限 `auto-fill minmax(min(100%, 176px), 208px)` 并 `justify-content: start`：更宽的容器增加列数而不是拉宽字段；名称／报价备注／标识／客户块不再整行，改为按容器宽度占 2 轨（≥420px）或 3 轨（≥640px，标识为 2 轨）。
+- 「报价信息 · 库存信息」分栏堆叠阈值 860px → 960px。
+- 只读成本计算问题改为内联在对应值内：`.pm-val-issue` 显示问题首句、省略号截断、title 带全文，值下划线按 `color-mix` 染淡色危险线；红色错误行仅在可写模式保留。
+- 计量组改为 `inline-size` 容器：三个数字始终一行（`.pm-measure-cells` 包裹），派生 CBM 在 ≤360px 容器内换到下一行，≤300px 收紧间距，数值 `nowrap` 不断行。
+- 成本区段：「计算于 …」从段落下移入区段头注（`.pm-band-note`）；数字列标签右对齐到数字边缘。
+
+## 标准镜像发布（2026-09-24，`0eaa74d`）
+
+仅发布前端镜像 `starrc-frontend:20260924-0eaa74d`，继承运行中的 `starrc-frontend:20260924-c4245f6`（`COPY dist/` 合并进 `/usr/share/nginx/html/`，保留 Nginx 配置与旧版本静态资源）。后端保持 `starrc-backend:20260923-f8e6fc1` 不变。
+
+发布前复核：`npm --prefix frontend run build`（tsc + vite）通过；新增 CSS 仅使用 `var(--pm-*)` token（含 `color-mix`），无 hex / `!important` / 新增变量，字号 ≥12px，字重 400/500/600，符合 `docs/ui-design-rules.md`。
+
+容器变化：frontend `c6c2b478df38` → `bf07a84053cf`；backend（`5dc3b3d24e16`）与 postgres（`f196c32c514b`）保持不变。
+
+发布后验证：内网 `http://127.0.0.1:18001/healthz` 与公网 `https://starrc.dataonfire.cn/healthz` 均 `ok: true`。公网 `index.html` 与本地构建逐字节一致（SHA-256 `7f02e261cb928194d4a57bb4cada91e342420d89a34ddd9677348b52ae19995a`）；入口 `assets/index-6GupEEmr.js` SHA-256 `c74d676fada106eac4d0ddcff67b75fe6d9ddbc8ea960db0683f8421746efa76`、`assets/App-Bvu6ohy_.js` SHA-256 `b3fb0bb63d56a0f6f21ce9878b8fc01abc7693c7eaf1d02222b4623722191613`，均与本地构建一致。
+
+服务器发布目录：`/opt/starrc-filemaker/releases/20260924-0eaa74d/`（`backup/previous-release.yml`、`backup/previous-src.tar.gz`（上一发布 `build/` 整包：git `f8e6fc1` 前端源码 + `c4245f6` 已部署 `dist/`）、`build/`（`Dockerfile.frontend` + `dist` + `pm-frontend-src-0eaa74d.tar.gz`）、`release.yml`、`containers.txt`、`health.json`）。
+
+回退：
+
+```bash
+cd /opt/starrc-filemaker/current/deploy/starrc
+cp /opt/starrc-filemaker/releases/20260924-0eaa74d/backup/previous-release.yml product-master.release.yml
+docker compose --env-file ../../.env -p starrc-filemaker -f docker-compose.yml -f product-master.release.yml up -d --no-deps --no-build frontend
+```
