@@ -195,8 +195,11 @@ async def lifespan(app: FastAPI):
         from app.services.product_master.store import ProductStore, source_fingerprint
         from app.services.product_master.worker import ProductWorker
         schema = ProductSchema.load(settings.product_master_schema_path)
+        # 专用账号可回退到通用 FileMaker 凭证（与下面 FinanceFileMakerClient 的取值一致）。
+        pm_user = settings.product_master_username or settings.filemaker_username
+        pm_pass = settings.product_master_password or settings.filemaker_password
         if settings.product_master_write_enabled and (
-            not settings.product_master_username or not settings.product_master_password
+            not pm_user or not pm_pass
             or not schema.document.get("baseTableVerified")
             or not schema.document.get("nativeEditingLocked")
             or not schema.document.get("uuidCreateVerified")
@@ -210,8 +213,8 @@ async def lifespan(app: FastAPI):
         app.state.product_master_schema = schema
         from app.services.product_master.finance import FinanceFileMakerClient
         product_master_filemaker = FinanceFileMakerClient(settings.model_copy(update={
-            "filemaker_username": settings.product_master_username or settings.filemaker_username,
-            "filemaker_password": settings.product_master_password or settings.filemaker_password,
+            "filemaker_username": pm_user,
+            "filemaker_password": pm_pass,
         }))
         product_master_worker = ProductWorker(product_master_store, schema, product_master_filemaker, cos_storage_service, settings)
         product_master_worker.start()
