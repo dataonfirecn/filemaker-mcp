@@ -1,7 +1,7 @@
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Select } from "./ui";
+import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Pagination, Select, usePageSize } from "./ui";
 import DataGrid from "./DataGrid";
 import { dateFilterParams, numberFilterParams } from "./grid-config";
 import { demandStatusTone } from "../utils/statusTone";
@@ -10,6 +10,8 @@ import type { DemandDetail, DemandLine, DemandList, DemandOrder } from "./demand
 import "./DemandOrdersPage.css";
 
 type Props = { apiBase: string; token: string; recordId: string; canView: boolean; onOpen: (id: string) => void; onBack: () => void };
+const PAGE_SIZES = [25, 50, 100] as const;
+const LINE_PAGE_SIZE = 25;
 const value = (text: string | undefined) => text || "—";
 const quantity = (number: number | null) => number == null ? "—" : number.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
 function Status({ text }: { text: string }) { return text ? <Badge tone={demandStatusTone(text)}>{text}</Badge> : <span className="demand-muted">—</span>; }
@@ -18,6 +20,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
   const [draft, setDraft] = useState("");
   const [filters, setFilters] = useState({ q: "", completion: "all" });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePageSize("demand-orders:page-size", PAGE_SIZES, 25);
   const [linePage, setLinePage] = useState(1);
   const [revision, setRevision] = useState(0);
   const [list, setList] = useState<DemandList | null>(null);
@@ -29,15 +32,15 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
     const controller = new AbortController();
     if (!canView || !token) { setLoading(false); return; }
     setLoading(true); setError("");
-    const params = new URLSearchParams({ q: filters.q, completion: filters.completion, page: String(page), page_size: "25" });
-    const path = recordId ? `/api/demand-orders/${encodeURIComponent(recordId)}?page=${linePage}` : `/api/demand-orders?${params}`;
+    const params = new URLSearchParams({ q: filters.q, completion: filters.completion, page: String(page), page_size: String(pageSize) });
+    const path = recordId ? `/api/demand-orders/${encodeURIComponent(recordId)}?page=${linePage}&page_size=${LINE_PAGE_SIZE}` : `/api/demand-orders?${params}`;
     void fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(await response.text()); return response.json(); })
       .then(data => { if (recordId) setDetail(data as DemandDetail); else setList(data as DemandList); })
       .catch(err => { if (!controller.signal.aborted) setError(parseError(err)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [apiBase, token, canView, recordId, filters, page, linePage, revision]);
+  }, [apiBase, token, canView, recordId, filters, page, pageSize, linePage, revision]);
 
   const orderColumns = useMemo<ColDef<DemandOrder>[]>(() => [
     {
@@ -97,9 +100,6 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
   ], []);
 
   const order = detail?.order;
-  const totalPages = recordId ? detail?.totalPages ?? 1 : list?.totalPages ?? 1;
-  const currentPage = recordId ? linePage : page;
-  const changePage = recordId ? setLinePage : setPage;
   if (!canView) return <div className="demand-page"><Alert>当前账号没有查看需求单的权限，请联系管理员开放订单资料权限。</Alert></div>;
   return <div className="demand-page">
     <div className="demand-toolbar">
@@ -121,11 +121,13 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
         ].map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{value(text)}</dd></div>)}</dl>
         {order.notes && <div className="demand-note-section"><h3>采购单注解</h3><p className="demand-notes">{order.notes}</p></div>}
       </Card>
-      <Card><h3>零件需求明细 <span className="demand-muted">{detail.foundCount.toLocaleString()} 条</span></h3>{detail.items.length ? <DataGrid gridKey="demand-order-lines" columns={lineColumns} rows={detail.items} getRowId={r => r.id} loading={loading} csvFileName={`demand-order-${order.id || recordId}-lines`} /> : <EmptyState title="暂无零件明细" description="这张需求单尚未关联零件需求记录。" />}</Card>
+      <Card><h3>零件需求明细 <span className="demand-muted">{detail.foundCount.toLocaleString()} 条</span></h3>{detail.items.length ? <><DataGrid gridKey="demand-order-lines" columns={lineColumns} rows={detail.items} getRowId={r => r.id} loading={loading} csvFileName={`demand-order-${order.id || recordId}-lines`} />
+        <Pagination page={linePage} pageSize={LINE_PAGE_SIZE} totalCount={detail.foundCount} rowCount={detail.items.length} loading={loading} onPageChange={setLinePage} /></> : <EmptyState title="暂无零件明细" description="这张需求单尚未关联零件需求记录。" />}</Card>
     </> : !recordId && list && <Card className="demand-list-card">{list.rows.length ? <>
       <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张需求单 · 按开单日期由新到旧排列</span></div>
       <DataGrid gridKey="demand-orders" columns={orderColumns} rows={list.rows} getRowId={r => r.recordId} loading={loading} csvFileName="demand-orders" onRowDoubleClicked={r => onOpen(r.recordId)} />
+      <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}
+        pageSizeOptions={PAGE_SIZES} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
     </> : <EmptyState title="没有找到需求单" description="试试其他单号或公司名称，或重置筛选条件。" />}</Card>}
-    {!loading && !error && <div className="demand-pagination"><span>第 {currentPage} / {totalPages} 页</span><div className="demand-actions"><Button disabled={currentPage <= 1} onClick={() => changePage(p => p - 1)}><ChevronLeft />上一页</Button><Button disabled={currentPage >= totalPages} onClick={() => changePage(p => p + 1)}>下一页<ChevronRight /></Button></div></div>}
   </div>;
 }

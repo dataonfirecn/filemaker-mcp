@@ -1,13 +1,15 @@
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading } from "./ui";
+import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Pagination, usePageSize } from "./ui";
 import DataGrid from "./DataGrid";
 import { numberFilterParams } from "./grid-config";
 import { orderStatusTone } from "../utils/statusTone";
 import { parseError } from "../utils/error";
 import type { OrderList, OrderListRow } from "./orderList";
 import "./DemandOrdersPage.css";
+
+const PAGE_SIZES = [25, 50, 100] as const;
 
 type Props = {
   apiBase: string; token: string; canView: boolean; canViewPrice: boolean; currency: string;
@@ -37,6 +39,7 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePageSize("orders:page-size", PAGE_SIZES, 25);
   const [revision, setRevision] = useState(0);
   const [list, setList] = useState<OrderList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,14 +52,14 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
     const controller = new AbortController();
     if (!canView || !token) { setLoading(false); return; }
     setLoading(true); setError("");
-    const params = new URLSearchParams({ q: query, page: String(page), page_size: "25" });
+    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
     void fetch(`${apiBase}/api/orders?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(await response.text()); return response.json() as Promise<OrderList>; })
       .then(setList)
       .catch(err => { if (!controller.signal.aborted) setError(parseError(err)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [apiBase, token, canView, query, page, revision]);
+  }, [apiBase, token, canView, query, page, pageSize, revision]);
 
   const columns = useMemo<ColDef<OrderListRow>[]>(() => {
     // 默认只显示常用列；PI 编号、客户订单号、分类、已过天数可在「调整字段」里打开。
@@ -95,7 +98,6 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
   }, [canViewPrice, currency]);
 
   if (!canView) return <div className="demand-page"><Alert>当前账号没有查看订单的权限，请联系管理员开放订单资料权限。</Alert></div>;
-  const totalPages = list?.totalPages ?? 1;
   return <div className="demand-page">
     <div className="demand-toolbar">
       <div className="demand-actions"><span className="demand-muted">全部订单</span></div>
@@ -112,7 +114,8 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
         <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张订单 · 按订单日期由新到旧排列 · 点击订单号查看出货单明细</span></div>
         <DataGrid gridKey="orders" columns={columns} rows={list.rows} getRowId={r => r.recordId || r.internalOrderNo} loading={loading} csvFileName="orders"
           onRowDoubleClicked={r => { if (r.orderId) openRef.current(r.orderId); }} />
+        <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}
+          pageSizeOptions={PAGE_SIZES} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
       </> : <EmptyState title="没有找到订单" description="试试其他单号、客户或概要关键词，或重置搜索条件。" />}</Card>}
-    {!error && list && <div className="demand-pagination"><span>第 {page} / {totalPages} 页</span><div className="demand-actions"><Button disabled={loading || page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft />上一页</Button><Button disabled={loading || page >= totalPages} onClick={() => setPage(p => p + 1)}>下一页<ChevronRight /></Button></div></div>}
   </div>;
 }
