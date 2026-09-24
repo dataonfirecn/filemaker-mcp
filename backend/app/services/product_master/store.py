@@ -147,6 +147,12 @@ class ProductStore:
 
     async def get(self, ref, connection=None):
         c = connection or self.pool
+        # FileMaker 的 Get(UUID) 是大写，PostgreSQL 的 uuid 文本是小写：先规范化，否则大写 UUID 永远查不到。
+        ref = str(ref).strip()
+        try:
+            ref = str(UUID(ref))
+        except ValueError:
+            pass
         rows = await c.fetch('''SELECT * FROM pm_product WHERE source=$1
             AND (id::text=$2 OR fm_record_id=$2 OR fields->>'product_sku'=$2) LIMIT 2''', self.source, str(ref))
         if len(rows) > 1:

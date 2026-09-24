@@ -64,6 +64,15 @@ async def save(store, pid=None, version=0, rid=None, changes=None, assets=None, 
     return await store.save(product_id=pid or uuid4(),expected_version=version,request_id=rid or uuid4(),changes=changes or {'product_sku':'SKU-1'},assets=assets,actor={'account':'alice'},schema=SCHEMA,permissions=permissions or PERMISSIONS,imported=imported)
 
 
+@pytest.mark.asyncio
+async def test_get_accepts_the_uppercase_uuid_filemaker_sends(store):
+    pid = uuid4(); await save(store, pid=pid)
+    assert (await store.get(str(pid).upper()))['id'] == pid
+    assert (await store.get(' ' + str(pid) + ' '))['id'] == pid
+    assert (await store.get('SKU-1'))['id'] == pid
+    assert await store.get(str(uuid4()).upper()) is None
+
+
 def test_schema_protects_identity_calculations_and_price():
     for changes in ({'ID':str(uuid4())},{'stock':1},{'unregistered':'x'},{'price':'NaN'},{'说明书':'url'}):
         with pytest.raises(ProductValidationError): SCHEMA.validate(changes,PERMISSIONS)
