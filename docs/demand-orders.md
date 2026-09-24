@@ -30,3 +30,14 @@ npm run build
 ## 2026-09-23 上线
 
 已随 git `2d13b34` 发布：镜像 `starrc-backend:20260923-2d13b34`、`starrc-frontend:20260923-2d13b34`（同批含侧边栏折叠芯片与 logo/favicon 配色修正 `71fb534`）。发布目录 `/opt/starrc-filemaker/releases/20260923-2d13b34`，前版覆盖配置与源码快照在 `backup/`。发布前 22 项后端测试（需求单、Data API 凭证、OData 客户端）、前端生产构建与 5 组回归检查全部通过。上线后公网 index.html 与 `App-DeycFbzM.js` 和本地构建逐字节一致，内外网 healthz 正常，匿名访问 `/api/demand-orders` 返回 401。
+
+## 2026-09-24 上线（需求单日期列改为日期过滤器，`a762d14`）
+
+仅前端改动：`DemandOrdersPage.tsx` 列表（开单日期、需求期限、完成日期）与明细（需求日期）四列由默认文本过滤器改为 `agDateColumnFilter`；`grid-config.ts` 新增共享 `dateFilterParams`——`comparator`/`isValidDate` 把后端返回的 `YYYY-MM-DD` 字符串（含带时间后缀的）与用户选的日期统一归一化到本地零点按天比较，无法解析的值按无效日期处理（落入空白/非空白逻辑）。
+
+- 范围：仅 `frontend/`，backend/postgres 未重建。提交 `a762d14` 已推送 `origin/main`。
+- 镜像：`starrc-frontend:20260924-a762d14`（增量继承 `20260924-062cb01`，只 `COPY dist`）；backend 仍为 `20260924-062cb01`。
+- 容器 ID：frontend `51334793a0c2` → `e018eb9599c3`；backend `e72b9a0c09e8`、postgres `f196c32c514b` 保持不变。
+- 验证：`tsc + vite` 生产构建通过；比较器逻辑（等于/大于/小于/介于/跨年/空值/非法文本/`Date` 兼容）本地 Node 用例全部通过；内外网 `healthz` 均 `ok: true`；公网 `index.html` SHA-256 `8d66cf9a…` 与本地构建逐字节一致。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-a762d14/`（`backup/`、`build/`、`release.yml`、`containers-before.txt`、`containers.txt`、`health.json`）。
+- 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps frontend`，回到 `starrc-frontend:20260924-062cb01`。
