@@ -136,6 +136,11 @@ async def store_snapshot(c, source, product_id, snapshot):
         source, reference_name(product_id), dumps(snapshot))
 
 
+async def created_in_web(c, source, product_id):
+    """Web 里新建（而不是从 FileMaker 导入）的产品：FileMaker 不可能已有它的售价记录，无需导入快照。"""
+    return await c.fetchval("SELECT actor->>'origin' FROM pm_revision WHERE source=$1 AND product_id=$2 AND version=1", source, product_id) == 'web'
+
+
 async def validate_binding(c, source, product_id, changes, old_fields):
     selected = set(changes) & set(PRICE_FIELDS)
     identity_changed = any(k in changes and changes[k] != old_fields.get(k) for k in ('product_sku', '系統產品編號'))
@@ -145,8 +150,21 @@ async def validate_binding(c, source, product_id, changes, old_fields):
     if identity_changed and snapshot and snapshot.get('price'):
         raise ValueError('产品已有独立售价关联，需先核对关联后再修改产品编号')
     if selected:
+        if not snapshot and old_fields and not await created_in_web(c, source, product_id):
+            raise ValueError('尚未核对该产品的 FileMaker 售价来源，请先同步售价')
         if not snapshot or not snapshot.get('price'):
-            raise ValueError('尚未绑定唯一的 FileMaker 售价记录，请先同步售价')
+            # 已核对过、FileMaker 里确实没有售价记录：允许首次保存时新建，但编号必须存在且不能被其他 Web 产品占用。
+            merged = {**old_fields, **changes}
+            identifiers = {str(merged.get(k) or '').strip() for k in ('product_sku', '系統產品編號')} - {''}
+            if not identifiers:
+                raise ValueError('产品缺少 SKU / 系统编号，无法新建售价记录')
+            for identifier in identifiers:
+                taken = await c.fetchval("SELECT EXISTS(SELECT 1 FROM pm_product WHERE source=$1 AND id<>$2 AND (fields->>'product_sku'=$3 OR fields->>'系統產品編號'=$3))", source, product_id, identifier)
+                if taken:
+                    raise ValueError('产品编号与其他 Web 产品重复，禁止新建售价记录')
+            for name in selected:
+                amount(changes[name])
+            return
         key = str(snapshot['price']['fieldData']['產品編號'])
         duplicates = await c.fetchval("SELECT EXISTS(SELECT 1 FROM pm_product WHERE source=$1 AND id<>$2 AND (fields->>'product_sku'=$3 OR fields->>'系統產品編號'=$3))", source, product_id, key)
         if duplicates:
@@ -155,7 +173,7 @@ async def validate_binding(c, source, product_id, changes, old_fields):
             amount(changes[name])
 
 
-async def sync_prices(fm, c, source, product_id, before, after, steps, checkpoint):
+async def sync_prices(fm, c, source, product_id, before, after, steps, checkpoint, product_record_id=None):
     """CAS + durable in-flight intent: retries verify actual values before acknowledging."""
     from .worker import DriftError
     changed = {name: after[name] for name in PRICE_FIELDS
@@ -163,8 +181,14 @@ async def sync_prices(fm, c, source, product_id, before, after, steps, checkpoin
     if not changed or steps.get('relatedPrices'):
         return
     baseline = await load_snapshot(c, source, product_id)
-    if not baseline or not baseline.get('price'):
-        raise DriftError('售价来源未绑定，停止关联表回写')
+    if not baseline:
+        if not await created_in_web(c, source, product_id):
+            raise DriftError('售价来源未核对，停止关联表回写')
+        # Web 新建的产品：没有导入快照，回写时仍会实时核对 FileMaker 是否已有记录。
+        baseline = {'fields': {}, 'issues': {}, 'price': None, 'productRecordId': str(product_record_id or ''), 'identifiers': []}
+    if not baseline.get('price'):
+        await create_price_record(fm, c, source, product_id, baseline, changed, after, steps, checkpoint, product_record_id)
+        return
     bound = baseline['price']
     key = str(bound['fieldData']['產品編號'])
     if key not in {str(after.get(k) or '') for k in ('product_sku', '系統產品編號')}:
@@ -209,6 +233,71 @@ async def sync_prices(fm, c, source, product_id, before, after, steps, checkpoin
         await store_snapshot(c, source, product_id, baseline)
         steps['relatedPrices'] = True
         steps.pop('relatedPriceIntent', None)
+        await checkpoint()
+
+
+async def create_price_record(fm, c, source, product_id, baseline, changed, after, steps, checkpoint, product_record_id):
+    """首次保存售价：FileMaker「產品售價」还没有该产品的记录时新建一条，并回读、核对关联后才算成功。
+
+    发送前先持久化意图；进程中断后重试会先按编号查找，只有找到内容与意图完全一致的记录才接管，绝不重复新建。"""
+    from .worker import DriftError
+    identifiers = sorted({str(after.get(k) or '').strip() for k in ('product_sku', '系統產品編號')} - {''})
+    if not identifiers:
+        raise DriftError('产品缺少 SKU / 系统编号，无法新建售价记录')
+    key = str(after.get('系統產品編號') or after.get('product_sku') or '').strip()
+    expected = {PRICE_FIELDS[name]: amount(value) for name, value in changed.items() if amount(value) != ''}
+    if not expected:  # 只是清空了本来就不存在的值：没有需要写的内容。
+        steps['relatedPrices'] = True
+        await checkpoint()
+        return
+    metadata = await fm.get_layout_metadata(PRICE_LAYOUT)
+    meta = {f['name']: f for f in metadata['fieldMetaData']}
+    for target in ('產品編號', *expected):
+        field = meta.get(target, {})
+        wanted = 'text' if target == '產品編號' else 'number'
+        if field.get('type') != 'normal' or field.get('result') != wanted or field.get('global') or int(field.get('maxRepeat', 1)) != 1:
+            raise DriftError('售价布局缺少字段或字段定义变化，禁止新建：' + target)
+    intent = steps.get('relatedPriceCreateIntent')
+    wanted_intent = {'key': key, 'fields': expected}
+
+    def matches(row):
+        return str(row['fieldData'].get('產品編號')) == key and all(
+            k in row['fieldData'] and same_amount(row['fieldData'][k], v) for k, v in expected.items())
+    found = await fm.find_records(PRICE_LAYOUT, [{'產品編號': '==' + i} for i in identifiers], limit=3)
+    if found['foundCount'] != len(found['data']) or found['foundCount'] > 1:
+        raise DriftError('产品匹配多条售价记录，需先核对')
+    if found['data']:
+        remote = found['data'][0]
+        if intent != wanted_intent or not matches(remote):
+            raise DriftError('FileMaker 已出现该产品的售价记录，请先核对后再保存')
+    else:
+        steps['relatedPriceCreateIntent'] = wanted_intent
+        await checkpoint()
+        created = await fm.create_record(PRICE_LAYOUT, {'產品編號': key, **expected})
+        record_id = created.get('recordId')
+        if not record_id:
+            raise DriftError('FileMaker 没有返回新售价记录的定位号')
+        checked = await fm.get_record(PRICE_LAYOUT, str(record_id))
+        if len(checked) != 1:
+            raise DriftError('新建售价记录回读不唯一')
+        remote = checked[0]
+    if not matches(remote):
+        raise DriftError('新建售价记录回读结果不一致')
+    if product_record_id:
+        # 关联是否真的把这条记录挂到了本产品上：从原生产品报价布局读回关联字段。
+        rows = await fm.get_record(NATIVE_LAYOUT, str(product_record_id))
+        native = rows[0]['fieldData'] if len(rows) == 1 else {}
+        for target, value in expected.items():
+            related = native.get('產品售價::' + target)
+            if related is None or not same_amount(related, value):
+                raise DriftError('新建的售价记录没有关联到本产品，请核对「產品」与「產品售價」的关联条件；已新建的记录保留待核对')
+    async with c.transaction():
+        baseline['price'] = remote
+        baseline['fields'] = {name: amount(remote['fieldData'].get(field, '')) for name, field in PRICE_FIELDS.items()}
+        baseline['identifiers'] = identifiers
+        await store_snapshot(c, source, product_id, baseline)
+        steps['relatedPrices'] = True
+        steps.pop('relatedPriceCreateIntent', None)
         await checkpoint()
 
 

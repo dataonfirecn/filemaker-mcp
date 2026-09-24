@@ -162,6 +162,15 @@
 .product-master .pm-field-action > button:hover:not(:disabled) { background: var(--pm-brand-soft); border-color: var(--pm-brand-line); }
 .product-master .pm-field-action > button:focus-visible { outline: 2px solid var(--pm-brand); outline-offset: 2px; }
 .product-master .pm-field-action > button:disabled { color: var(--pm-faint); cursor: not-allowed; }
+/* 输入框与右侧按钮连成一个整体：共用边框，只有外侧有圆角。 */
+.product-master .pm-field-join { gap: 0; }
+.product-master .pm-f .pm-field-join > input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.product-master .pm-f .pm-field-join > input:focus { position: relative; z-index: 1; }
+.product-master .pm-field-join > button { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--pm-surface-2); }
+.product-master .pm-field-join > button:hover:not(:disabled) { position: relative; z-index: 1; }
+.product-master .pm-field-join > button:disabled { background: var(--pm-surface-2); }
+.pm-price-gate { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--pm-line); border-radius: var(--pm-r-s); background: var(--pm-surface-2); color: var(--pm-muted); font-size: 12px; line-height: 1.5; }
+.pm-price-gate > svg { flex-shrink: 0; margin-top: 2px; }
 .pm-reviewbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--pm-warn-line); border-radius: var(--pm-r-s); background: var(--pm-warn-soft); color: var(--pm-warn); }
 .pm-reviewbar.is-approved { border-color: var(--pm-brand-line); background: var(--pm-ok-soft); color: var(--pm-ok); }
 .pm-reviewbar > svg { flex-shrink: 0; }

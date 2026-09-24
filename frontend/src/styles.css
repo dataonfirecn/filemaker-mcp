@@ -1198,7 +1198,7 @@ select {
   background: transparent;
   color: var(--ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -1235,7 +1235,7 @@ select {
   color: var(--muted);
   padding: 0 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: .06em;
   white-space: nowrap;
   overflow: hidden;
@@ -1253,7 +1253,7 @@ select {
   padding: 0 6px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1283,7 +1283,7 @@ select {
   background: transparent;
   color: var(--ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -1555,6 +1555,16 @@ select {
   display: grid;
   min-width: 0;
   line-height: 1.2;
+}
+
+.internal-user-caret {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  transition: transform .14s ease;
+}
+
+.internal-user-trigger[aria-expanded="true"] .internal-user-caret {
+  transform: rotate(180deg);
 }
 
 .internal-user-trigger-copy strong,

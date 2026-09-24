@@ -9,6 +9,10 @@ class WebViewerPermissions(BaseModel):
     can_view_price: bool = Field(alias="canViewPrice")
     can_manage_accounts: bool = Field(alias="canManageAccounts")
     can_view_products: bool = Field(alias="canViewProducts")
+    # 缺省为 False 与「未提供该键」时的旧行为一致；这几项以前根本不在模型里，管理页读不到也存不了。
+    can_edit_products: bool = Field(default=False, alias="canEditProducts")
+    can_edit_product_prices: bool = Field(default=False, alias="canEditProductPrices")
+    can_manage_product_sync: bool = Field(default=False, alias="canManageProductSync")
     can_approve_products: bool = Field(default=False, alias="canApproveProducts")
     can_view_orders: bool = Field(alias="canViewOrders")
     can_view_quality: bool = Field(default=False, alias="canViewQuality")

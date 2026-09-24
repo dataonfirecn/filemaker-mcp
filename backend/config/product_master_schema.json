@@ -1,7 +1,7 @@
 {
   "layout": "@products_web_api",
   "baseTableVerified": true,
-  "nativeEditingLocked": false,
+  "nativeEditingLocked": true,
   "fields": [
     {
       "name": "BOM計數",
@@ -3705,7 +3705,7 @@
       "externalSource": "產品售價::RMB售價"
     }
   ],
-  "uuidCreateVerified": false,
+  "uuidCreateVerified": true,
   "baseTableVerification": {
     "date": "2026-09-21",
     "file": "DMS",

@@ -1,0 +1,23 @@
+/* 产品资料下拉选择（ProductSelect）：只读 --pm-* 变量，颜色不写死；弹层挂在 .product-master 下，能读到这些变量。 */
+.product-master .pm-select-trigger:disabled { color: var(--pm-faint); cursor: not-allowed; }
+.product-master .pm-select-trigger:focus-visible { outline: 2px solid var(--pm-brand); outline-offset: 2px; }
+.product-master .pm-select-trigger[aria-expanded="true"] { border-color: var(--pm-brand); box-shadow: 0 0 0 3px var(--pm-brand-soft); }
+.product-master .ps-placeholder { color: var(--pm-faint); }
+.product-master .ps-caret { transition: transform .12s; }
+.product-master .ps-caret.is-open { transform: rotate(180deg); }
+
+.product-master .ps-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; overflow: hidden; background: var(--pm-surface); border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s); box-shadow: var(--shadow-md); }
+.product-master .ps-search { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 0 10px; height: var(--pm-h); border-bottom: 1px solid var(--pm-line-soft); color: var(--pm-muted); }
+.product-master .ps-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--pm-ink); font: 13px/1.4 var(--pm-sans); }
+.product-master .ps-search input:focus { outline: 0; }
+.product-master .ps-search input::placeholder { color: var(--pm-faint); }
+.product-master .ps-list { flex: 1; min-height: 0; margin: 0; padding: 4px; overflow-y: auto; list-style: none; }
+.product-master .ps-list:focus-visible { outline: 0; }
+.product-master .ps-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 6px 8px; border-radius: var(--pm-r-s); color: var(--pm-ink); font: 13px/1.35 var(--pm-sans); cursor: pointer; }
+.product-master .ps-row span { min-width: 0; overflow-wrap: anywhere; }
+.product-master .ps-row[data-active="true"] { background: var(--pm-surface-3); }
+.product-master .ps-row.is-selected { color: var(--pm-brand); font-weight: 500; }
+.product-master .ps-row.is-empty { color: var(--pm-faint); }
+.product-master .ps-row svg { flex-shrink: 0; }
+.product-master .ps-none { padding: 14px 8px; color: var(--pm-muted); font: 12px/1.4 var(--pm-sans); text-align: center; }
+.product-master .ps-foot { flex-shrink: 0; padding: 6px 12px; border-top: 1px solid var(--pm-line-soft); color: var(--pm-faint); font: 12px/1.3 var(--pm-sans); }

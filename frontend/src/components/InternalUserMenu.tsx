@@ -1,4 +1,4 @@
-import { Languages, LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
+import { ChevronDown, Languages, LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ThemeMode } from "../types";
 import { ChineseVariantToggle } from "../i18n/ChineseVariantToggle";
@@ -76,6 +76,7 @@ export default function InternalUserMenu({
           <strong>{user.displayName || user.username}</strong>
           <small>{user.username}</small>
         </span>
+        <ChevronDown className="internal-user-caret" size={14} aria-hidden="true" />
       </button>
 
       {open && (

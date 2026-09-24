@@ -182,6 +182,10 @@ async def finance_detail(snapshot, store, schema, permissions):
         result['financeIssues'] = baseline.get('issues', {}) if baseline else {}
         result['financeImported'] = bool(baseline)
         result['financePriceBound'] = bool(baseline and baseline.get('price'))
+        # 已核对过且 FileMaker「產品售價」确实没有记录：首次保存售价时会新建一条。
+        from app.services.product_master.finance import created_in_web
+        result['financePriceCreatable'] = bool(baseline and not baseline.get('price')) or (
+            not baseline and await created_in_web(store.pool, store.source, snapshot['id']))
     return result
 
 

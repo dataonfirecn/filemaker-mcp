@@ -56,7 +56,8 @@ def canonical(value, result):
     if value in ('',None): return ''
     from datetime import datetime
     from decimal import Decimal
-    if result=='number': return str(Decimal(str(value)).normalize())
+    # 用定点写法：normalize() 会把 500 变成 5E+2 再发给 FileMaker。
+    if result=='number': return format(Decimal(str(value)).normalize(),'f')
     formats={'date':['%Y-%m-%d','%m/%d/%Y'], 'timestamp':['%Y-%m-%dT%H:%M:%S','%Y-%m-%d %H:%M:%S','%m/%d/%Y %H:%M:%S'],'time':['%H:%M','%H:%M:%S']}
     if result in formats:
         for pattern in formats[result]:
@@ -264,7 +265,7 @@ class ProductWorker:
         if not fields_match(checked['fieldData'],writable,self.schema):
             raise DriftError('FileMaker 字段回读不一致')
         from .finance import sync_prices
-        await sync_prices(self.fm, c, source, pid, revision['before_data'].get('fields', {}), desired['fields'], steps, checkpoint)
+        await sync_prices(self.fm, c, source, pid, revision['before_data'].get('fields', {}), desired['fields'], steps, checkpoint, product_record_id=record_id)
         async with c.transaction():
             await c.execute('UPDATE pm_product SET fm_record_id=$3,fm_mod_id=$4,fm_version=$5 WHERE source=$1 AND id=$2', source, pid, record_id, str(checked['modId']), version)
             await c.execute("UPDATE pm_job SET status='synced',error=NULL WHERE source=$1 AND product_id=$2 AND version=$3", source, pid, version)

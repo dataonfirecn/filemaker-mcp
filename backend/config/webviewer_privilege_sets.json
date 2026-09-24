@@ -204,6 +204,11 @@
       "priceEvidence": "Built-in full access."
     },
     {
+      "name": "[Full Access]",
+      "template": "fullAdmin",
+      "priceEvidence": "Built-in full access (English-language FileMaker name)."
+    },
+    {
       "name": "[只读访问权限]",
       "template": "standardRead",
       "priceEvidence": "Only Guest uses this set and Guest is disabled; price stays denied."

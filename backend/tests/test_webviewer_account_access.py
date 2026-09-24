@@ -308,8 +308,11 @@ async def test_audited_filemaker_privilege_sets_seed_conservative_price_policy()
         item["name"]: item for item in await store.list_privilege_sets()
     }
 
-    assert len(privilege_sets) == 39
+    assert len(privilege_sets) == 40
     assert privilege_sets["[完全访问权限]"]["permissions"]["canManageAccounts"]
+    for name in ("[Full Access]", "Master"):
+        assert privilege_sets[name]["permissions"]["canViewPrice"]
+        assert privilege_sets[name]["permissions"]["canEditProductPrices"]
     assert privilege_sets["業務部"]["permissions"]["canViewPrice"]
     assert privilege_sets["貿易產品入資料"]["permissions"]["canViewPrice"]
     assert privilege_sets["TW財務總監 访问权限"]["permissions"]["canViewPrice"]

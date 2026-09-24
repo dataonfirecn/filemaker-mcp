@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Download, X, CircleCheck, AlertCircle, Plus, Layers, Camera, History, RefreshCw } from 'lucide-react';
+import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Download, X, CircleCheck, AlertCircle, Plus, Layers, Camera, History, RefreshCw, Coins } from 'lucide-react';
 import { productPhotoFields, specFieldOrder, packagingFieldOrder, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups, derivedValue } from './productMasterLayout';
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
+import ProductSelect from './ProductSelect';
 import { Alert } from './ui';
 import { formatStamp } from '../utils/timestamp';
 import { PhotoSection, SpecSection, PackagingSection, MAIN_PHOTO_FIELD } from './ProductAssetSections';
@@ -20,7 +21,7 @@ function unsupportedPreviewReason(asset: Asset, compact = false): string {
   if (compact) return format ? `${format} 格式暂不支持预览` : '此格式暂不支持预览';
   return format ? `当前页面不支持 ${format} 格式预览，请下载原文件查看。` : '当前页面不支持此文件格式预览，请下载原文件查看。';
 }
-type Product = { financeIssues?: Record<string, string>; financeImported?: boolean; financePriceBound?: boolean; previewMode?: boolean; pendingAssetFields?: string[]; assetImportError?: string; id: string; version: number; fields: Record<string, unknown>; assets: Asset[] };
+type Product = { financeIssues?: Record<string, string>; financeImported?: boolean; financePriceBound?: boolean; financePriceCreatable?: boolean; previewMode?: boolean; pendingAssetFields?: string[]; assetImportError?: string; id: string; version: number; fields: Record<string, unknown>; assets: Asset[] };
 type Costs = { fields: Record<string, string>; issues: Record<string, string>; calculatedAt: string };
 const costFields = new Set(['RMB成本', '美金成本']);
 type Revision = { version: number; created_at: string; actor: { account: string; name: string; origin: string }; before_data: Product; after_data: Product };
@@ -28,6 +29,7 @@ type Status = { writeEnabled?: boolean; drift?: Array<{ id: number; observed: un
 
 const TAB_ICONS: Record<string, ReactNode> = {
   '基础资料': <Layers size={14} />,
+  '报价信息': <Coins size={14} />,
   '產品照片': <Camera size={14} />,
   '产品规格书': <FileText size={14} />,
   '生產注意事項': <FileText size={14} />,
@@ -270,9 +272,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const heroAsset = assets.find(a => a.field === 'image_main');
   const canViewQuotes = !!permissions.canManageAccounts && !!permissions.canViewPrice;
   const quoteTabs = product && canViewQuotes ? ['客户群报价'] : [];
-  const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
+  // FileMaker 编辑页：报价信息（含 MOQ）单独一个栏目；只读浏览页保持原来的合并布局。
+  const tabs = readOnly ? ['基础资料', ...nativeTabs, ...quoteTabs] : ['基础资料', '报价信息', ...nativeTabs, ...quoteTabs, '修改历史', '同步状态'];
   const find = (name: string) => schema.find(f => f.name === name && f.result !== 'container');
-  const writableField = (f: Field) => f.name !== '審核' && !(f.externalSource && !product?.previewMode && !product?.financePriceBound) && !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
+  const writableField = (f: Field) => f.name !== '審核' && !(f.externalSource && !!product && !product.previewMode && !product.financePriceBound && !product.financePriceCreatable) && !readOnly && f.writable && f.name !== 'ID' && (product?.previewMode || (canEdit && permissions[f.writePermission ?? 'canEditProducts']));
   const label = (name: string) => fieldLabels[name] ?? name;
 
   function readOnlyTag(f: Field) {
@@ -307,7 +310,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (presentation === 'meta') return <output className="pm-val" key={i} title={v}>{v || '—'}</output>;
     if (control?.searchable) return <button type="button" key={i} className="pm-picker" disabled={!writable || busy || loading} aria-label={`选择 ${label(f.name)}`} onClick={() => openPicker(f.name, i + 1)}><span>{v || '请选择'}</span><Search size={14} /></button>;
     if (control?.type === 'checkBox') return <div className="pm-checks" key={i}>{control.options.map(o => <label key={o.value}><input type="checkbox" aria-label={`${label(f.name)} ${i + 1}`} disabled={!writable || busy || loading} checked={v.split('\n').includes(o.value)} onChange={e => change(e.target.checked ? [...v.split('\n').filter(Boolean), o.value].join('\n') : v.split('\n').filter(x => x !== o.value).join('\n'))} />{o.label === '1' ? '是' : o.label}</label>)}</div>;
-    if (control && ['popupList', 'popupMenu', 'radioButtons'].includes(control.type)) return <select key={i} className={cls} aria-label={`${f.name} ${i + 1}`} disabled={!writable || busy || loading} value={v} onChange={e => change(e.target.value)}><option value="">请选择</option>{v && !control.options.some(o => o.value === v) && <option value={v}>{v}</option>}{control.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
+    if (control && ['popupList', 'popupMenu', 'radioButtons'].includes(control.type)) return <ProductSelect key={i} className={cls} ariaLabel={`${f.name} ${i + 1}`} disabled={!writable || busy || loading} value={v} options={control.options} onChange={change} />;
     if (control?.type === 'calendar' || (!control && f.result === 'date')) {
       return <input key={i} className={cls} {...props} type="date" value={dateInputValue(v)} />;
     }
@@ -335,10 +338,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
         {!readOnly && f.required && <em className="pm-req"> *</em>}
         {!readOnly && !writable && f.name !== '審核' && !(locked && f.writable) && <span className="pm-chip pm-chip-calc">{readOnlyTag(f)}</span>}
       </span>
-      {!readOnly && f.name === '系統產品編號' ? <div className="pm-field-action">
+      {!readOnly && f.name === '系統產品編號' ? <div className="pm-field-action pm-field-join">
         {inputFor(f, 0)}
-        <button type="button" disabled={!writable || busy || loading || !value('product_sku').trim()}
-          title={value('product_sku').trim() ? '将 SKU 复制到系统编号' : '请先填写 SKU'}
+        <button type="button" disabled={!writable || busy || loading || !value('product_sku').trim() || value('系統產品編號') === value('product_sku')}
+          title={!value('product_sku').trim() ? '请先填写 SKU' : value('系統產品編號') === value('product_sku') ? '系统编号已与 SKU 相同' : '将 SKU 复制到系统编号'}
           onClick={() => setFields(previous => {
             const sku = String(previous.product_sku ?? '');
             return sku.trim() ? { ...previous, 系統產品編號: sku } : previous;
@@ -414,7 +417,14 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     };
     const total = names.map(find).filter(Boolean).length;
     if (!total) return null;
+    // 价格/成本字段要「查看价格」（填写另需「编辑产品价格」）；没有权限时字段整个不出现，要明说原因，免得以为漏了。
+    const priceNote = !readOnly && title === '报价信息' && !product?.previewMode && Object.keys(permissions).length > 0
+      ? !permissions.canViewPrice ? '当前账号没有「查看价格」权限，价格与成本字段已隐藏。请管理员在「账号管理」里为该账号或权限集勾选「查看价格」「编辑产品价格」。'
+        : !permissions.canEditProductPrices ? '当前账号没有「编辑产品价格」权限，价格与成本字段只能查看。'
+        : product?.financePriceCreatable && !locked ? 'FileMaker「產品售價」里还没有该产品的售价记录；填写 EX-Price / 台币出厂价 / RMB出厂价并保存后，会自动新建一条。' : ''
+      : '';
     return <>
+      {priceNote && <div className="pm-price-gate" role="note"><LockKeyhole size={14} aria-hidden="true" /><span>{priceNote}</span></div>}
       {!!rest.length && <div className="pm-grid">{rest.map(fieldControl)}</div>}
       {!!measures.length && <div className="pm-measures">{measures.map((g, i) => measureBlock(g, `${title}:${i}`))}</div>}
       {bandBlocks.map(band => bandView(band.title, band.fs))}
@@ -598,7 +608,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
         })}
         {tab === '基础资料' && <>
           <div className="pm-rail-label">本页分区</div>
-          {Object.keys(basicSections).map(section => <button type="button" key={section} className="pm-rail-anchor" onClick={() => document.getElementById(`pm-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          {Object.keys(basicSections).filter(section => readOnly || section !== '报价信息').map(section => <button type="button" key={section} className="pm-rail-anchor" onClick={() => document.getElementById(`pm-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
             <span>{section}</span>
           </button>)}
         </>}
@@ -617,7 +627,9 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
             for (const [title, names] of Object.entries(basicSections)) {
               if (title === '报价信息' || title === '库存信息') continue;
               nodes.push(formCard(title, names));
-              if (title === '产品信息') nodes.push(splitCard('报价与库存', { title: '报价信息', names: basicSections['报价信息'] }, { title: '库存信息', names: basicSections['库存信息'] }));
+              if (title === '产品信息') nodes.push(readOnly
+                ? splitCard('报价与库存', { title: '报价信息', names: basicSections['报价信息'] }, { title: '库存信息', names: basicSections['库存信息'] })
+                : formCard('库存信息', basicSections['库存信息']));
             }
             return nodes;
           })()}
@@ -626,6 +638,8 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
             {schema.some(f => f.name === 'ID') && <div className="pm-meta-item"><span>UUID</span><code>{value('ID')}</code></div>}
           </section>
         </>}
+
+        {tab === '报价信息' && !readOnly && formCard('报价信息', basicSections['报价信息'])}
 
         {nativeTabs.includes(tab as typeof nativeTabs[number]) && <>
           {tab === '產品照片' && <PhotoSection title={tab} fields={photoFields} env={assetEnv}
