@@ -2,7 +2,7 @@ import asyncio
 from collections import OrderedDict
 from io import BytesIO
 from math import ceil
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlencode, urlparse
 
 import httpx
@@ -57,6 +57,22 @@ THUMBNAIL_CACHE_CONTROL = f"private, max-age={TICKET_TTL_SECONDS}, immutable"
 THUMBNAIL_CACHE_ENTRIES = 512
 _thumbnail_cache: "OrderedDict[tuple[str, str], bytes]" = OrderedDict()
 
+# 「最近创建」排序键：优先取 FileMaker 建立日期（文本，兼容 MM/DD/YYYY HH:MM:SS 与 ISO 两种写法，
+# 形状不符的一律当作没有；按上海时间理解）；没有时，仅对 Web 端新建的产品取第一版保存时间。导入产品的第一版是
+# 导入时间而不是真实建立时间，所以不能拿来当兜底。没有任何建立时间的产品排在最后。
+RECENT_CREATED_ORDER = r"""
+ORDER BY COALESCE(
+  CASE
+    WHEN fields->>'created_at' ~ '^(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/[0-9]{4} [0-9]{1,2}:[0-9]{2}:[0-9]{2}$'
+      THEN to_timestamp(fields->>'created_at', 'MM/DD/YYYY HH24:MI:SS')::timestamp AT TIME ZONE 'Asia/Shanghai'
+    WHEN fields->>'created_at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ][0-9]{2}:[0-9]{2}:[0-9]{2}'
+      THEN to_timestamp(substr(replace(fields->>'created_at', 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')::timestamp AT TIME ZONE 'Asia/Shanghai'
+  END,
+  (SELECT r.created_at FROM pm_revision r
+    WHERE r.source = pm_product.source AND r.product_id = pm_product.id
+      AND r.version = 1 AND r.actor->>'origin' = 'web')
+) DESC NULLS LAST, id"""
+
 SEARCH_FIELDS = [
     "product_sku",
     "系統產品編號",
@@ -78,6 +94,7 @@ async def list_business_products(
         ge=1,
         le=MAX_PRODUCT_PAGE_SIZE,
     ),
+    sort: Literal["default", "recent"] = "default",
     category: str = Query(default="", max_length=80),
     model: str = Query(default="", max_length=80),
     audit: str = Query(default="", max_length=80),
@@ -103,16 +120,22 @@ async def list_business_products(
         import json
         predicate = "source=$1 AND ($2='' OR strpos(lower(concat_ws(' ',fields->>'product_sku',fields->>'product_name',fields->>'產品名稱_中文')),lower($2))>0) AND fields @> $3::jsonb"
         count = await store.pool.fetchval('SELECT count(*) FROM pm_product WHERE '+predicate,store.source,normalized_query,json.dumps(filter_data))
-        snapshots = [unpack(r) for r in await store.pool.fetch('SELECT * FROM pm_product WHERE '+predicate+' ORDER BY id LIMIT $4 OFFSET $5',store.source,normalized_query,json.dumps(filter_data),page_size,offset-1)]
+        snapshots = [unpack(r) for r in await store.pool.fetch('SELECT * FROM pm_product WHERE '+predicate+' '+(RECENT_CREATED_ORDER if sort=='recent' else 'ORDER BY id')+' LIMIT $4 OFFSET $5',store.source,normalized_query,json.dumps(filter_data),page_size,offset-1)]
         records = [_master_record(await store.hydrate(r,store.pool), request, operator) for r in snapshots]
         result = {"data":records,"foundCount":count,"returnedCount":len(records)}
     else:
-        result = await filemaker.find_records(
-            PRODUCT_API_LAYOUT,
-            query=query,
-            limit=page_size,
-            offset=offset,
-        )
+        recent_sort = [{"fieldName": "created_at", "sortOrder": "descend"}] if sort == "recent" else None
+        try:
+            result = await filemaker.find_records(
+                PRODUCT_API_LAYOUT, query=query, limit=page_size, offset=offset, sort=recent_sort,
+            )
+        except FileMakerAPIError:
+            if not recent_sort:
+                raise
+            # 布局没有暴露建立日期字段时，退回默认顺序，不让列表整体失败。
+            result = await filemaker.find_records(
+                PRODUCT_API_LAYOUT, query=query, limit=page_size, offset=offset,
+            )
     found_count = int(result["foundCount"] or 0)
     total_pages = max(1, ceil(found_count / page_size))
     thumb_secret = _thumbnail_secret(request)
@@ -129,6 +152,7 @@ async def list_business_products(
             "q": normalized_query,
             "page": page,
             "pageSize": page_size,
+            "sort": sort,
             "filters": filters.model_dump(),
         },
         response_payload={
@@ -549,6 +573,7 @@ def _product_row(
         orderQty=fields.get("下單數量"),
         soldTotal=fields.get("產品庫存::出庫數量總合"),
         bomDate=_text(fields.get("產品 BOM::日期")),
+        createdAt=_text(fields.get("created_at")),
         vendor=_text(fields.get("產品 BOM::廠商")),
         client=_text(fields.get("Client")),
         customer=_text(fields.get("客戶_Privilege::客戶公司簡稱")),

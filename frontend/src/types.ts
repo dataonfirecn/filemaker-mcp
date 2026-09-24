@@ -425,6 +425,7 @@ export type BusinessProductRow = {
   orderQty: number | string | null;
   soldTotal?: number | string | null;
   bomDate: string;
+  createdAt: string;
   vendor: string;
   client: string;
   customer: string;

@@ -829,3 +829,45 @@ def test_missing_renamed_container_cannot_be_reported_as_empty():
     metadata['fieldMetaData']=[f for f in metadata['fieldMetaData'] if f['name']!='image_main']
     with pytest.raises(ProductValidationError,match='image_main'):
         MAIN_SCHEMA.validate_layout(metadata)
+
+
+def _catalog_request(store=None):
+    state = SimpleNamespace(settings=SimpleNamespace(product_master_web_only=False), product_master_store=store)
+    return SimpleNamespace(app=SimpleNamespace(state=state))
+
+
+class _Audit:
+    async def record(self, **kwargs): pass
+
+
+@pytest.mark.asyncio
+async def test_business_catalog_recent_sort_switches_web_store_order_by():
+    from app.api.business_products import list_business_products, RECENT_CREATED_ORDER
+    sql = []
+    class Pool:
+        async def fetchval(self, query, *args): return 0
+        async def fetch(self, query, *args): sql.append(query); return []
+    store = SimpleNamespace(pool=Pool(), source='s')
+    common = dict(q='', page=1, page_size=20, category='', model='', audit='', client_name='', filemaker=None,
+                  audit_log=_Audit(), operator=SimpleNamespace(permissions={}), request=_catalog_request(store))
+    await list_business_products(**common)
+    await list_business_products(sort='recent', **common)
+    assert 'ORDER BY id LIMIT' in sql[0] and 'created_at' not in sql[0]
+    assert RECENT_CREATED_ORDER in sql[1] and sql[1].rstrip().endswith('LIMIT $4 OFFSET $5')
+
+
+@pytest.mark.asyncio
+async def test_business_catalog_recent_sort_on_filemaker_falls_back_without_created_field():
+    from app.api.business_products import list_business_products
+    from app.services.filemaker_client import FileMakerAPIError
+    calls = []
+    class FM:
+        async def find_records(self, layout, query=None, limit=100, offset=1, sort=None):
+            calls.append(sort)
+            if sort: raise FileMakerAPIError('no such field', 500, {})
+            return {'data': [], 'foundCount': 0, 'returnedCount': 0}
+    common = dict(q='', page=1, page_size=20, category='', model='', audit='', client_name='', filemaker=FM(),
+                  audit_log=_Audit(), operator=SimpleNamespace(permissions={}), request=_catalog_request())
+    await list_business_products(**common)
+    await list_business_products(sort='recent', **common)
+    assert calls == [None, [{'fieldName': 'created_at', 'sortOrder': 'descend'}], None]

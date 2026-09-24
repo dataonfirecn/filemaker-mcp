@@ -43,6 +43,7 @@ class BusinessProductRow(BaseModel):
     order_qty: float | int | str | None = Field(default=None, alias="orderQty")
     sold_total: float | int | str | None = Field(default=None, alias="soldTotal")
     bom_date: str = Field(default="", alias="bomDate")
+    created_at: str = Field(default="", alias="createdAt")
     vendor: str = ""
     client: str = ""
     customer: str = ""

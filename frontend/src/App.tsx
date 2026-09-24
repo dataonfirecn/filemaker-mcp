@@ -344,6 +344,7 @@ export default function App() {
   const [businessProductFilters, setBusinessProductFilters] = useState<BusinessProductFilters>(
     emptyBusinessProductFilters
   );
+  const [businessProductSort, setBusinessProductSort] = useState<"default" | "recent">("default");
   const [businessProductsLoading, setBusinessProductsLoading] = useState(false);
   const [businessProductPageSize, setBusinessProductPageSize] = useState(readStoredPageSize);
   const [businessProductDetail, setBusinessProductDetail] = useState<BusinessProductRow | null>(null);
@@ -527,7 +528,8 @@ export default function App() {
     activeSession = session,
     query = businessProductQuery,
     filters = businessProductFilters,
-    pageSize = businessProductPageSize
+    pageSize = businessProductPageSize,
+    sort = businessProductSort
   ) {
     if (!activeSession) return false;
     setBusinessProductsLoading(true);
@@ -540,6 +542,7 @@ export default function App() {
       });
       const normalizedQuery = query.trim();
       if (normalizedQuery) params.set("q", normalizedQuery);
+      if (sort !== "default") params.set("sort", sort);
       (Object.entries(filters) as [keyof BusinessProductFilters, string][]).forEach(([key, value]) => {
         const normalized = value.trim();
         if (normalized) params.set(key, normalized);
@@ -551,6 +554,7 @@ export default function App() {
       setBusinessProductsData(data);
       setBusinessProductQuery(data.query);
       setBusinessProductFilters(data.filters);
+      setBusinessProductSort(sort);
       return true;
     } catch (err) {
       setError(parseError(err));
@@ -1153,6 +1157,10 @@ export default function App() {
 
   function handleBusinessProductsSearch(query: string, filters: BusinessProductFilters) {
     return loadBusinessProducts(1, session, query, filters);
+  }
+
+  function handleBusinessProductsSortChange(sort: "default" | "recent") {
+    return loadBusinessProducts(1, session, businessProductQuery, businessProductFilters, businessProductPageSize, sort);
   }
 
   async function handleBusinessProductPageSizeChange(nextPageSize: number) {
@@ -2149,9 +2157,11 @@ export default function App() {
                 data={businessProductsData}
                 query={businessProductQuery}
                 filters={businessProductFilters}
+                sort={businessProductSort}
                 loading={businessProductsLoading}
                 pageSizeOptions={BUSINESS_PRODUCT_PAGE_SIZES}
                 onSearch={handleBusinessProductsSearch}
+                onSortChange={handleBusinessProductsSortChange}
                 onPageChange={handleBusinessProductsPageChange}
                 onPageSizeChange={handleBusinessProductPageSizeChange}
                 onOpenDetail={openBusinessProductDetail}

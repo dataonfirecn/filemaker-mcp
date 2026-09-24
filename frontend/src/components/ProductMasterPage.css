@@ -62,8 +62,6 @@
 .product-master .pm-btn-sm { height: 26px; padding: 0 9px; font-size: 12px; }
 .product-master .pm-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--pm-r-s); background: transparent; color: var(--pm-muted); cursor: pointer; }
 .product-master .pm-icon-btn:hover { background: var(--pm-surface-3); color: var(--pm-ink); }
-.pm-upload { position: relative; overflow: hidden; }
-.pm-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
 .pm-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .pm-chip-ok { background: var(--pm-ok-soft); color: var(--pm-ok); border-color: var(--pm-brand-line); }
@@ -268,43 +266,6 @@
 .pm-meta-item b { font-weight: 500; color: var(--pm-ink-2); }
 .pm-meta-item code { font: 400 11px/1.4 var(--pm-mono); color: var(--pm-ink-2); overflow-wrap: anywhere; }
 
-/* ── photo slots ─────────────────────────────────────────────── */
-.pm-progress { display: flex; align-items: center; gap: 8px; margin-left: auto; font: 400 11px/1 var(--pm-mono); color: var(--pm-muted); }
-.pm-progress .track { width: 74px; height: 5px; border-radius: 3px; background: var(--pm-surface-3); overflow: hidden; }
-.pm-progress .fill { display: block; height: 100%; border-radius: 3px; background: var(--pm-brand); }
-.pm-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
-.pm-slot { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; max-width: 100%; overflow: hidden; border: 1px solid var(--pm-line); border-radius: var(--pm-r-s); background: var(--pm-surface-2); }
-.pm-slot-hero { grid-column: span 2; grid-row: span 2; }
-.pm-slot img { width: 100%; height: 100%; object-fit: cover; align-self: stretch; }
-.pm-slot-placeholder { padding: 24px 6px; font-size: 12px; line-height: 1.4; color: var(--pm-muted); text-align: center; overflow-wrap: anywhere; }
-.pm-slot-badge { position: absolute; top: 5px; left: 5px; z-index: 2; padding: 2px 5px; border-radius: 4px; background: rgba(13, 33, 26, .62); color: #fff; font: 500 10px/1 var(--pm-mono); }
-.pm-slot-hero-tag { position: absolute; top: 5px; left: 34px; z-index: 2; padding: 2px 6px; border-radius: 4px; background: var(--pm-brand); color: #fff; font-size: 12px; font-weight: 600; }
-.pm-slot-tools { position: absolute; inset: auto 0 0 0; z-index: 2; display: flex; gap: 4px; padding: 5px; opacity: 0; background: rgba(13, 33, 26, .55); transition: opacity .14s; }
-.pm-slot:hover .pm-slot-tools, .pm-slot:focus-within .pm-slot-tools { opacity: 1; }
-.product-master .pm-slot-tools button, .product-master .pm-slot-tools .pm-slot-replace { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: 22px; border: 0; border-radius: 4px; background: rgba(255, 255, 255, .92); color: #16231e; font: 600 10.5px/1 var(--pm-sans); cursor: pointer; }
-.product-master .pm-slot-tools button:hover, .product-master .pm-slot-tools .pm-slot-replace:hover { background: #fff; }
-.pm-slot-replace { position: relative; overflow: hidden; }
-.pm-slot-replace input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.pm-slot-empty { flex-direction: column; gap: 3px; border: 1px dashed var(--pm-line-strong); background: transparent; color: var(--pm-faint); cursor: pointer; transition: border-color .12s, color .12s, background .12s; }
-.pm-slot-empty:hover { border-color: var(--pm-brand); background: var(--pm-brand-soft); color: var(--pm-brand); }
-.pm-slot-empty input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.pm-slot-n { font: 500 11px/1 var(--pm-mono); }
-.pm-slot-pending { font-size: 12px; color: var(--pm-warn); }
-.pm-slot.is-drag { border-color: var(--pm-brand); box-shadow: 0 0 0 3px var(--pm-brand-soft); }
-.pm-slots-note { grid-column: 1 / -1; margin-top: 2px; font-size: 12px; color: var(--pm-faint); }
-.pm-slots-note code { font: 400 10.5px/1 var(--pm-mono); }
-
-/* ── document rows ───────────────────────────────────────────── */
-.pm-docs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.pm-doc { display: flex; align-items: center; gap: 11px; padding: 11px; border: 1px dashed var(--pm-line-strong); border-radius: var(--pm-r-s); background: transparent; min-width: 0; }
-.pm-doc.has-file { border-style: solid; border-color: var(--pm-line); background: var(--pm-surface-2); }
-.pm-doc-icon { flex-shrink: 0; display: grid; place-items: center; width: 40px; height: 48px; border: 1px solid var(--pm-line); border-radius: 4px; background: var(--pm-surface); color: var(--pm-faint); }
-.pm-doc.has-file .pm-doc-icon { color: var(--pm-danger); }
-.pm-doc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pm-doc-text b { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.pm-doc-text span { font: 400 10.5px/1.4 var(--pm-mono); color: var(--pm-faint); overflow-wrap: anywhere; }
-.pm-doc-actions { display: flex; flex-wrap: wrap; gap: 5px; }
-
 /* ── panels ──────────────────────────────────────────────────── */
 .pm-related { display: flex; gap: 12px; padding: 13px 15px; margin-bottom: 16px; border: 1px solid var(--pm-line); border-radius: var(--pm-r); background: var(--pm-surface); color: var(--pm-muted); }
 .pm-related svg { flex-shrink: 0; color: var(--pm-brand); }
@@ -354,17 +315,11 @@
   .pm-rail-label, .pm-rail-foot, .pm-rail-anchor { display: none; }
   .product-master .pm-rail-tab { width: auto; flex-shrink: 0; margin: 0; }
   .pm-main { padding: 14px 16px 32px; }
-  .pm-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-@media (max-width: 760px) {
-  .pm-docs { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .pm-bar { flex-wrap: wrap; padding: 10px 16px; }
   .pm-bar-actions { width: 100%; justify-content: flex-end; }
   .pm-notice, .pm-foot { padding-left: 16px; padding-right: 16px; }
-  .pm-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .pm-slot-hero { grid-column: span 3; grid-row: span 3; }
   .pm-customer { flex-wrap: wrap; }
   .pm-modal { padding: 12px; }
 }
@@ -377,4 +332,3 @@
 .pm-browser .pm-rail-label, .pm-browser .pm-rail-foot, .pm-browser .pm-rail-anchor { display: none; }
 .product-master.pm-browser .pm-rail-tab { width: auto; margin: 0; }
 .pm-browser .pm-foot { position: static; border-radius: 0 0 10px 10px; }
-.pm-browser .pm-slot-empty { cursor: default; }

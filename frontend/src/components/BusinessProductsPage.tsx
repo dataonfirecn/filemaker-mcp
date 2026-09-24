@@ -8,6 +8,7 @@ import type {
   SortChangedEvent
 } from "ag-grid-community";
 import {
+  ArrowDownWideNarrow,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -30,6 +31,7 @@ import {
   formatQty,
   gridHeaderHeight
 } from "./grid-config";
+import { formatStamp } from "../utils/timestamp";
 import type { BusinessProductFilters, BusinessProductRow, BusinessProductsResponse } from "../types";
 
 /**
@@ -56,9 +58,12 @@ export type BusinessProductsPageProps = {
   data: BusinessProductsResponse | null;
   query: string;
   filters: BusinessProductFilters;
+  /** 服务端排序：default 为默认顺序，recent 为按建立日期由新到旧（对全部记录生效）。 */
+  sort: "default" | "recent";
   loading?: boolean;
   pageSizeOptions: number[];
   onSearch: (query: string, filters: BusinessProductFilters) => Promise<boolean>;
+  onSortChange: (sort: "default" | "recent") => Promise<boolean>;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenDetail: (row: BusinessProductRow) => void;
@@ -80,9 +85,11 @@ export default function BusinessProductsPage({
   data,
   query,
   filters,
+  sort,
   loading,
   pageSizeOptions,
   onSearch,
+  onSortChange,
   onPageChange,
   onPageSizeChange,
   onOpenDetail
@@ -390,6 +397,13 @@ export default function BusinessProductsPage({
       },
       { field: "customer", colId: "customer", headerName: "客户", minWidth: 160, flex: 1 },
       {
+        colId: "createdAt",
+        headerName: "建立日期",
+        width: 150,
+        valueGetter: ({ data }) => formatStamp(data?.createdAt),
+        valueFormatter: ({ value }) => value || "—"
+      },
+      {
         field: "bomCount",
         colId: "bomCount",
         headerName: "BOM",
@@ -425,6 +439,11 @@ export default function BusinessProductsPage({
             </label>
             <button className="btn primary" type="submit" disabled={loading}>搜索</button>
           </form>
+          <button className={`btn ${sort === "recent" ? "secondary" : "ghost"}`} type="button" aria-pressed={sort === "recent"}
+            disabled={loading} title="按建立日期由新到旧排列全部产品，再点一次恢复默认顺序"
+            onClick={() => { if (!loading) void onSortChange(sort === "recent" ? "default" : "recent"); }}>
+            <ArrowDownWideNarrow size={15} />最近创建
+          </button>
           <button ref={filterButtonRef} className={`btn ${activeFilters.length ? "secondary" : "ghost"}`}
             type="button" aria-expanded={filtersOpen} aria-controls="product-filters"
             onClick={() => setFiltersOpen((open) => !open)}>
