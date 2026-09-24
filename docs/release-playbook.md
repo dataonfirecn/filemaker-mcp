@@ -138,3 +138,21 @@ EOF
 一句话就够，例如：「推送并部署上线」「push 上线」「发布到生产」。收到这类话、
 且没有指定要跳过某一步时，视为完整授权执行 1-6 步；只有第 1 步判断出涉及数据库
 迁移/FileMaker 布局变更时才需要先问一句。
+
+## 上线记录（2026-09-24，`6b1ea5d`，仅文档）
+
+- 范围：仅 `AGENTS.md`（路由到本 playbook）+ 本文件新增，无 `frontend/` / `backend/`
+  改动 → 按第 1 步不重建任何服务。提交 `6b1ea5d` 已推送 `origin/main`。
+- 容器 ID 部署前后不变（未执行 `up`）：frontend `bf07a84053cf`
+  （`starrc-frontend:20260924-0eaa74d`）、backend `5dc3b3d24e16`
+  （`starrc-backend:20260923-f8e6fc1`）、postgres `f196c32c514b`。
+- 验证：内网 `http://127.0.0.1:18001/healthz` 与公网 `https://starrc.dataonfire.cn/healthz`
+  均 `ok: true`。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-6b1ea5d/`
+  （`containers.txt`、`health.json`、`health.txt`、`note.txt`、`backup/previous-release.yml`）。
+- 回滚：不适用（无镜像、无容器变化）。
+- 与本 playbook 假设不符：第 0 节假设 `/opt/starrc-filemaker/current` 是 git 工作副本，
+  实际服务器为 `releases/` 快照目录（`current -> releases/20260913-pda-physical-auth-r2`，
+  无 `.git`），第 4 步的 `git fetch/checkout` 无法照做。本次仅文档改动故跳过；
+  后续含代码的发布仍按既有发布模式（`releases/<date>-<hash>/` 目录 + 增量镜像 +
+  `product-master.release.yml` 覆盖文件）执行，并同步修正本文件第 0/4 节。
