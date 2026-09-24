@@ -1,5 +1,5 @@
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { RefreshCw, Search } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Pagination, usePageSize } from "./ui";
 import DataGrid from "./DataGrid";
@@ -38,6 +38,7 @@ function formatAmount(value: number | null | undefined, currency: string): strin
 export default function OrderListPage({ apiBase, token, canView, canViewPrice, currency, onOpen }: Props) {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("orders:page-size", PAGE_SIZES, 25);
   const [revision, setRevision] = useState(0);
@@ -52,14 +53,14 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
     const controller = new AbortController();
     if (!canView || !token) { setLoading(false); return; }
     setLoading(true); setError("");
-    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
+    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize), sort });
     void fetch(`${apiBase}/api/orders?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(await response.text()); return response.json() as Promise<OrderList>; })
       .then(setList)
       .catch(err => { if (!controller.signal.aborted) setError(parseError(err)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [apiBase, token, canView, query, page, pageSize, revision]);
+  }, [apiBase, token, canView, query, sort, page, pageSize, revision]);
 
   const columns = useMemo<ColDef<OrderListRow>[]>(() => {
     // 默认只显示常用列；PI 编号、客户订单号、分类、已过天数可在「调整字段」里打开。
@@ -106,12 +107,15 @@ export default function OrderListPage({ apiBase, token, canView, canViewPrice, c
     <Card><form className="demand-filters" onSubmit={event => { event.preventDefault(); setPage(1); setQuery(draft.trim()); }}>
       <label className="demand-search">搜索订单<Input value={draft} onChange={e => setDraft(e.target.value)} placeholder="订单号、内部订单、PI、客户订单号、客户或概要" maxLength={100} /></label>
       <Button type="submit" variant="primary"><Search />搜索</Button>
+      <Button title="切换订单排序方向" onClick={() => { setSort(current => current === "newest" ? "oldest" : "newest"); setPage(1); }}>
+        {sort === "newest" ? <ArrowDownWideNarrow /> : <ArrowUpNarrowWide />}{sort === "newest" ? "最近优先" : "最早优先"}
+      </Button>
       {(query || draft) && <Button onClick={() => { setDraft(""); setQuery(""); setPage(1); }}>重置</Button>}
     </form></Card>
     {error ? <Alert>{error} <Button onClick={() => setRevision(n => n + 1)}>重新读取</Button></Alert>
       : loading && !list ? <Card><Loading label="正在读取订单列表" /></Card>
       : list && <Card className="demand-list-card">{list.rows.length ? <>
-        <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张订单 · 按订单日期由新到旧排列 · 点击订单号查看出货单明细</span></div>
+        <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张订单 · 按订单日期由{sort === "newest" ? "新到旧" : "旧到新"}排列 · 点击订单号查看出货单明细</span></div>
         <DataGrid gridKey="orders" columns={columns} rows={list.rows} getRowId={r => r.recordId || r.internalOrderNo} loading={loading} csvFileName="orders"
           onRowDoubleClicked={r => { if (r.orderId) openRef.current(r.orderId); }} />
         <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}

@@ -119,3 +119,14 @@ async def test_denied_order_permission(setup_api, monkeypatch):
     response = await client.get('/api/demand-orders', headers={"Authorization": "Bearer test"})
     assert response.status_code == 403
     fm.find_records.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sort_direction_defaults_to_newest_and_can_flip(setup_api):
+    _, client, fm, _ = setup_api
+    assert (await client.get('/api/demand-orders')).status_code == 200
+    assert [s["sortOrder"] for s in fm.find_records.call_args.kwargs["sort"]] == ["descend", "descend"]
+    assert (await client.get('/api/demand-orders', params={"sort": "oldest"})).status_code == 200
+    assert fm.find_records.call_args.kwargs["sort"] == [
+        {"fieldName": "日期", "sortOrder": "ascend"}, {"fieldName": "id", "sortOrder": "ascend"}]
+    assert (await client.get('/api/demand-orders', params={"sort": "bogus"})).status_code == 422

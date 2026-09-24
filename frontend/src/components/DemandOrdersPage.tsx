@@ -1,5 +1,5 @@
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { ArrowLeft, RefreshCw, Search } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Pagination, Select, usePageSize } from "./ui";
 import DataGrid from "./DataGrid";
@@ -18,7 +18,7 @@ function Status({ text }: { text: string }) { return text ? <Badge tone={demandS
 
 export default function DemandOrdersPage({ apiBase, token, recordId, canView, onOpen, onBack }: Props) {
   const [draft, setDraft] = useState("");
-  const [filters, setFilters] = useState({ q: "", completion: "all" });
+  const [filters, setFilters] = useState<{ q: string; completion: string; sort: "newest" | "oldest" }>({ q: "", completion: "all", sort: "newest" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("demand-orders:page-size", PAGE_SIZES, 25);
   const [linePage, setLinePage] = useState(1);
@@ -32,7 +32,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
     const controller = new AbortController();
     if (!canView || !token) { setLoading(false); return; }
     setLoading(true); setError("");
-    const params = new URLSearchParams({ q: filters.q, completion: filters.completion, page: String(page), page_size: String(pageSize) });
+    const params = new URLSearchParams({ q: filters.q, completion: filters.completion, sort: filters.sort, page: String(page), page_size: String(pageSize) });
     const path = recordId ? `/api/demand-orders/${encodeURIComponent(recordId)}?page=${linePage}&page_size=${LINE_PAGE_SIZE}` : `/api/demand-orders?${params}`;
     void fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(await response.text()); return response.json(); })
@@ -110,7 +110,10 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
       <label className="demand-search">搜索需求单<Input value={draft} onChange={e => setDraft(e.target.value)} placeholder="需求单号、内部订单、概要或公司" maxLength={100} /></label>
       <label>完成日期<Select value={filters.completion} onChange={e => { setPage(1); setFilters(current => ({ ...current, completion: e.target.value })); }}><option value="all">全部需求单</option><option value="open">未填写完成日期</option><option value="completed">已填写完成日期</option></Select></label>
       <Button type="submit" variant="primary"><Search />搜索</Button>
-      {(filters.q || filters.completion !== "all" || draft) && <Button onClick={() => { setDraft(""); setFilters({ q: "", completion: "all" }); setPage(1); }}>重置</Button>}
+      <Button title="切换需求单排序方向" onClick={() => { setPage(1); setFilters(current => ({ ...current, sort: current.sort === "newest" ? "oldest" : "newest" })); }}>
+        {filters.sort === "newest" ? <ArrowDownWideNarrow /> : <ArrowUpNarrowWide />}{filters.sort === "newest" ? "最近优先" : "最早优先"}
+      </Button>
+      {(filters.q || filters.completion !== "all" || draft) && <Button onClick={() => { setDraft(""); setFilters(current => ({ q: "", completion: "all", sort: current.sort })); setPage(1); }}>重置</Button>}
     </form></Card>}
     {error ? <Alert>{error} <Button onClick={() => setRevision(n => n + 1)}>重新读取</Button></Alert> : loading ? <Card><Loading label={recordId ? "正在读取需求单及零件明细" : "正在读取需求单列表"} /></Card> : recordId && order ? <>
       <Card><div className="demand-detail-heading"><div><span className="demand-muted">需求单</span><h2>{value(order.id)}</h2><p>{value(order.summary)}</p></div><div className="demand-statuses"><Status text={order.reviewStatus} /><Status text={order.purchaseStatus} /></div></div>
@@ -124,7 +127,7 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
       <Card><h3>零件需求明细 <span className="demand-muted">{detail.foundCount.toLocaleString()} 条</span></h3>{detail.items.length ? <><DataGrid gridKey="demand-order-lines" columns={lineColumns} rows={detail.items} getRowId={r => r.id} loading={loading} csvFileName={`demand-order-${order.id || recordId}-lines`} />
         <Pagination page={linePage} pageSize={LINE_PAGE_SIZE} totalCount={detail.foundCount} rowCount={detail.items.length} loading={loading} onPageChange={setLinePage} /></> : <EmptyState title="暂无零件明细" description="这张需求单尚未关联零件需求记录。" />}</Card>
     </> : !recordId && list && <Card className="demand-list-card">{list.rows.length ? <>
-      <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张需求单 · 按开单日期由新到旧排列</span></div>
+      <div className="demand-list-head"><span className="demand-muted">共 {list.foundCount.toLocaleString()} 张需求单 · 按开单日期由{filters.sort === "newest" ? "新到旧" : "旧到新"}排列</span></div>
       <DataGrid gridKey="demand-orders" columns={orderColumns} rows={list.rows} getRowId={r => r.recordId} loading={loading} csvFileName="demand-orders" onRowDoubleClicked={r => onOpen(r.recordId)} />
       <Pagination page={page} pageSize={pageSize} totalCount={list.foundCount} rowCount={list.rows.length} loading={loading} onPageChange={setPage}
         pageSizeOptions={PAGE_SIZES} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />

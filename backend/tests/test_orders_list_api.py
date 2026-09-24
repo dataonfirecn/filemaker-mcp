@@ -210,3 +210,15 @@ async def test_orders_route_serves_list_and_requires_view_orders_permission() ->
     assert too_large.status_code == 422
     request = Request({"type": "http", "method": "GET", "path": "/api/orders", "headers": []})
     assert _permission_for_request(request) == "canViewOrders"
+
+
+@pytest.mark.asyncio
+async def test_list_orders_oldest_first_flips_every_sort_key() -> None:
+    filemaker = FakeFileMaker()
+
+    await list_orders(q="", page=1, page_size=25, sort="oldest", session_context=_session(), client=filemaker)
+
+    assert filemaker.calls[0]["sort"] == [
+        {"fieldName": "日期", "sortOrder": "ascend"},
+        {"fieldName": "internal_id", "sortOrder": "ascend"},
+    ]

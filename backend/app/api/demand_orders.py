@@ -86,6 +86,7 @@ def _source_error(exc: Exception) -> HTTPException:
 async def list_demand_orders(
     q: str = Query("", max_length=100),
     completion: Literal["all", "open", "completed"] = "all",
+    sort: Literal["newest", "oldest"] = "newest",
     page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
     client: FileMakerClient = Depends(get_filemaker_client),
 ) -> dict:
@@ -95,10 +96,12 @@ async def list_demand_orders(
     term = q.strip()
     query = [{**criteria, field: _literal_find(term)} for field in
              ("id", "內部訂單編號", "概要", "需求公司", "公司")] if term else [criteria]
+    # 默认「最近优先」；「最早优先」把日期与单号一起反向，同日单据仍按创建先后排。
+    order = "ascend" if sort == "oldest" else "descend"
     try:
         result = await client.find_records(HEADER_LAYOUT, query=query,
             limit=page_size, offset=(page - 1) * page_size + 1,
-            sort=[{"fieldName": "日期", "sortOrder": "descend"}, {"fieldName": "id", "sortOrder": "descend"}])
+            sort=[{"fieldName": "日期", "sortOrder": order}, {"fieldName": "id", "sortOrder": order}])
     except FileMakerAPIError as exc:
         raise _source_error(exc) from exc
     count = int(result.get("foundCount") or 0)

@@ -154,14 +154,17 @@ async def _find_orders_by_internal_number(
 ORDER_LIST_SHIPMENT_SEARCH_FIELDS = (ORDER_ID_FIELD, "出貨單 PI", "訂單 PO")
 ORDER_LIST_SEARCH_FIELDS = (ORDER_INTERNAL_ID_FIELD, "訂單概要中文", "出貨單_客戶::客戶名稱")
 ORDER_LIST_SHIPMENT_MATCH_LIMIT = 50
-# 首选按订单日期倒序；若该布局没有暴露「日期」字段，退回内部单号倒序。
-ORDER_LIST_SORTS = (
-    [
-        {"fieldName": "日期", "sortOrder": "descend"},
-        {"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": "descend"},
-    ],
-    [{"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": "descend"}],
-)
+# 首选按订单日期排序；若该布局没有暴露「日期」字段，退回内部单号排序。
+# 默认「最近优先」（倒序）；「最早优先」只是把同一组排序键整体反向。
+def _order_list_sorts(sort: str) -> tuple[list[dict[str, str]], ...]:
+    order = "ascend" if sort == "oldest" else "descend"
+    return (
+        [
+            {"fieldName": "日期", "sortOrder": order},
+            {"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": order},
+        ],
+        [{"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": order}],
+    )
 
 
 def _literal_find(text: str) -> str:
@@ -175,9 +178,10 @@ async def _find_order_list_page(
     *,
     limit: int,
     offset: int,
+    sort_direction: str = "newest",
 ) -> dict[str, Any]:
     last_error: FileMakerAPIError | None = None
-    for sort in ORDER_LIST_SORTS:
+    for sort in _order_list_sorts(sort_direction):
         try:
             return await client.find_records(
                 INTERNAL_ORDER_LIST_LAYOUT,
@@ -197,6 +201,7 @@ async def list_orders(
     q: str = Query("", max_length=100),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
+    sort: Literal["newest", "oldest"] = "newest",
     session_context: dict[str, Any] = Depends(get_webviewer_session_context),
     client: FileMakerClient = Depends(get_filemaker_client),
 ) -> dict[str, Any]:
@@ -236,7 +241,7 @@ async def list_orders(
             criteria = [{**scope, ORDER_INTERNAL_ID_FIELD: "*"}]
 
         result = await _find_order_list_page(
-            client, criteria, limit=page_size, offset=(page - 1) * page_size + 1
+            client, criteria, limit=page_size, offset=(page - 1) * page_size + 1, sort_direction=sort
         )
         rich_records = _records(result)
         internal_numbers = list(
