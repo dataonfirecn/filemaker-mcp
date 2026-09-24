@@ -214,13 +214,18 @@ class ProductWorker:
         if price_only and fields_match(remote['fieldData'], writable, self.schema):
             steps['fields'] = True
         if not steps.get('fields'):
-            steps['inFlight']={'kind':'fields'}
-            await checkpoint()
-            response = await self.fm.request(f'/layouts/{quote(layout,safe="")}/records/{record_id}', method='PATCH',
-                json_body={'fieldData': wire_fields(writable,self.schema), 'modId': str(remote['modId'])})
+            # Imported legacy values can be readable but rejected on re-entry.
+            # Compare after the modId guard, and retain full-snapshot readback below.
+            changed = {name: value for name, value in writable.items()
+                       if not fields_match(remote['fieldData'], {name: value}, self.schema)}
+            if changed:
+                steps['inFlight']={'kind':'fields'}
+                await checkpoint()
+                response = await self.fm.request(f'/layouts/{quote(layout,safe="")}/records/{record_id}', method='PATCH',
+                    json_body={'fieldData': wire_fields(changed,self.schema), 'modId': str(remote['modId'])})
+                steps['modId'] = response.get('response', {}).get('modId')
             steps['fields'] = True
             steps.pop('inFlight',None)
-            steps['modId'] = response.get('response', {}).get('modId')
             await checkpoint()
         desired_slots = {(a['field'], a['repetition']): a for a in desired['assets']}
         old_slots = {(a['field'], a['repetition']): a for a in revision['before_data'].get('assets', [])}

@@ -165,6 +165,45 @@ def worker(store,fm):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('old_name,new_name', [('Name', 'Name_test'), ('Name', ''), ('Name', 'Name')])
+async def test_worker_only_reenters_changed_fields(old_name, new_name):
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    pid = uuid4()
+    before = {'product_sku': 'SKU-1', 'product_name': old_name, 'price': ''}
+    after = {**before, 'product_name': new_name}
+    revision = {'before_data': {'fields': before, 'assets': []},
+                'after_data': {'fields': after, 'assets': []}}
+    product = {'fm_record_id': '10', 'fm_mod_id': '1', 'version': 2}
+
+    class Connection:
+        def __init__(self): self.calls = []
+        async def fetchrow(self, query, *args):
+            return revision if 'pm_revision' in query else product
+        async def execute(self, query, *args): self.calls.append((query, args))
+        @asynccontextmanager
+        async def transaction(self): yield
+
+    class FM(FakeFileMaker):
+        async def request(self, *args, **kwargs):
+            # Re-entering an unchanged legacy field fails on the real product.
+            assert kwargs['json_body'] == {'fieldData': {'product_name': new_name}, 'modId': '1'}
+            return await super().request(*args, **kwargs)
+
+    fm = FM(pid)
+    fm.record['fieldData'].update(before)
+    store = SimpleNamespace(source='test', get=AsyncMock(return_value=product))
+    w = worker(store, fm)
+    w.refresh_derived = AsyncMock()
+    c = Connection()
+    await w.sync(c, {'product_id': pid, 'version': 2, 'steps': {}})
+    assert fm.writes == (old_name != new_name)
+    assert fm.record['fieldData']['product_name'] == new_name
+    assert any("status='synced'" in query for query, _ in c.calls)
+
+
+@pytest.mark.asyncio
 async def test_native_modification_is_conflict_not_web_overwrite(store):
     pid=uuid4();await save(store,pid,imported={'recordId':'10','modId':'1'})
     await save(store,pid,1,changes={'product_name':'Web name'})
