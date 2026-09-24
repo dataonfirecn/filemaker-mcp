@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   ArrowUpDown,
   AlertTriangle,
@@ -21,6 +22,8 @@ import {
   Undo2,
   X
 } from "lucide-react";
+import { IconButton } from "./ui";
+import "./OrderListPage.css";
 
 type OrderItem = {
   id: string;
@@ -303,6 +306,8 @@ export type OrderDetailPageProps = {
   canViewPrice?: boolean;
   bomWriteEnabled?: boolean;
   onSuccess?: (message: string) => void;
+  /** 从订单列表进入时提供；FileMaker 内嵌的独立详情页不传。 */
+  onBack?: () => void;
 };
 
 const REPLACEMENT_REASON_TEMPLATES = ["原零件缺货", "客户指定", "产品升级", "成本调整", "临时替代", "其他"];
@@ -376,7 +381,8 @@ export default function OrderDetailPage({
   operatorName = "",
   canViewPrice = false,
   bomWriteEnabled = false,
-  onSuccess
+  onSuccess,
+  onBack
 }: OrderDetailPageProps) {
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -1268,6 +1274,10 @@ export default function OrderDetailPage({
           </table>
         </div>}
       </section>}
+      {onBack && <div className="order-detail-toolbar">
+        <IconButton label="返回订单列表" onClick={onBack}><ArrowLeft /></IconButton>
+        <span>订单资料</span>
+      </div>}
       <section className="order-overview-card">
         <div className="order-overview-main">
           <div className="order-number-block">

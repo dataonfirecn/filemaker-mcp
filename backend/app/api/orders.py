@@ -1,9 +1,10 @@
 import asyncio
+import math
 import re
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -148,6 +149,154 @@ async def _find_orders_by_internal_number(
         )
         records.extend(_records(result))
     return records
+
+
+ORDER_LIST_SHIPMENT_SEARCH_FIELDS = (ORDER_ID_FIELD, "出貨單 PI", "訂單 PO")
+ORDER_LIST_SEARCH_FIELDS = (ORDER_INTERNAL_ID_FIELD, "訂單概要中文", "出貨單_客戶::客戶名稱")
+ORDER_LIST_SHIPMENT_MATCH_LIMIT = 50
+# 首选按订单日期倒序；若该布局没有暴露「日期」字段，退回内部单号倒序。
+ORDER_LIST_SORTS = (
+    [
+        {"fieldName": "日期", "sortOrder": "descend"},
+        {"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": "descend"},
+    ],
+    [{"fieldName": ORDER_INTERNAL_ID_FIELD, "sortOrder": "descend"}],
+)
+
+
+def _literal_find(text: str) -> str:
+    # 把用户输入整体加引号：FileMaker 查找运算符不能改变查询语义。
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+async def _find_order_list_page(
+    client: FileMakerClient,
+    criteria: list[dict[str, Any]],
+    *,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    last_error: FileMakerAPIError | None = None
+    for sort in ORDER_LIST_SORTS:
+        try:
+            return await client.find_records(
+                INTERNAL_ORDER_LIST_LAYOUT,
+                query=criteria,
+                limit=limit,
+                offset=offset,
+                sort=sort,
+            )
+        except FileMakerAPIError as exc:
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
+@router.get("")
+async def list_orders(
+    q: str = Query("", max_length=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    session_context: dict[str, Any] = Depends(get_webviewer_session_context),
+    client: FileMakerClient = Depends(get_filemaker_client),
+) -> dict[str, Any]:
+    """订单列表：每行都带出貨單 ID（详情页用它读取），点进去即可看明细。
+
+    列表主体来自 `訂單 清單_業務`（客户、概要、状态），出貨單 ID 与 PI / PO
+    通过内部单号从 `@出貨單` 补齐，日期与付款状态从 `訂單 清單` 补齐。
+    带客户名称的会话（客户专属 WebViewer）只能看到该客户的订单。
+    """
+    scope: dict[str, Any] = {}
+    customer_name = _text(session_context.get("customerName"))
+    if customer_name:
+        scope["出貨單_客戶::客戶名稱"] = f"=={customer_name}"
+    can_view_price = bool((session_context.get("access") or {}).get("canViewPrice"))
+    term = q.strip()
+
+    try:
+        if term:
+            literal = _literal_find(term)
+            matched = await client.find_records(
+                ORDER_LAYOUT,
+                query=[{field: literal} for field in ORDER_LIST_SHIPMENT_SEARCH_FIELDS],
+                limit=ORDER_LIST_SHIPMENT_MATCH_LIMIT,
+            )
+            matched_numbers = list(
+                dict.fromkeys(
+                    _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
+                    for record in _records(matched)
+                    if _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
+                )
+            )
+            # 客户专属会话已限定客户名称，搜索里不再匹配该字段，避免覆盖范围条件。
+            search_fields = [field for field in ORDER_LIST_SEARCH_FIELDS if field not in scope]
+            criteria = [{**scope, field: literal} for field in search_fields]
+            criteria += [{**scope, ORDER_INTERNAL_ID_FIELD: f"=={number}"} for number in matched_numbers]
+        else:
+            criteria = [{**scope, ORDER_INTERNAL_ID_FIELD: "*"}]
+
+        result = await _find_order_list_page(
+            client, criteria, limit=page_size, offset=(page - 1) * page_size + 1
+        )
+        rich_records = _records(result)
+        internal_numbers = list(
+            dict.fromkeys(
+                _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
+                for record in rich_records
+                if _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD))
+            )
+        )
+        shipment_records = await _find_orders_by_internal_number(client, ORDER_LAYOUT, internal_numbers)
+        summary_records = await _find_orders_by_internal_number(
+            client, INTERNAL_ORDER_SUMMARY_LAYOUT, internal_numbers
+        )
+    except FileMakerAPIError as exc:
+        raise HTTPException(
+            status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "无法读取 FileMaker 订单列表，请稍后重试；若持续失败，请联系管理员检查 API 连接和读取权限。"},
+        ) from exc
+
+    shipments = {
+        _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD)): _fields(record) for record in shipment_records
+    }
+    summaries = {
+        _text(_fields(record).get(ORDER_INTERNAL_ID_FIELD)): _fields(record) for record in summary_records
+    }
+    rows: list[dict[str, Any]] = []
+    for record in rich_records:
+        fields = _fields(record)
+        internal_order_no = _text(fields.get(ORDER_INTERNAL_ID_FIELD))
+        shipment = shipments.get(internal_order_no, {})
+        summary = summaries.get(internal_order_no, {})
+        amount = _number(fields.get("貨款總和")) or _number(summary.get("總和"))
+        rows.append(
+            {
+                # 详情页用 orderId（出貨單 id）读取；缺失时前端不提供进入明细的入口。
+                "orderId": _text(shipment.get(ORDER_ID_FIELD)),
+                "recordId": str(record.get("recordId") or ""),
+                "internalOrderNo": internal_order_no,
+                "piNo": _text(shipment.get("出貨單 PI")),
+                "customerPo": _text(shipment.get("訂單 PO")),
+                "customerName": _text(fields.get("出貨單_客戶::客戶名稱")) or customer_name,
+                "orderDate": _text(summary.get("日期")) or _text(shipment.get("修改日期")),
+                "summary": _text(fields.get("訂單概要中文")),
+                "orderCategory": _text(fields.get("訂單分類")),
+                "orderConfirmation": _text(fields.get("訂單確認")),
+                "packagingStatus": _text(fields.get("包裝狀態")) or _text(shipment.get("包裝狀態")),
+                "paymentStatus": _text(summary.get("付款狀態")),
+                "elapsedDays": _text(fields.get("已過天數")) or _text(summary.get("已過天數")),
+                "amount": amount if can_view_price else None,
+            }
+        )
+
+    found_count = int(result.get("foundCount") or 0)
+    return {
+        "rows": rows,
+        "foundCount": found_count,
+        "page": page,
+        "pageSize": page_size,
+        "totalPages": max(1, math.ceil(found_count / page_size)),
+    }
 
 
 @router.get("/internal")

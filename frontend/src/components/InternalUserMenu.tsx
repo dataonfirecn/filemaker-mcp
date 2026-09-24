@@ -1,5 +1,6 @@
-import { ChevronDown, LogOut, Settings, ShieldCheck, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ThemeMode } from "../types";
 
 export type InternalUserMenuUser = {
   username: string;
@@ -10,6 +11,8 @@ export type InternalUserMenuUser = {
 export type InternalUserMenuProps = {
   user: InternalUserMenuUser;
   canManageAccounts: boolean;
+  theme: ThemeMode;
+  onThemeToggle: () => void;
   onOpenSettings: () => void;
   onOpenAccountAdmin?: () => void;
   onSignOut: () => void;
@@ -23,6 +26,8 @@ function userInitials(user: InternalUserMenuUser): string {
 export default function InternalUserMenu({
   user,
   canManageAccounts,
+  theme,
+  onThemeToggle,
   onOpenSettings,
   onOpenAccountAdmin,
   onSignOut
@@ -96,6 +101,14 @@ export default function InternalUserMenu({
               <span>
                 <strong>个人设置</strong>
                 <small>外观、账号与会话</small>
+              </span>
+            </button>
+
+            <button type="button" role="menuitem" onClick={() => run(onThemeToggle)}>
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              <span>
+                <strong>{theme === "dark" ? "浅色模式" : "深色模式"}</strong>
+                <small>切换显示外观</small>
               </span>
             </button>
 

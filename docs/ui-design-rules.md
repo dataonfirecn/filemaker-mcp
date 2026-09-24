@@ -220,6 +220,8 @@ Token：
 
 尺寸 30 / 36 / 44，圆角 8px，字号 13px / 500，图标 16px 在左、间距 6px。悬停只变底色，不做位移、不加阴影。
 
+**IconButton（仅图标按钮）**：「返回」「刷新」这类页面级辅助操作不写文字，用 `<IconButton label="返回列表">`：无边框无底色、图标 16px、`--color-text-muted`，悬停变 `--color-surface-hover` + `--color-text`；`label` 同时作为 `aria-label` 和悬停提示，必填；`loading` 时图标旋转。主操作（保存、提交、新增）仍用带文字的 Button。
+
 ### Input / Select / Textarea
 - 白底，`1px --color-border-strong`，圆角 8px，高度与按钮同档。
 - 聚焦：边框 `--color-accent` + `0 0 0 3px var(--color-focus-ring)`。

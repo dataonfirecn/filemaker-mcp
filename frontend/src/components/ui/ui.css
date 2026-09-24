@@ -9,6 +9,11 @@
 .ui-button-primary:hover { background: var(--color-primary-hover); }
 .ui-button-ghost { background: none; border-color: transparent; color: var(--color-primary-text); }
 .ui-button:disabled { opacity: .5; cursor: default; }
+.ui-icon-button { width: var(--control-md); padding: 0; border-color: transparent; background: none; color: var(--color-text-muted); }
+.ui-icon-button:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
+.ui-icon-button.is-loading svg { animation: ui-spin .9s linear infinite; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-icon-button.is-loading svg { animation: none; } }
 .ui-button:focus-visible, .ui-input:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-color: var(--color-accent); }
 .ui-button svg { width: var(--icon-md); height: var(--icon-md); stroke-width: 1.75; flex-shrink: 0; }
 .ui-badge { display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius-full); font: var(--weight-medium) var(--text-xs) var(--font-sans); white-space: nowrap; }

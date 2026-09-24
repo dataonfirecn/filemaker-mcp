@@ -1,0 +1,2 @@
+/* 订单列表复用需求单页面的列表样式（DemandOrdersPage.css）；这里只放订单独有的部分。 */
+.order-detail-toolbar { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--text-xs); }

@@ -2862,31 +2862,6 @@ select {
   padding: 0;
 }
 
-.theme-toggle {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-elevated);
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background 0.12s ease,
-    border-color 0.12s ease,
-    color 0.12s ease,
-    transform 0.12s ease;
-}
-
-.theme-toggle:hover {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal);
-  transform: translateY(-1px);
-}
-
 .spin {
   animation: spin 0.9s linear infinite;
 }

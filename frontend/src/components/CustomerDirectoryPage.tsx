@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { IconButton } from './ui';
 import './CustomerDirectoryPage.css';
 
 type Customer = { id: string; code: string | null; name: string; company: string | null; country: string | null; owner: string | null; status: 'ready' | 'incomplete' | 'missing'; issues: string[]; updatedAt: string; version: number };
@@ -34,7 +36,7 @@ export default function CustomerDirectoryPage({ apiBase, token }: { apiBase: str
   }, [apiBase, token, search, status, page, selected, retry]);
   function submit(event: FormEvent) { event.preventDefault(); setPage(1); setSearch(query.trim()); }
   return <section className="cd-page" aria-label="客户资料">
-    <header className="cd-heading"><div><h2>{selected ? '客户详情' : '客户资料'}</h2><p>FileMaker 已导入资料 · 仅管理员查看 · 只读</p></div>{selected && <button type="button" onClick={() => setSelected(null)}>返回客户列表</button>}</header>
+    <header className="cd-heading"><div><h2>{selected ? '客户详情' : '客户资料'}</h2><p>FileMaker 已导入资料 · 仅管理员查看 · 只读</p></div>{selected && <IconButton label="返回客户列表" onClick={() => setSelected(null)}><ArrowLeft /></IconButton>}</header>
     {!selected && <form className="cd-search" onSubmit={submit}>
       <label>搜索客户<input value={query} maxLength={100} onChange={e => setQuery(e.target.value)} placeholder="代码、名称、公司、国家或负责人" /></label>
       <label>资料状态<select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="all">全部</option>{Object.entries(statuses).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>

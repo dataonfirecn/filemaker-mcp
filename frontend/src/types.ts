@@ -291,6 +291,7 @@ export type Page =
   | "productInventory"
   | "productMaster"
   | "internalOrderMerge"
+  | "orders"
   | "orderDetail"
   | "demandOrders"
   | "demandOrderDetail"

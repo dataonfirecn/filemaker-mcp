@@ -1,19 +1,9 @@
-import { AgGridReact } from "ag-grid-react";
-import type { ColDef, ColumnState, GridReadyEvent, ICellRendererParams, RowDoubleClickedEvent } from "ag-grid-community";
-import { ArrowLeft, ChevronLeft, ChevronRight, Columns3, Download, RefreshCw, Search } from "lucide-react";
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, EmptyState, Input, Loading, Select } from "./ui";
-import {
-  adaptiveGridStyle,
-  agGridZhCN,
-  defaultAutoSizeStrategy,
-  defaultTableColDef,
-  gridFloatingFilterHeight,
-  gridHeaderHeight,
-  gridRowHeight,
-  numberFilterParams
-} from "./grid-config";
+import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, Loading, Select } from "./ui";
+import DataGrid from "./DataGrid";
+import { numberFilterParams } from "./grid-config";
 import { demandStatusTone } from "../utils/statusTone";
 import { parseError } from "../utils/error";
 import type { DemandDetail, DemandLine, DemandList, DemandOrder } from "./demandOrders";
@@ -23,147 +13,6 @@ type Props = { apiBase: string; token: string; recordId: string; canView: boolea
 const value = (text: string | undefined) => text || "—";
 const quantity = (number: number | null) => number == null ? "—" : number.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
 function Status({ text }: { text: string }) { return text ? <Badge tone={demandStatusTone(text)}>{text}</Badge> : <span className="demand-muted">—</span>; }
-
-/**
- * Shared AG Grid wrapper for both demand-order tables: sortable, per-column
- * floating filters, resizable/reorderable columns, a column-visibility
- * picker ("调整字段") and CSV export. Column layout is persisted per grid
- * under its own localStorage key so the list and the line-item grid don't
- * clobber each other's saved widths/order.
- */
-type DataGridProps<T> = {
-  gridKey: string;
-  columns: ColDef<T>[];
-  rows: T[];
-  getRowId: (row: T) => string;
-  loading?: boolean;
-  csvFileName: string;
-  onRowDoubleClicked?: (row: T) => void;
-};
-
-function DataGrid<T>({ gridKey, columns, rows, getRowId, loading, csvFileName, onRowDoubleClicked }: DataGridProps<T>) {
-  const gridRef = useRef<AgGridReact<T>>(null);
-  const stateKey = `ag-grid-state:${gridKey}:v1`;
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
-  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
-
-  useEffect(() => {
-    function dismiss(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) setColumnMenuOpen(false);
-    }
-    function escape(event: KeyboardEvent) {
-      if (event.key === "Escape") setColumnMenuOpen(false);
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", escape);
-    };
-  }, []);
-
-  const saveColumnState = useCallback(() => {
-    const api = gridRef.current?.api;
-    if (!api) return;
-    try {
-      const state = api.getColumnState();
-      localStorage.setItem(stateKey, JSON.stringify(state));
-      setHiddenColumns(state.filter(column => column.hide).map(column => column.colId));
-    } catch {
-      // Ignore storage errors; the layout simply will not survive a reload.
-    }
-  }, [stateKey]);
-
-  function onGridReady(event: GridReadyEvent<T>) {
-    try {
-      const raw = localStorage.getItem(stateKey);
-      if (raw) event.api.applyColumnState({ state: JSON.parse(raw) as ColumnState[], applyOrder: true });
-    } catch {
-      // Corrupted state falls through to the column defaults.
-    }
-    event.api.sizeColumnsToFit();
-    setHiddenColumns(event.api.getColumnState().filter(column => column.hide).map(column => column.colId));
-  }
-
-  function resetLayout() {
-    try {
-      localStorage.removeItem(stateKey);
-    } catch {
-      // Ignore storage errors; the in-memory reset below still applies.
-    }
-    gridRef.current?.api.resetColumnState();
-    gridRef.current?.api.sizeColumnsToFit();
-    setHiddenColumns([]);
-  }
-
-  function toggleColumn(colId: string, visible: boolean) {
-    gridRef.current?.api.setColumnsVisible([colId], visible);
-    saveColumnState();
-  }
-
-  function exportCsv() {
-    gridRef.current?.api.exportDataAsCsv({ fileName: `${csvFileName}-${new Date().toISOString().slice(0, 10)}.csv` });
-  }
-
-  const toggleableColumns = useMemo(() => columns.filter(column => column.colId), [columns]);
-
-  return (
-    <div className="demand-grid-wrap">
-      <div className="demand-grid-toolbar">
-        <div className="column-menu-wrap" ref={menuRef}>
-          <button className="btn ghost" type="button" aria-expanded={columnMenuOpen} aria-controls={`${gridKey}-fields`}
-            onClick={() => setColumnMenuOpen(open => !open)}>
-            <Columns3 size={15} />调整字段
-          </button>
-          {columnMenuOpen && (
-            <div className="column-menu" id={`${gridKey}-fields`} aria-label="调整字段">
-              <div className="column-menu-head"><span>显示的列</span>
-                <button type="button" className="btn-link" onClick={resetLayout}>恢复默认</button>
-              </div>
-              <div className="column-menu-list">
-                {toggleableColumns.map(column => (
-                  <label key={column.colId} className="column-menu-item">
-                    <input type="checkbox" checked={!hiddenColumns.includes(column.colId as string)}
-                      onChange={event => toggleColumn(column.colId as string, event.target.checked)} />
-                    <span>{column.headerName}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <button className="btn ghost" type="button" disabled={rows.length === 0} onClick={exportCsv}>
-          <Download size={15} />导出 CSV
-        </button>
-      </div>
-      <div className="demand-ag-grid ag-theme-quartz" style={adaptiveGridStyle(rows.length, 4, 25)}>
-        <AgGridReact
-          ref={gridRef}
-          theme="legacy"
-          rowData={rows}
-          columnDefs={columns}
-          defaultColDef={defaultTableColDef}
-          localeText={agGridZhCN}
-          getRowId={({ data }) => getRowId(data)}
-          rowHeight={gridRowHeight}
-          headerHeight={gridHeaderHeight}
-          floatingFiltersHeight={gridFloatingFilterHeight}
-          autoSizeStrategy={defaultAutoSizeStrategy}
-          loading={loading}
-          overlayLoadingTemplate={"<span class=\"ag-overlay-loading-center\">加载中...</span>"}
-          overlayNoRowsTemplate={"<span class=\"ag-overlay-no-rows-center\">暂无数据</span>"}
-          onGridReady={onGridReady}
-          onRowDoubleClicked={onRowDoubleClicked ? (event: RowDoubleClickedEvent<T>) => { if (event.data) onRowDoubleClicked(event.data); } : undefined}
-          onColumnResized={({ finished }) => finished && saveColumnState()}
-          onColumnMoved={({ finished }) => finished && saveColumnState()}
-          onSortChanged={saveColumnState}
-          onColumnPinned={saveColumnState}
-        />
-      </div>
-    </div>
-  );
-}
 
 export default function DemandOrdersPage({ apiBase, token, recordId, canView, onOpen, onBack }: Props) {
   const [draft, setDraft] = useState("");
@@ -254,8 +103,8 @@ export default function DemandOrdersPage({ apiBase, token, recordId, canView, on
   if (!canView) return <div className="demand-page"><Alert>当前账号没有查看需求单的权限，请联系管理员开放订单资料权限。</Alert></div>;
   return <div className="demand-page">
     <div className="demand-toolbar">
-      <div className="demand-actions">{recordId && <Button onClick={onBack}><ArrowLeft />返回列表</Button>}<span className="demand-muted">{recordId ? "需求单资料" : "零件需求清单"}</span></div>
-      <Button disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw />刷新数据</Button>
+      <div className="demand-actions">{recordId && <IconButton label="返回列表" onClick={onBack}><ArrowLeft /></IconButton>}<span className="demand-muted">{recordId ? "需求单资料" : "零件需求清单"}</span></div>
+      <IconButton label="刷新数据" loading={loading} disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw /></IconButton>
     </div>
     {!recordId && <Card><form className="demand-filters" onSubmit={event => { event.preventDefault(); setPage(1); setFilters(current => ({ ...current, q: draft.trim() })); }}>
       <label className="demand-search">搜索需求单<Input value={draft} onChange={e => setDraft(e.target.value)} placeholder="需求单号、内部订单、概要或公司" maxLength={100} /></label>

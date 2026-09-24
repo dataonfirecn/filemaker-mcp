@@ -4,7 +4,7 @@ import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Down
 import { productPhotoFields, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups } from './productMasterLayout';
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
-import { Alert, Button } from './ui';
+import { Alert } from './ui';
 
 type Choice = { value: string; label: string; name?: string; code?: string };
 type Control = { type: string; options: Choice[]; searchable: boolean };
@@ -366,8 +366,8 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
       {bandBlocks.map(band => <div className="pm-band" key={band.title}>
         <div className="pm-band-head"><span>{band.title}</span>
           {band.title === '成本' && permissions.canViewPrice && costs && <small className="pm-band-note" role="status" title="采用 FileMaker 已保存的 BOM、汇率及成本参数">（计算于 {new Date(costs.calculatedAt).toLocaleTimeString('zh-CN')}）</small>}
+          {band.title === '成本' && permissions.canViewPrice && product && <button type="button" className="pm-band-refresh" disabled={costLoading} onClick={() => void refreshCosts()} aria-label="刷新成本" title={costLoading ? '正在刷新…' : '刷新成本'}><RefreshCw size={12} strokeWidth={1.75} className={costLoading ? 'pm-spin' : undefined} /></button>}
           <i />
-          {band.title === '成本' && permissions.canViewPrice && product && <Button disabled={costLoading} onClick={() => void refreshCosts()} aria-label="刷新成本"><RefreshCw size={14} strokeWidth={1.75} />{costLoading ? '正在刷新…' : '刷新成本'}</Button>}
         </div>
         {band.title === '成本' && permissions.canViewPrice && <>
           {costError && <Alert>{costError}</Alert>}

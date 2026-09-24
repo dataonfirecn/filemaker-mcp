@@ -6,6 +6,9 @@ export type Tone = "neutral" | "success" | "warning" | "danger" | "info" | "acce
 export function Button({ variant = "secondary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }) {
   return <button type="button" className={`ui-button ui-button-${variant} ${className}`} {...props} />;
 }
+export function IconButton({ label, loading = false, className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; loading?: boolean }) {
+  return <button type="button" className={`ui-button ui-icon-button${loading ? " is-loading" : ""} ${className}`} aria-label={label} title={label} {...props}>{children}</button>;
+}
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return <span className={`ui-badge ui-tone-${tone}`}>{children}</span>;
 }

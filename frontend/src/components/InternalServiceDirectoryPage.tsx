@@ -81,9 +81,16 @@ const browserPages: PageEntry[] = [
     Icon: MessageCircle
   },
   {
+    name: "订单",
+    description: "浏览全部订单，点击订单号进入出货单明细并生成整单 BOM。",
+    route: "/?page=orders",
+    access: "订单查看权限",
+    Icon: ShoppingCart
+  },
+  {
     name: "订单详情",
-    description: "浏览出货单、订单明细并生成整单 BOM。",
-    route: "/?page=orderDetail",
+    description: "按出货单 ID 直达明细并生成整单 BOM（FileMaker 内嵌，或从订单列表进入）。",
+    route: "/?page=orderDetail&orderId=<出货单 ID>",
     previewRoute: "/?page=orderDetail&orderId=PI0017287",
     testParameters: [
       { name: "orderId", value: "PI0017287", description: "有效出货单 ID" }

@@ -28,6 +28,7 @@ import HomePage from "./components/HomePage";
 import RagControlPage from "./components/RagControlPage";
 import DemandOrdersPage from "./components/DemandOrdersPage";
 import OrderDetailPage from "./components/OrderDetailPage";
+import OrderListPage from "./components/OrderListPage";
 import ProductMasterPage from "./components/ProductMasterPage";
 import ProductInventoryPage from "./components/ProductInventoryPage";
 import InternalOrderMergePage from "./components/InternalOrderMergePage";
@@ -132,6 +133,7 @@ const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   },
   demandOrders: { title: "需求单", subtitle: "查看零件需求、审核与采购进度。" },
   demandOrderDetail: { title: "需求单详情", subtitle: "查看需求单资料与零件需求明细。" },
+  orders: { title: "订单", subtitle: "查看所有订单，点击订单号进入出货单明细并生成 BOM 临时计算清单。" },
   orderDetail: {
     title: "订单详情",
     subtitle: "查看出货单与出货单明细，选择产品并生成 BOM 临时计算清单。"
@@ -230,7 +232,7 @@ function orderIdQueryValue(params: URLSearchParams): string {
 }
 
 /** URL params that name the specific record a page is showing. */
-const PAGE_IDENTIFIER_KEYS = ["partId", "recordId"] as const;
+const PAGE_IDENTIFIER_KEYS = ["partId", "recordId", "orderId"] as const;
 
 type PageIdentifiers = Partial<Record<(typeof PAGE_IDENTIFIER_KEYS)[number], string>>;
 
@@ -244,6 +246,7 @@ function pageFromSearchParams(params: URLSearchParams): Page {
     case "productInventory":
     case "internalOrderMerge":
     case "demandOrders":
+    case "orders":
     case "orderDetail":
     case "bom":
     case "issue":
@@ -317,6 +320,8 @@ export default function App() {
     pageFromSearchParams(new URLSearchParams(window.location.search))
   );
   const [demandRecordId, setDemandRecordId] = useState(() => new URLSearchParams(window.location.search).get("recordId") ?? "");
+  // 订单详情读取哪张出货单：从订单列表点进来时设置；FileMaker 直达时来自地址或签名上下文。
+  const [orderDetailId, setOrderDetailId] = useState(() => orderIdQueryValue(new URLSearchParams(window.location.search)));
   // BOM 单页工作台阶段与 SKU 输入
   const [bomStep, setBomStep] = useState<BomStep>("select");
   const [bomSkuInput, setBomSkuInput] = useState("");
@@ -1004,6 +1009,7 @@ export default function App() {
       setError(null);
       setSelectedPartIdentifier(params.get("partId") ?? "");
       setDemandRecordId(params.get("recordId") ?? "");
+      setOrderDetailId(orderIdQueryValue(params));
       const recordId = params.get("recordId") ?? "";
       if (
         nextPage === "businessProductDetail"
@@ -1219,6 +1225,14 @@ export default function App() {
       void loadTopQuestions(activeSession);
       void loadRelationshipMapping(activeSession);
     }
+  }
+
+  function openOrderDetail(orderId: string) {
+    setOrderDetailId(orderId);
+    setError(null);
+    writePageUrl("orderDetail", { orderId });
+    setPage("orderDetail");
+    window.scrollTo(0, 0);
   }
 
   function openPartDetail(part: PartDirectoryRow) {
@@ -1535,10 +1549,18 @@ export default function App() {
       }
     : null;
   const access = session?.context.access;
-  const requestedOrderId =
-    session?.context.orderId || orderIdQueryValue(new URLSearchParams(window.location.search));
+  const requestedOrderId = orderDetailId || session?.context.orderId || "";
+  // 只有 FileMaker 带签名上下文直达的订单详情才是无侧栏的独立页；浏览器工作台里保留侧栏和返回列表。
+  const standaloneOrderDetail = page === "orderDetail" && signedContextInUrl;
+  // 没有指明订单的订单详情（旧书签、导航直达）没有可读取的对象，回到订单列表。
+  useEffect(() => {
+    if (page !== "orderDetail" || !session || requestedOrderId) return;
+    setPage("orders");
+    writePageUrl("orders", {}, "replace");
+  }, [page, session, requestedOrderId]);
   const calculationPageReady = Boolean(preview || document || calcLines.length > 0);
-  const activeNavPage: Page = page === "demandOrderDetail" ? "demandOrders" : page === "businessProductDetail"
+  const activeNavPage: Page = page === "demandOrderDetail" ? "demandOrders" : page === "orderDetail"
+    ? "orders" : page === "businessProductDetail"
     ? "businessProducts"
     : page === "partDetail"
       ? "parts"
@@ -1559,9 +1581,9 @@ export default function App() {
             disabledReason: "当前账号角色未开放订单资料"
           },
           {
-            id: "orderDetail",
-            label: "订单详情",
-            description: "出货单明细与整单 BOM 计算",
+            id: "orders",
+            label: "订单",
+            description: "所有订单、出货单明细与整单 BOM 计算",
             Icon: ShoppingCart,
             disabled: access ? !access.canViewOrders : false,
             disabledReason: "当前账号角色未开放订单资料"
@@ -1862,6 +1884,8 @@ export default function App() {
             <InternalUserMenu
               user={currentUser}
               canManageAccounts={session?.context.access.canManageAccounts ?? false}
+              theme={theme}
+              onThemeToggle={toggleTheme}
               onOpenSettings={() => handleNavigate("settings")}
               onOpenAccountAdmin={
                 session?.context.access.canManageAccounts
@@ -1883,8 +1907,8 @@ export default function App() {
           onOpenDashboard={() => handleNavigate("home")}
         />
       ) : (
-        <div className={`app-layout ${page === "orderDetail" ? "app-layout-standalone" : ""}`}>
-          {page !== "orderDetail" && (
+        <div className={`app-layout ${standaloneOrderDetail ? "app-layout-standalone" : ""}`}>
+          {!standaloneOrderDetail && (
             <SidebarNav
               groups={sidebarGroups}
               collapsed={sidebarCollapsed}
@@ -1897,11 +1921,10 @@ export default function App() {
           <div className="app-main">
             <AppShell
               sidebarCollapsed={sidebarCollapsed}
-              onSidebarToggle={page !== "orderDetail" ? () => setSidebarCollapsed((current) => !current) : undefined}
+              onSidebarToggle={!standaloneOrderDetail ? () => setSidebarCollapsed((current) => !current) : undefined}
               title={pageMeta[page].title}
               subtitle={pageMeta[page].subtitle}
               calcStatus={showBOMWorkflow ? calcStatus : null}
-              readOnly={session?.readOnly ?? false}
               controlledWrite={page === "orderDetail" && (session?.bomWriteEnabled ?? false)}
               user={currentUser}
               canManageAccounts={session?.context.access.canManageAccounts ?? false}
@@ -2094,9 +2117,21 @@ export default function App() {
               />
             )}
 
+            {page === "orders" && (
+              <OrderListPage
+                apiBase={apiBase}
+                token={session?.token ?? ""}
+                canView={session?.context.access.canViewOrders ?? false}
+                canViewPrice={session?.context.access.canViewPrice ?? false}
+                currency={session?.context.currency ?? "USD"}
+                onOpen={openOrderDetail}
+              />
+            )}
+
             {page === "orderDetail" && (
               <OrderDetailPage
                 orderId={requestedOrderId}
+                onBack={standaloneOrderDetail ? undefined : () => handleNavigate("orders")}
                 token={session?.token ?? ""}
                 apiBase={apiBase}
                 operatorAccount={session?.context.operator.account ?? ""}

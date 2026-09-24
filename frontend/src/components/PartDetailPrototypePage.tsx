@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { PartDirectoryRow } from "./PartDirectoryPage";
+import { IconButton } from "./ui";
 
 type SectionId = "overview" | "procurement" | "specifications" | "quality" | "inventory" | "records" | "gallery";
 type AssetCategory = "all" | "photo" | "drawing" | "process" | "package";
@@ -391,7 +392,7 @@ export default function PartDetailPrototypePage({
   if (loading) {
     return (
       <div className="part-prototype-page">
-        {onBack && <button className="part-prototype-back" type="button" onClick={onBack}><ArrowLeft size={16} />返回零件列表</button>}
+        {onBack && <IconButton label="返回零件列表" onClick={onBack}><ArrowLeft /></IconButton>}
         <div className="part-prototype-loading"><LoaderCircle className="spin" size={28} /><strong>正在读取零件核心资料与 COS 图片…</strong></div>
       </div>
     );
@@ -400,7 +401,7 @@ export default function PartDetailPrototypePage({
   if (error || !detail) {
     return (
       <div className="part-prototype-page">
-        {onBack && <button className="part-prototype-back" type="button" onClick={onBack}><ArrowLeft size={16} />返回零件列表</button>}
+        {onBack && <IconButton label="返回零件列表" onClick={onBack}><ArrowLeft /></IconButton>}
         <div className="part-directory-error">{error || "没有可显示的零件资料。"}</div>
       </div>
     );
@@ -412,9 +413,7 @@ export default function PartDetailPrototypePage({
   return (
     <div className="part-prototype-page">
       {onBack && (
-        <button className="part-prototype-back" type="button" onClick={onBack}>
-          <ArrowLeft size={16} />返回零件列表
-        </button>
+        <IconButton label="返回零件列表" onClick={onBack}><ArrowLeft /></IconButton>
       )}
 
       <div className="part-prototype-notice">

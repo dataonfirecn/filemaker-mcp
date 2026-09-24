@@ -27,6 +27,7 @@ import type {
   WebViewerPermissions
 } from "../types";
 import { parseError } from "../utils/error";
+import { IconButton } from "./ui";
 
 type InternalAccountAdminPageProps = {
   apiBase: string;
@@ -782,14 +783,9 @@ export default function InternalAccountAdminPage({
                 <UserPlus size={16} />新增用户
               </button>
             )}
-            <button
-              className="btn"
-              type="button"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              <RefreshCw className={loading ? "spin" : ""} size={16} />刷新
-            </button>
+            <IconButton label="刷新" loading={loading} onClick={() => void load()} disabled={loading}>
+              <RefreshCw />
+            </IconButton>
           </div>
         </div>
       )}
@@ -1019,13 +1015,9 @@ export default function InternalAccountAdminPage({
       {screen === "accountView" && selectedAccount && catalog && (
         <div className="internal-access-detail-page">
           <div className="internal-access-page-head">
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setScreen("accounts")}
-            >
-              <ArrowLeft size={16} />返回用户列表
-            </button>
+            <IconButton label="返回用户列表" onClick={() => setScreen("accounts")}>
+              <ArrowLeft />
+            </IconButton>
             <div>
               <span>用户显示页 · 只读</span>
               <h3>{selectedAccount.displayName}</h3>
@@ -1111,16 +1103,14 @@ export default function InternalAccountAdminPage({
       {isAccountForm && accountDraft && catalog && (
         <form className="internal-access-detail-page" onSubmit={saveAccount}>
           <div className="internal-access-page-head">
-            <button
-              className="btn"
-              type="button"
+            <IconButton
+              label={screen === "accountEdit" ? "返回显示页" : "返回用户列表"}
               onClick={() =>
                 setScreen(screen === "accountEdit" ? "accountView" : "accounts")
               }
             >
-              <ArrowLeft size={16} />
-              {screen === "accountEdit" ? "返回显示页" : "返回用户列表"}
-            </button>
+              <ArrowLeft />
+            </IconButton>
             <div>
               <span>{screen === "accountCreate" ? "用户新增页" : "用户编辑页"}</span>
               <h3>
@@ -1360,13 +1350,9 @@ export default function InternalAccountAdminPage({
         catalog && (
           <form className="internal-access-detail-page" onSubmit={savePrivilegeSet}>
             <div className="internal-access-page-head">
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setScreen("privilegeSets")}
-              >
-                <ArrowLeft size={16} />返回权限集列表
-              </button>
+              <IconButton label="返回权限集列表" onClick={() => setScreen("privilegeSets")}>
+                <ArrowLeft />
+              </IconButton>
               <div>
                 <span>权限集编辑页</span>
                 <h3>{selectedPrivilegeSet.name}</h3>

@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import type { BusinessProductRow } from "../types";
 import ProductMasterPage from "./ProductMasterPage";
+import { IconButton } from "./ui";
 
 export type BusinessProductDetailPageProps = {
   apiBase?: string;
@@ -14,7 +15,7 @@ export type BusinessProductDetailPageProps = {
 export default function BusinessProductDetailPage({ apiBase = "", token, product, loading, onBack }: BusinessProductDetailPageProps) {
   return <>
     <div className="detail-nav-row">
-      <button className="btn" type="button" onClick={onBack}><ArrowLeft size={16} />返回列表</button>
+      <IconButton label="返回列表" onClick={onBack}><ArrowLeft /></IconButton>
     </div>
     {loading ? <div className="empty-state" role="status">正在加载产品资料…</div>
       : product ? <ProductMasterPage key={product.recordId} apiBase={apiBase} token={token} initialRef={product.recordId} readOnly />

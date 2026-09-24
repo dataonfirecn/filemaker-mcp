@@ -2,7 +2,6 @@ import { PanelLeftClose, PanelLeftOpen, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CalcStatus, ThemeMode } from "../types";
 import InternalUserMenu, { type InternalUserMenuUser } from "./InternalUserMenu";
-import ThemeToggle from "./ThemeToggle";
 
 function statusClass(status: CalcStatus): string {
   switch (status) {
@@ -23,7 +22,6 @@ export type AppShellProps = {
   title: string;
   subtitle: string;
   calcStatus?: CalcStatus | null;
-  readOnly: boolean;
   controlledWrite?: boolean;
   user: InternalUserMenuUser | null;
   canManageAccounts: boolean;
@@ -41,7 +39,6 @@ export default function AppShell({
   title,
   subtitle,
   calcStatus,
-  readOnly,
   controlledWrite = false,
   user,
   canManageAccounts,
@@ -69,11 +66,12 @@ export default function AppShell({
             </div>
           </div>
           <div className="app-shell-meta">
-            <ThemeToggle theme={theme} onToggle={onThemeToggle} />
             {user && (
               <InternalUserMenu
                 user={user}
                 canManageAccounts={canManageAccounts}
+                theme={theme}
+                onThemeToggle={onThemeToggle}
                 onOpenSettings={onOpenSettings}
                 onOpenAccountAdmin={onOpenAccountAdmin}
                 onSignOut={onSignOut}
@@ -85,12 +83,7 @@ export default function AppShell({
                 <ShieldCheck size={14} />
                 FileMaker 受控写入
               </span>
-            ) : readOnly && (
-              <span className="pill readonly">
-                <ShieldCheck size={14} />
-                FileMaker 只读
-              </span>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
