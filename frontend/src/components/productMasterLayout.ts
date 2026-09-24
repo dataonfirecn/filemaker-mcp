@@ -41,7 +41,7 @@ export function fieldPresentation(field: { name: string; result: string }, isChe
 }
 
 // Product-owned business fields are grouped independently of removed portal tabs.
-// Review status follows the identifiers and is aligned to the right of the first row.
+// Review status follows the identifiers in the first row.
 export const basicSections: Record<string, string[]> = {
   '产品信息': ['product_sku', '系統產品編號', '審核', '客戶SKU', '條形碼', '產品名稱_中文', 'product_name', '法文名稱', 'Client', 'id_client'],
   '报价信息': ['RMB成本', '美金成本', 'EX-Price', '台幣出廠', 'RMB出廠', 'MOQ', 'Retail_Price_USD', '建議報價', 'opencost', '組裝成本USD', '組裝成本', '其他成本估價', '匯率', '成本加成', '報價積數', '應課稅', '提成', '提成B', '報價紀錄', '關聯編號_Price', '時薪', '包裝總工錢', '總人工成本'],

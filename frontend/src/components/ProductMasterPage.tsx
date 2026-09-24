@@ -262,7 +262,11 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
 
     if (!writable && presentation !== 'meta') {
       if (control?.type === 'checkBox') return <div className="pm-val" key={i}>{v ? <span className="pm-chip pm-chip-ok">{v.split('\n').filter(Boolean).join(' · ') || '是'}</span> : <span className="pm-val-empty">—</span>}</div>;
-      return <div className={`pm-val ${cls}`} key={i} title={v}>{v || <span className="pm-val-empty">—</span>}</div>;
+      const issue = i === 0 ? costs?.issues[f.name] : undefined;
+      return <div className={`pm-val ${cls}${issue ? ' has-issue' : ''}`} key={i} title={issue ? `${v || '—'} · ${issue}` : v}>
+        {v || <span className="pm-val-empty">—</span>}
+        {issue && <small className="pm-val-issue" role="status">{issue.split('，')[0]}</small>}
+      </div>;
     }
     if (presentation === 'meta') return <output className="pm-val" key={i} title={v}>{v || '—'}</output>;
     if (control?.searchable) return <button type="button" key={i} className="pm-picker" disabled={!writable || busy || loading} aria-label={`选择 ${label(f.name)}`} onClick={() => openPicker(f.name, i + 1)}><span>{v || '请选择'}</span><Search size={14} /></button>;
@@ -305,7 +309,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
             return sku.trim() ? { ...previous, 系統產品編號: sku } : previous;
           })}>同 SKU</button>
       </div> : Array.from({ length: f.maxRepeat || 1 }, (_, i) => inputFor(f, i))}
-      {costs?.issues[f.name] && <small className="pm-f-error">{costs.issues[f.name]}</small>}
+      {writable && costs?.issues[f.name] && <small className="pm-f-error">{costs.issues[f.name]}</small>}
       {f.name === 'product_sku' && skuError && <small id="pm-sku-error" className="pm-f-error" role="alert">{skuError}</small>}
     </div>;
   }
@@ -317,10 +321,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     return <section className="pm-measure" key={key}>
       <div className="pm-measure-head"><span className="k">{group.title}</span>{group.unit && <span className="pm-chip pm-chip-calc">{group.unit}</span>}</div>
       <div className="pm-measure-row">
-        {fs.flatMap((f, index) => [
+        <div className="pm-measure-cells">{fs.flatMap((f, index) => [
           ...(index > 0 ? [<span className="pm-measure-sep" key={`sep-${f.name}`}>{group.separators?.[index - 1] ?? '·'}</span>] : []),
           <div className="pm-measure-cell" key={f.name} title={f.name}>{inputFor(f, 0, 'pm-num')}</div>,
-        ])}
+        ])}</div>
         {derived && <div className="pm-measure-derived"><b>{value(derived.name) || '—'}</b><span>{group.derivedLabel ?? label(derived.name)}</span></div>}
       </div>
       {group.note && <div className="pm-measure-note"><span>{group.note}</span>{derived && <span>{label(derived.name)} 由系统计算</span>}</div>}
@@ -360,12 +364,13 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
       {!!rest.length && <div className="pm-grid">{rest.map(fieldControl)}</div>}
       {!!measures.length && <div className="pm-measures">{measures.map((g, i) => measureBlock(g, `${title}:${i}`))}</div>}
       {bandBlocks.map(band => <div className="pm-band" key={band.title}>
-        <div className="pm-band-head"><span>{band.title}</span><i />
+        <div className="pm-band-head"><span>{band.title}</span>
+          {band.title === '成本' && permissions.canViewPrice && costs && <small className="pm-band-note" role="status" title="采用 FileMaker 已保存的 BOM、汇率及成本参数">（计算于 {new Date(costs.calculatedAt).toLocaleTimeString('zh-CN')}）</small>}
+          <i />
           {band.title === '成本' && permissions.canViewPrice && product && <Button disabled={costLoading} onClick={() => void refreshCosts()} aria-label="刷新成本"><RefreshCw size={14} strokeWidth={1.75} />{costLoading ? '正在刷新…' : '刷新成本'}</Button>}
         </div>
         {band.title === '成本' && permissions.canViewPrice && <>
           {costError && <Alert>{costError}</Alert>}
-          {costs && <p className="pm-caption" role="status">计算于 {new Date(costs.calculatedAt).toLocaleTimeString('zh-CN')} · 采用 FileMaker 已保存的 BOM、汇率及成本参数</p>}
         </>}
         <div className="pm-grid pm-grid-bands">{band.fs.map(fieldControl)}</div>
       </div>)}

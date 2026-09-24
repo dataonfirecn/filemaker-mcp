@@ -126,7 +126,7 @@
 .pm-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
 .pm-split-col { min-width: 0; scroll-margin-top: 78px; container-type: inline-size; }
 /* Stack by the card's own width, not the viewport: the sidebar and rail change how much room the card gets. */
-@container pm-card (max-width: 860px) {
+@container pm-card (max-width: 960px) {
   .pm-split { grid-template-columns: 1fr; gap: 16px 0; }
   .pm-split-col + .pm-split-col { padding-left: 0; padding-top: 16px; border-left: 0; border-top: 1px dashed var(--pm-line-strong); }
 }
@@ -136,14 +136,20 @@
 /* ── field grid ──────────────────────────────────────────────── */
 /* One fixed-minimum track for every field: grids of equal width get identical columns,
    so fields line up across rows, bands and sections without per-breakpoint span tables. */
-.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr)); gap: 14px 16px; align-items: start; }
-.product-master .pm-grid > .pm-f-review { grid-column: -2 / -1; }
-.product-master .pm-grid > .pm-f-notes { grid-column: 1 / -1; }
-@container (min-width: 720px) { .product-master .pm-grid > .pm-f-notes { grid-column: span 2; } }
+/* Tracks are capped (176–208px): a wider container gains columns instead of stretching fields,
+   and wide fields claim a fixed number of tracks rather than the whole row. */
+.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 208px)); justify-content: start; gap: 14px 16px; align-items: start; }
 /* names and the customer block each own a full row — long values must not be clipped */
-.product-master .pm-grid > .pm-f-name,
+.product-master .pm-grid > .pm-f-name, .product-master .pm-grid > .pm-f-notes,
 .product-master .pm-grid > .pm-f-identifier,
 .product-master .pm-grid > .pm-customer { grid-column: 1 / -1; }
+@container (min-width: 420px) {
+  .product-master .pm-grid > .pm-f-name, .product-master .pm-grid > .pm-f-notes,
+  .product-master .pm-grid > .pm-f-identifier, .product-master .pm-grid > .pm-customer { grid-column: span 2; }
+}
+@container (min-width: 640px) {
+  .product-master .pm-grid > .pm-f-name, .product-master .pm-grid > .pm-f-notes, .product-master .pm-grid > .pm-customer { grid-column: span 3; }
+}
 
 .pm-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 /* Label = small, regular, muted; value = larger, medium, full ink. Labels stay on one line so values share a baseline. */
@@ -173,9 +179,13 @@
 /* read-only values are not drawn as inputs */
 .pm-val { display: flex; align-items: center; min-height: var(--pm-h); padding: 0 3px; font-size: 14px; font-weight: 500; color: var(--pm-ink); overflow-wrap: anywhere; }
 .pm-grid .pm-val { border-bottom: 1px solid var(--pm-line-soft); }
-.pm-f-compact .pm-val { font: 500 14px/1.4 var(--pm-mono); font-variant-numeric: tabular-nums; }
+.pm-f-compact .pm-val { font: 500 14px/1.4 var(--pm-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
 .pm-f-notes .pm-val, .pm-f-name .pm-val { align-items: flex-start; padding-top: 7px; line-height: 1.6; white-space: pre-wrap; }
 .pm-f-identifier .pm-val { font: 400 12px/1.5 var(--pm-mono); }
+/* A calculation problem is shown inside the value it concerns, not as a separate red line. */
+.pm-val.has-issue { gap: 8px; border-bottom-color: color-mix(in srgb, var(--pm-danger) 45%, var(--pm-line-soft)); }
+.pm-val-issue { min-width: 0; margin-left: auto; overflow: hidden; font: 400 12px/1.3 var(--pm-sans); color: var(--pm-danger); white-space: nowrap; text-overflow: ellipsis; }
+.product-master .pm-grid-bands .pm-f-compact .pm-val-issue { order: -1; margin: 0 auto 0 0; }
 .pm-val-empty { font-weight: 400; color: var(--pm-faint); }
 
 .product-master .pm-picker { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: var(--pm-h); padding: 0 9px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s); background: var(--pm-surface); color: var(--pm-ink); font: 13px/1 var(--pm-sans); cursor: pointer; }
@@ -198,31 +208,46 @@
 .product-master .pm-customer button:disabled { color: var(--pm-faint); cursor: not-allowed; }
 
 /* ── measurement groups ──────────────────────────────────────── */
-.pm-measures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; margin-top: 14px; }
-.pm-measure { padding: 9px 11px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s); background: var(--pm-surface-2); }
+.pm-measures { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 440px)); justify-content: start; gap: 12px 14px; margin-top: 14px; }
+.pm-measure { container-type: inline-size; padding: 9px 11px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s); background: var(--pm-surface-2); }
 .pm-measure-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
 .pm-measure-head .k { font-size: 12px; font-weight: 600; color: var(--pm-muted); }
-.pm-measure-row { display: flex; align-items: center; gap: 6px; }
-.pm-measure-cell { flex: 1; min-width: 0; }
+.pm-measure-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* The three numbers always stay on one row; only the derived CBM may drop below. */
+.pm-measure-cells { flex: 1 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* A read-only box is never narrower than its number (nowrap + auto min width), so a number never breaks;
+   an input keeps room for 7 characters, e.g. 1234.56. */
+.pm-measure-cell { flex: 1 1 0; font: 500 13px/1 var(--pm-mono); }
+.product-master .pm-measure-cell input { min-width: calc(7ch + 18px); }
 .product-master .pm-measure-cell input, .product-master .pm-measure-cell .pm-val {
   width: 100%; height: 31px; min-height: 31px; padding: 0 8px; border: 1px solid var(--pm-line-strong); border-radius: var(--pm-r-s);
   background: var(--pm-surface); color: var(--pm-ink); font: 500 13px/1 var(--pm-mono); text-align: center; font-variant-numeric: tabular-nums;
 }
-.product-master .pm-measure-cell .pm-val { display: flex; align-items: center; justify-content: center; border-style: dashed; background: transparent; color: var(--pm-ink-2); }
+.product-master .pm-measure-cell .pm-val { white-space: nowrap; overflow-wrap: normal; display: flex; align-items: center; justify-content: center; border-style: dashed; background: transparent; color: var(--pm-ink-2); }
 .pm-measure-sep { flex-shrink: 0; font: 400 11px/1 var(--pm-mono); color: var(--pm-faint); }
-.pm-measure-derived { display: flex; align-items: baseline; gap: 5px; margin-left: 3px; padding-left: 9px; border-left: 1px dashed var(--pm-line-strong); }
+.pm-measure-derived { display: flex; align-items: baseline; gap: 5px; margin-left: 3px; padding-left: 9px; border-left: 1px dashed var(--pm-line-strong); white-space: nowrap; }
+@container (max-width: 300px) {
+  .pm-measure-row, .pm-measure-cells { gap: 3px; }
+  .product-master .pm-measure-cell input, .product-master .pm-measure-cell .pm-val { padding: 0 4px; }
+  .product-master .pm-measure-cell input { min-width: calc(7ch + 10px); }
+}
+@container (max-width: 360px) {
+  .pm-measure-derived { flex-basis: 100%; margin: 2px 0 0; padding: 6px 0 0; border-left: 0; border-top: 1px dashed var(--pm-line-strong); }
+}
 .pm-measure-derived b { font: 600 13px/1 var(--pm-mono); color: var(--pm-calc); font-variant-numeric: tabular-nums; }
 .pm-measure-derived span { font: 400 10px/1 var(--pm-mono); color: var(--pm-faint); }
 .pm-measure-note { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; font-size: 12px; color: var(--pm-faint); }
 
 /* ── price bands ─────────────────────────────────────────────── */
 .pm-band { margin-top: 14px; container-type: inline-size; }
-.pm-band .pm-caption { padding: 0 0 10px; }
 .pm-band-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pm-band-head span { font-size: 12px; font-weight: 600; letter-spacing: .09em; color: var(--pm-faint); }
+.pm-band-note { font-size: 12px; font-weight: 400; color: var(--pm-muted); white-space: nowrap; cursor: help; }
 .pm-band-head i { flex: 1; height: 1px; background: var(--pm-line-soft); }
 .product-master .pm-grid-bands .pm-f-compact .pm-val, .product-master .pm-grid-bands .pm-f-compact input { text-align: right; }
 .product-master .pm-grid-bands .pm-f-compact .pm-val { justify-content: flex-end; }
+/* Numeric columns read like a table: label and number share one right edge. */
+.product-master .pm-grid-bands .pm-f-compact .pm-f-label { justify-content: flex-end; text-align: right; }
 
 /* ── folded groups ───────────────────────────────────────────── */
 .pm-fold { margin-top: 12px; }
@@ -328,7 +353,7 @@
   .pm-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
-  .pm-measures, .pm-docs { grid-template-columns: 1fr; }
+  .pm-docs { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .pm-bar { flex-wrap: wrap; padding: 10px 16px; }
