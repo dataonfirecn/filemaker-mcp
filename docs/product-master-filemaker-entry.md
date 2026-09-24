@@ -64,3 +64,32 @@ window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
 - 已从 FileMaker 的「产品报价」重新打开「产品编辑」，当前产品成功载入且可编辑；留给用户直接修改保存查看弹框，发布验收未额外改写产品内容。
 - 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-d12494a/`。
 - 回滚：恢复该目录的 `backup/previous-release.yml` 到当前 Compose 目录，按 release-playbook 执行 `up -d --no-deps frontend`，回到 `starrc-frontend:20260924-12aff38`。
+
+## 保存反馈弹框优化（2026-09-24，`4ad9fdd`，仅前端）
+
+保存反馈从内联 Badge 提示改为独立组件 `ProductSaveFeedback`，用共享
+`ui/ProgressSteps` 显示「保存资料 → 回写 FileMaker → 确认完成」三个真实业务
+阶段（不模拟百分比）：
+
+- 保存请求带 45 秒超时（AbortController），超时提示「尚未确认保存结果，返回
+  编辑后重试相同修改，系统会避免重复提交」（requestId 幂等）。
+- 异常时显示可选择的错误详情（产品 UUID、Web 版本、阶段、状态）与「复制错误」
+  按钮，允许「返回编辑」；等待超过 30 秒也可返回编辑，后台继续处理。
+- 只有确认回写成功（job `synced`）才显示「完成」按钮关闭 WebViewer。
+- `docs/ui-design-rules.md` 新增 ProgressSteps 组件规则。
+
+### 标准镜像发布
+
+- 代码提交 `4ad9fdd` 已推送 `origin/main`，仅前端和文档改动，无数据库迁移或
+  FileMaker 布局变更。
+- 镜像 `starrc-frontend:20260924-4ad9fdd` 继承 `starrc-frontend:20260924-d12494a`。
+- frontend 容器 `35b019f4517f` → `7f9c518d9bb9`；backend `a4fd3392dca5`、
+  postgres `f196c32c514b` 保持不变。
+- 前端 tsc + vite 构建通过；内外网健康检查均 `ok: true`。公网 `index.html` 与
+  入口 JS 和本地构建 SHA-256 一致：
+  - `index.html`：`7a83033795f21f97a66981be78469590804f10425d29f3c2ab72960019d6782e`
+  - `App-BEjGg5ir.js`：`37e8ea1438fbb6202be4a54017b9ae72b6b57d0e3a5727993e2453088109f3f0`
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-4ad9fdd/`。
+- 回滚：恢复该目录的 `backup/previous-release.yml` 到当前 Compose 目录，按
+  release-playbook 执行 `up -d --no-deps frontend`，回到
+  `starrc-frontend:20260924-d12494a`。
