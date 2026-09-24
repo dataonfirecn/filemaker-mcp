@@ -1,0 +1,14 @@
+.ui-progress-steps { list-style: none; margin: 0; padding: 0; }
+.ui-progress-steps li { position: relative; display: grid; grid-template-columns: var(--space-8) 1fr; gap: var(--space-3); padding-bottom: var(--space-6); }
+.ui-progress-steps li:last-child { padding-bottom: 0; }
+.ui-progress-steps li:not(:last-child)::after { content: ''; position: absolute; left: var(--space-4); top: var(--space-8); bottom: 0; border-left: 1px solid var(--color-border); }
+.ui-progress-node { display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: var(--radius-full); color: var(--color-text-muted); background: var(--color-surface-muted); font-size: var(--text-sm); }
+.ui-progress-node svg { width: var(--icon-md); height: var(--icon-md); stroke-width: 1.75; }
+.ui-progress-steps strong { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-text); }
+.ui-progress-steps p { font-size: var(--text-xs); color: var(--color-text-muted); margin: var(--space-1) 0 0; }
+.ui-progress-steps [data-state="active"] .ui-progress-node { background: var(--color-primary-soft); color: var(--color-primary-text); }
+.ui-progress-steps [data-state="done"] .ui-progress-node { background: var(--color-success-soft); color: var(--color-success); }
+.ui-progress-steps [data-state="error"] .ui-progress-node { background: var(--color-danger-soft); color: var(--color-danger); }
+.ui-progress-steps [data-state="active"] svg { animation: ui-progress-spin 1s linear infinite; }
+@keyframes ui-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-progress-steps [data-state="active"] svg { animation: none; } }

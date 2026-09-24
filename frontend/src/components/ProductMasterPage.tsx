@@ -4,8 +4,9 @@ import { Save, Search, Image as ImageIcon, FileText, LockKeyhole, RotateCw, Down
 import { productPhotoFields, specFieldOrder, packagingFieldOrder, nativeTabs, basicSections, fieldLabels, sectionFields, assetGroup, fieldPresentation, recordMetaFields, draftFlags, isEditorField, measureGroups, priceBands, foldedGroups, derivedValue } from './productMasterLayout';
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
+import ProductSaveFeedback from './ProductSaveFeedback';
 import ProductSelect from './ProductSelect';
-import { Alert, Badge, Button, Modal } from './ui';
+import { Alert, Badge, Button } from './ui';
 import { formatStamp } from '../utils/timestamp';
 import { PhotoSection, SpecSection, PackagingSection, MAIN_PHOTO_FIELD } from './ProductAssetSections';
 import type { AssetEnv } from './ProductAssetSections';
@@ -86,6 +87,8 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const [skuError, setSkuError] = useState('');
   const [message, setMessage] = useState('');
   const [savedResult, setSavedResult] = useState<{ id: string; version: number } | null>(null);
+  const [saveDialog, setSaveDialog] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [closeError, setCloseError] = useState('');
   const [syncError, setSyncError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -108,23 +111,10 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const canEdit = !readOnly && !!permissions.canEditProducts && !product?.previewMode && !locked;
   const canApprove = !readOnly && !!product && !product.previewMode && !!permissions.canApproveProducts;
   const savedJob = savedResult && sync?.filemaker.find(job => job.version === savedResult.version);
-  const saveFeedback = syncError
-    ? { tone: 'warning' as const, label: '回写状态暂不可用', detail: syncError }
-    : savedJob?.status === 'synced'
-      ? { tone: 'success' as const, label: '已写回 FileMaker', detail: '产品资料已保存并写回 FileMaker，可以关闭窗口。' }
-      : savedJob?.status === 'conflict'
-        ? { tone: 'warning' as const, label: '回写需要处理', detail: 'Web 修改已保留，FileMaker 存在版本冲突。请联系管理员核对同步状态。' }
-        : savedJob?.status === 'superseded'
-          ? { tone: 'warning' as const, label: '已由后续版本接替', detail: '本次修改已保存在历史记录中，FileMaker 回写以新的完整版本为准。' }
-          : sync?.writeEnabled === false
-            ? { tone: 'warning' as const, label: '等待开启回写', detail: '产品资料已保存在 Web，FileMaker 回写尚未开启。' }
-            : savedJob?.status === 'retry'
-              ? { tone: 'warning' as const, label: '后台正在重试回写', detail: '产品资料已保存在 Web，FileMaker 暂未同步成功。关闭窗口后后台会继续重试。' }
-              : { tone: 'info' as const, label: '正在回写 FileMaker', detail: '产品资料已保存在 Web，后台正在同步。关闭窗口不会中断回写。' };
 
-  async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  async function api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
     if (readOnly && method !== 'GET') throw new Error('产品浏览页不支持修改');
-    const response = await fetch(`${apiBase}/api/product-master${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const response = await fetch(`${apiBase}/api/product-master${path}`, { method, signal, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const data = await response.json();
     if (!response.ok) {
       if (response.status === 409 && data.detail?.current) setConflict(data.detail.current);
@@ -191,7 +181,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (product.previewMode) { setHistory([]); setSync({ writeEnabled: false, filemaker: [], dms: [] }); return; }
     let active = true;
     setSync(null); setSyncError('');
-    const poll = () => api<Status>(`/products/${product.id}/status`).then(s => { if (active) { setSync(s); setSyncError(''); } }).catch(() => { if (active) setSyncError('暂时无法读取回写状态，产品资料已保存在 Web，后台会继续同步。'); });
+    const poll = () => api<Status>(`/products/${product.id}/status`).then(s => { if (active) { setSync(s); setSyncError(''); } }).catch(e => { if (active) setSyncError(`暂时无法读取回写状态，后台会继续同步。${e instanceof Error ? e.message : '状态请求失败'}`); });
     void poll(); const timer = window.setInterval(poll, 5000);
     api<{ rows: Revision[] }>(`/products/${product.id}/history`).then(r => { if (active) setHistory(r.rows); }).catch(e => { if (active) setError(String(e)); });
     return () => { active = false; clearInterval(timer); };
@@ -259,15 +249,17 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (assets.some(a => assetGroup(a.field) === '產品照片') && !assets.some(a => a.field === MAIN_PHOTO_FIELD)) {
       setError('已上传产品照片但没有指定主图。请在「產品照片」里选一张，点它的星标设为主图。'); setTab('產品照片'); return;
     }
-    setBusy(true);
+    setBusy(true); setSaveDialog(true); setSaveError(''); setSavedResult(null); setCloseError('');
     const changes = Object.fromEntries(Object.entries(fields).filter(([name, v]) => JSON.stringify(product?.fields[name]) !== JSON.stringify(v)));
     const body = { expectedVersion: product?.version ?? 0, changes, assets: product ? assets : null }; const fingerprint = JSON.stringify(body);
     if (pending.current.fingerprint !== fingerprint) pending.current = { fingerprint, id: crypto.randomUUID() };
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
     try {
-      const saved = await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id });
+      const saved = await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id }, controller.signal);
       show(saved); setSync(null); setSyncError(''); setCloseError('');
       setSavedResult({ id: saved.id, version: saved.version });
-    } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请稍后重试。'); } finally { setBusy(false); }
+    } catch (e) { const detail = controller.signal.aborted ? '保存请求超时，尚未确认保存结果。请返回编辑后重试相同修改，系统会避免重复提交。' : e instanceof Error ? e.message : '保存失败，请稍后重试。'; setError(detail); setSaveError(detail); } finally { clearTimeout(timeout); setBusy(false); }
   }
   async function review(status: '已審核' | '未審核') {
     if (!product) return;
@@ -702,15 +694,11 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
 
     <footer className="pm-foot"><span>{readOnly ? '产品资料 · 只读浏览' : quoteDirty ? '客户群报价尚未保存，请使用“保存此报价”' : dirty ? `有 ${changeCount} 处尚未保存的修改` : product?.previewMode ? '当前为草稿预览' : '产品资料和客户群报价分别保存并保留历史'} · {visibleAssets.length} 个附件</span></footer>
 
-    {savedResult && <Modal title="产品资料已保存" onClose={() => closeEditor(true)}
-      footer={<Button variant="primary" autoFocus disabled={busy || quoteBusy} onClick={() => closeEditor(true)}>关闭</Button>}>
-      <div role="status" aria-live="polite">
-        <Badge tone={saveFeedback.tone}>{saveFeedback.label}</Badge>
-      </div>
-      <p>{saveFeedback.detail}</p>
-      {quoteDirty && <Alert>客户群报价尚未保存，关闭窗口会放弃未保存的报价修改。</Alert>}
-      {closeError && <Alert>{closeError}</Alert>}
-    </Modal>}
+    {saveDialog && <ProductSaveFeedback saving={busy} saveError={saveError} saved={savedResult}
+      job={savedResult ? savedJob || undefined : undefined} syncError={savedResult ? syncError : ''}
+      writeEnabled={savedResult ? sync?.writeEnabled : undefined} closeError={closeError} quoteDirty={quoteDirty}
+      onComplete={() => closeEditor(true)} onDismiss={() => { setSaveDialog(false); setSavedResult(null); }} />}
+
 
     {picker && <div className="pm-modal" role="dialog" aria-modal="true" aria-label={['Client', 'id_client'].includes(picker.field) ? '选择客户' : '选择 ' + picker.field} onKeyDown={e => { if (e.key === 'Escape') setPicker(null); }}>
       <section className="pm-choice">

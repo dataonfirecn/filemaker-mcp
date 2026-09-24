@@ -253,6 +253,11 @@ Token：
 - 使用共享 `ui/Modal` 的原生 dialog：焦点限制在弹框内，Escape 调用 `onClose`，点击遮罩不关闭；传入 `footer` 配置按钮。
 - 遮罩 token `--color-modal-backdrop`：亮色 `rgba(20,20,19,0.4)`，暗色 `rgba(20,20,19,0.65)`。
 
+### ProgressSteps
+- 使用共享 `ui/ProgressSteps` 显示真实业务阶段，纵向节点配细连接线；不模拟百分比。
+- 当前阶段陶土色、已完成 success、错误 danger、等待 muted；同时显示图标与文字。
+- 保存弹框只有确认回写成功后显示「完成」；异常显示可选择的错误详情与「复制错误」，允许返回编辑；等待超过 30 秒可返回编辑，后台继续处理。
+
 ### Empty / Loading / Error
 - EmptyState：20px 线条图标（muted）→ serif 20px 标题 → 13px 说明 → 可选按钮；居中，无插画。
 - Loading：列表和卡片用骨架条（`--color-surface-hover` 呼吸动画），按钮内用 16px 旋转图标。
