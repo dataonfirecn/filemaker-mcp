@@ -1,0 +1,31 @@
+/* 导航首页：与其他后台页面一致——页面底米色、顶栏融进页面底、卡片白底无阴影。只用 token。 */
+.app-home .app-main { padding: var(--space-8); }
+.app-home .app-shell { background: var(--color-bg); border: 0; box-shadow: none; padding: 0; margin-bottom: var(--space-6); }
+.app-home .app-shell h1 { font: var(--weight-medium) var(--text-xl)/1.3 var(--font-serif); }
+
+.dashboard-page { padding: 0; gap: var(--space-4); }
+.dashboard-page .dashboard-hero,
+.dashboard-page .dashboard-metrics article,
+.dashboard-page .dashboard-report-panel { border-radius: var(--radius-lg); box-shadow: none; }
+.dashboard-page .dashboard-hero h2 { font-family: var(--font-serif); font-weight: var(--weight-medium); letter-spacing: normal; }
+.dashboard-page .dashboard-eyebrow,
+.dashboard-page .dashboard-report-heading > div > span { color: var(--color-primary-text); font-weight: var(--weight-medium); letter-spacing: normal; }
+/* 智能对话入口：次级样式（浅底细边框），不再是整块橙色。 */
+.dashboard-page .dashboard-chat-cta { border-color: var(--color-border-strong); background: var(--color-surface-muted); color: var(--color-text); box-shadow: none; }
+.dashboard-page .dashboard-chat-cta:hover:not(:disabled) { background: var(--color-surface-hover); transform: none; box-shadow: none; }
+.dashboard-page .dashboard-chat-icon { background: var(--color-primary-soft); color: var(--color-primary-text); }
+.dashboard-page .dashboard-chat-cta strong { font-weight: var(--weight-medium); }
+.dashboard-page .dashboard-chat-cta small { color: var(--color-text-muted); font-weight: var(--weight-regular); }
+.dashboard-page .dashboard-chat-cta > svg { color: var(--color-text-muted); }
+
+/* 报告指标：不用顶部彩色边框，统一细边框；有告警/严重时只在标签前加一个小圆点。 */
+.dashboard-page .dashboard-report-metrics article { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.dashboard-page .dashboard-report-metrics span { font-weight: var(--weight-medium); }
+.dashboard-page .dashboard-report-metrics small { color: var(--color-text-muted); }
+.dashboard-page .dashboard-report-metrics article.warning > span:first-child::before,
+.dashboard-page .dashboard-report-metrics article.critical > span:first-child::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: var(--space-2); border-radius: var(--radius-full); vertical-align: 1px; }
+.dashboard-page .dashboard-report-metrics article.warning > span:first-child::before { background: var(--color-warning); }
+.dashboard-page .dashboard-report-metrics article.critical > span:first-child::before { background: var(--color-danger); }
+
+@media (max-width: 1180px) { .app-home .app-main { padding: var(--space-5); } }
+@media (max-width: 640px) { .app-home .app-main { padding: var(--space-4); } }

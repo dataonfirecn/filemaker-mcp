@@ -2,6 +2,8 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Eye, FileText, LayoutGrid, Mes
 import { useEffect, useState } from "react";
 import type { Page, ReportDashboardResponse, ReportStatus } from "../types";
 import type { SidebarNavGroup } from "./SidebarNav";
+import ReportTrendChart from "./ReportTrendChart";
+import "./DashboardPage.css";
 
 export type DashboardPageProps = {
   groups: SidebarNavGroup[];
@@ -170,73 +172,11 @@ export default function DashboardPage({
               </section>
               <section className="dashboard-report-trend">
                 <header><strong>最近运行</strong><span>14天</span></header>
-                <div className="dashboard-report-trend-days">
-                  {reportData.trends.map((item) => {
-                    const state: ReportStatus = item.failedCount
-                      ? "failed"
-                      : item.warningCount
-                        ? "warning"
-                        : "success";
-                    return (
-                      <div key={item.reportDate} title={`${item.reportDate} · 完整度 ${item.dataCompleteness}%`}>
-                        <span className={state} style={{ height: `${Math.max(18, item.dataCompleteness)}%` }} />
-                        <small>{item.reportDate.slice(5)}</small>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ReportTrendChart trends={reportData.trends} />
               </section>
             </div>
           </div>
         )}
-      </section>
-
-      <section className="dashboard-navigation" aria-labelledby="dashboard-navigation-title">
-        <div className="dashboard-section-head">
-          <div>
-            <span>浏览器入口</span>
-            <h2 id="dashboard-navigation-title">浏览器登录工作台</h2>
-          </div>
-          <p>这些页面在浏览器登录后使用；FileMaker 内嵌页面和 API 已收录到管理员的应用与接口目录。</p>
-        </div>
-
-        <div className="dashboard-group-grid">
-          {groups.map((group) => (
-            <section className="dashboard-group" key={group.id} aria-labelledby={`dashboard-group-${group.id}`}>
-              <h3 id={`dashboard-group-${group.id}`}>{group.label}</h3>
-              <div className="dashboard-card-grid">
-                {group.items.map((item) => {
-                  const Icon = item.Icon;
-                  return (
-                    <button
-                      className={`dashboard-nav-card ${item.disabled ? "disabled" : ""}`}
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        if (!item.disabled) {
-                          if (item.onOpen) item.onOpen();
-                          else onNavigate(item.id);
-                        }
-                      }}
-                      disabled={item.disabled}
-                      title={item.disabled ? item.disabledReason : item.description}
-                    >
-                      <span className="dashboard-nav-icon"><Icon size={20} /></span>
-                      <span className="dashboard-nav-copy">
-                        <span className="dashboard-nav-title">
-                          <strong>{item.label}</strong>
-                          {item.badge && <small>{item.badge}</small>}
-                        </span>
-                        <span>{item.disabled ? item.disabledReason : item.description}</span>
-                      </span>
-                      <ArrowRight className="dashboard-nav-arrow" size={17} />
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
       </section>
     </div>
   );

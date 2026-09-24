@@ -1,4 +1,4 @@
-import { ChevronDown, LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
+import { LogOut, Moon, Settings, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ThemeMode } from "../types";
 
@@ -75,7 +75,6 @@ export default function InternalUserMenu({
           <strong>{user.displayName || user.username}</strong>
           <small>{user.username}</small>
         </span>
-        <ChevronDown className={open ? "open" : ""} size={16} aria-hidden="true" />
       </button>
 
       {open && (
