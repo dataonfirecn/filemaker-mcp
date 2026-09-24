@@ -74,3 +74,28 @@ EOF
   与专用账号配置（见 `docs/product-writeback-enable-20260924.md`），本次发布只部署
   代码，未改动服务器 env。
 - 小范围测试：只给测试账号勾「编辑产品」「编辑产品价格」，其他账号保存会被拒绝。
+
+## 回写开启（2026-09-24，`d148515`，仅后端）
+
+- 服务器 `product-master.release.yml` env 块改动：`PRODUCT_MASTER_ENABLED`
+  false→true、`PRODUCT_MASTER_WRITE_ENABLED` false→true、
+  `PRODUCT_MASTER_SCHEMA_PATH` `config/product_master_web_schema.json`→
+  `config/product_master_schema.json`（生产 schema，含三个验证标志）。
+  凭证沿用 `.env` 的 `FILEMAKER_USERNAME` / `FILEMAKER_PASSWORD`（未设专用账号）。
+- 过程中发现并修复启动检查 bug：`main.py` 的回写前置检查直接读
+  `settings.product_master_username`（空），没有像 `FinanceFileMakerClient`
+  那样回退到 `settings.filemaker_username`，导致开启回写后 backend 拒绝启动
+  （重启循环）。修复提交 `d148515`：检查与客户端统一用
+  `product_master_* or filemaker_*` 取值。
+- 镜像：`starrc-backend:20260924-d148515`（继承 `20260924-12aff38`）；
+  frontend 继续 `20260924-12aff38`（未改动）。
+- 容器 ID：backend `832cc121f108` → `ea23d252d3a3`（重建）；frontend
+  `02e3944a7267`、postgres `f196c32c514b` 保持不变。
+- 验证：后端 401 过 / 60 跳过；内网 + 公网 `healthz` 均 `ok: true`；
+  backend 健康检查通过（启动检查不再拒绝）。
+- 服务器审计目录：`/opt/starrc-filemaker/releases/20260924-d148515/`
+  （`backup/previous-release.yml` 为开启回写后的版本、`build/`、`release.yml`、
+  `containers-before.txt`、`containers.txt`、`build-backend.log`）。
+- 回滚：恢复 `backup/previous-release.yml` 后 `up -d --no-deps backend`
+  （回到 `20260924-12aff38`，回写开关仍为 true；要完全关闭回写需把
+  `PRODUCT_MASTER_WRITE_ENABLED` 改回 false 再重建）。
