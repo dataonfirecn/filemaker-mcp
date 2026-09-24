@@ -1,0 +1,12 @@
+.ui-modal {
+  box-sizing: border-box; width: 440px; max-width: calc(100% - var(--space-8));
+  max-height: calc(100% - var(--space-8)); margin: auto; padding: var(--space-6);
+  border: 1px solid var(--color-border); border-radius: var(--radius-xl);
+  background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-lg);
+  font: var(--weight-regular) var(--text-base)/1.55 var(--font-sans); overflow-wrap: anywhere;
+}
+.ui-modal::backdrop { background: var(--color-modal-backdrop); }
+.ui-modal h2 { margin: 0 0 var(--space-4); font: var(--weight-medium) var(--text-lg)/1.3 var(--font-serif); }
+.ui-modal-body { display: grid; gap: var(--space-4); color: var(--color-text-secondary); }
+.ui-modal-body p { margin: 0; }
+.ui-modal-footer { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }

@@ -5,7 +5,7 @@ import { productPhotoFields, specFieldOrder, packagingFieldOrder, nativeTabs, ba
 import './ProductMasterPage.css';
 import ProductQuotes from './ProductQuotes';
 import ProductSelect from './ProductSelect';
-import { Alert } from './ui';
+import { Alert, Badge, Button, Modal } from './ui';
 import { formatStamp } from '../utils/timestamp';
 import { PhotoSection, SpecSection, PackagingSection, MAIN_PHOTO_FIELD } from './ProductAssetSections';
 import type { AssetEnv } from './ProductAssetSections';
@@ -85,6 +85,9 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const [error, setError] = useState('');
   const [skuError, setSkuError] = useState('');
   const [message, setMessage] = useState('');
+  const [savedResult, setSavedResult] = useState<{ id: string; version: number } | null>(null);
+  const [closeError, setCloseError] = useState('');
+  const [syncError, setSyncError] = useState('');
   const [busy, setBusy] = useState(false);
   const [conflict, setConflict] = useState<Product | null>(null);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -104,6 +107,20 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
   const locked = !readOnly && !!product && !product.previewMode && String(product.fields['審核'] ?? '') === '已審核';
   const canEdit = !readOnly && !!permissions.canEditProducts && !product?.previewMode && !locked;
   const canApprove = !readOnly && !!product && !product.previewMode && !!permissions.canApproveProducts;
+  const savedJob = savedResult && sync?.filemaker.find(job => job.version === savedResult.version);
+  const saveFeedback = syncError
+    ? { tone: 'warning' as const, label: '回写状态暂不可用', detail: syncError }
+    : savedJob?.status === 'synced'
+      ? { tone: 'success' as const, label: '已写回 FileMaker', detail: '产品资料已保存并写回 FileMaker，可以关闭窗口。' }
+      : savedJob?.status === 'conflict'
+        ? { tone: 'warning' as const, label: '回写需要处理', detail: 'Web 修改已保留，FileMaker 存在版本冲突。请联系管理员核对同步状态。' }
+        : savedJob?.status === 'superseded'
+          ? { tone: 'warning' as const, label: '已由后续版本接替', detail: '本次修改已保存在历史记录中，FileMaker 回写以新的完整版本为准。' }
+          : sync?.writeEnabled === false
+            ? { tone: 'warning' as const, label: '等待开启回写', detail: '产品资料已保存在 Web，FileMaker 回写尚未开启。' }
+            : savedJob?.status === 'retry'
+              ? { tone: 'warning' as const, label: '后台正在重试回写', detail: '产品资料已保存在 Web，FileMaker 暂未同步成功。关闭窗口后后台会继续重试。' }
+              : { tone: 'info' as const, label: '正在回写 FileMaker', detail: '产品资料已保存在 Web，后台正在同步。关闭窗口不会中断回写。' };
 
   async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     if (readOnly && method !== 'GET') throw new Error('产品浏览页不支持修改');
@@ -173,7 +190,8 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (!product || readOnly) return;
     if (product.previewMode) { setHistory([]); setSync({ writeEnabled: false, filemaker: [], dms: [] }); return; }
     let active = true;
-    const poll = () => api<Status>(`/products/${product.id}/status`).then(s => { if (active) setSync(s); }).catch(e => { if (active) setError(String(e)); });
+    setSync(null); setSyncError('');
+    const poll = () => api<Status>(`/products/${product.id}/status`).then(s => { if (active) { setSync(s); setSyncError(''); } }).catch(() => { if (active) setSyncError('暂时无法读取回写状态，产品资料已保存在 Web，后台会继续同步。'); });
     void poll(); const timer = window.setInterval(poll, 5000);
     api<{ rows: Revision[] }>(`/products/${product.id}/history`).then(r => { if (active) setHistory(r.rows); }).catch(e => { if (active) setError(String(e)); });
     return () => { active = false; clearInterval(timer); };
@@ -209,24 +227,30 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     if (!window.confirm(dirty
       ? '确定取消编辑并关闭窗口吗？尚未保存的修改将被放弃。'
       : '确定取消编辑并关闭窗口吗？')) return;
+    closeEditor();
+  }
+  function closeEditor(saved = false) {
+    if (busy || quoteBusy) return;
+    if (saved && quoteDirty && !window.confirm('客户群报价尚未保存，确定放弃报价修改并关闭窗口吗？')) return;
+    setCloseError('');
+    const report = (text: string) => { closing.current = false; if (saved) setCloseError(text); else setError(text); };
     closing.current = true;
     try {
       if (window.FileMaker?.PerformScript) {
         window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
-          action: 'close', source: 'productMaster', productId: product?.id ?? initialRef
+          action: 'close', source: 'productMaster', productId: savedResult?.id ?? product?.id ?? initialRef,
+          ...(saved && savedResult ? { saved: true, version: savedResult.version } : {})
         }));
       } else {
         window.close();
         window.setTimeout(() => {
           if (!window.closed) {
-            closing.current = false;
-            setError('浏览器未允许自动关闭，请手动关闭此标签页；当前修改尚未保存。');
+            report(saved ? '产品资料已保存。浏览器未允许自动关闭，请手动关闭此标签页。' : '浏览器未允许自动关闭，请手动关闭此标签页。');
           }
         }, 300);
       }
     } catch {
-      closing.current = false;
-      setError('无法关闭编辑窗口，请重试取消或使用窗口关闭按钮。');
+      report('无法关闭编辑窗口，请重试关闭或使用窗口关闭按钮。');
     }
   }
   async function save() {
@@ -239,7 +263,11 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     const changes = Object.fromEntries(Object.entries(fields).filter(([name, v]) => JSON.stringify(product?.fields[name]) !== JSON.stringify(v)));
     const body = { expectedVersion: product?.version ?? 0, changes, assets: product ? assets : null }; const fingerprint = JSON.stringify(body);
     if (pending.current.fingerprint !== fingerprint) pending.current = { fingerprint, id: crypto.randomUUID() };
-    try { show(await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id })); setMessage('Web 已保存，已进入同步队列'); } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请稍后重试。'); } finally { setBusy(false); }
+    try {
+      const saved = await api<Product>(product ? `/products/${product.id}` : '/products', product ? 'PATCH' : 'POST', { ...body, requestId: pending.current.id });
+      show(saved); setSync(null); setSyncError(''); setCloseError('');
+      setSavedResult({ id: saved.id, version: saved.version });
+    } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请稍后重试。'); } finally { setBusy(false); }
   }
   async function review(status: '已審核' | '未審核') {
     if (!product) return;
@@ -662,6 +690,7 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
 
         {tab === '同步状态' && <section className="pm-card"><div className="pm-card-head"><i className="pm-card-rule" /><h2>同步状态</h2></div><div className="pm-card-body pm-sync">
           {!!sync?.drift?.length && <div className="pm-conflict"><h2>发现 FileMaker 本地变更</h2><p>Web 资料和文件已保留。请选择处理方式。</p><pre>{JSON.stringify(sync.drift.map(d => d.observed), null, 2)}</pre>{permissions.canManageProductSync && <><button type="button" className="pm-btn" onClick={async () => { const reason = window.prompt('以当前 Web 完整版本覆盖 FileMaker，请填写原因'); if (reason) try { await api(`/products/${product?.id}/rewrite-filemaker`, 'POST', { requestId: crypto.randomUUID(), reason }); if (product) show(await api<Product>(`/products/${product.id}`)); } catch (e) { setError(String(e)); } }}>重新回写完整 Web 版本</button><button type="button" className="pm-btn" onClick={async () => { const names = window.prompt('填写要采用的 FileMaker 字段名，用换行分隔'); if (!names) return; const reason = window.prompt('填写采用本地变更的原因'); if (reason) try { show(await api<Product>(`/products/${product?.id}/adopt-filemaker`, 'POST', { requestId: crypto.randomUUID(), expectedVersion: product?.version, fields: names.split('\n').filter(Boolean), reason })); } catch (e) { setError(String(e)); } }}>采用指定字段为新版本</button></>}</div>}
+          {syncError && <Alert>{syncError}</Alert>}
           <h3>FileMaker</h3>
           {sync && !sync.writeEnabled && <p className="pm-empty-text">FileMaker 回写尚未启用，已保存的修改会保留在同步队列。</p>}
           {sync?.filemaker.map(j => <div className="pm-sync-row" key={j.version}><p>版本 {j.version} · {({ pending: '等待同步', retry: '重试中', synced: '已同步', conflict: '需要处理冲突', superseded: '已由新的完整回写替代' } as Record<string, string>)[j.status] ?? j.status} {j.error}</p>{j.status !== 'synced' && permissions.canManageProductSync && <button type="button" className="pm-btn pm-btn-sm" onClick={() => { const reason = window.prompt('确认以 Web 版本重新回写，请填写处理原因'); if (reason) api(`/products/${product?.id}/retry/${j.version}`, 'POST', { requestId: crypto.randomUUID(), reason }).catch(e => setError(String(e))); }}>重新回写 Web 版本</button>}</div>)}
@@ -672,6 +701,16 @@ export default function ProductMasterPage({ apiBase, token, initialRef = '', rea
     </div>
 
     <footer className="pm-foot"><span>{readOnly ? '产品资料 · 只读浏览' : quoteDirty ? '客户群报价尚未保存，请使用“保存此报价”' : dirty ? `有 ${changeCount} 处尚未保存的修改` : product?.previewMode ? '当前为草稿预览' : '产品资料和客户群报价分别保存并保留历史'} · {visibleAssets.length} 个附件</span></footer>
+
+    {savedResult && <Modal title="产品资料已保存" onClose={() => closeEditor(true)}
+      footer={<Button variant="primary" autoFocus disabled={busy || quoteBusy} onClick={() => closeEditor(true)}>关闭</Button>}>
+      <div role="status" aria-live="polite">
+        <Badge tone={saveFeedback.tone}>{saveFeedback.label}</Badge>
+      </div>
+      <p>{saveFeedback.detail}</p>
+      {quoteDirty && <Alert>客户群报价尚未保存，关闭窗口会放弃未保存的报价修改。</Alert>}
+      {closeError && <Alert>{closeError}</Alert>}
+    </Modal>}
 
     {picker && <div className="pm-modal" role="dialog" aria-modal="true" aria-label={['Client', 'id_client'].includes(picker.field) ? '选择客户' : '选择 ' + picker.field} onKeyDown={e => { if (e.key === 'Escape') setPicker(null); }}>
       <section className="pm-choice">

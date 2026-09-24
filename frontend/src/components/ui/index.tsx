@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Inbox } from "lucide-react";
 import "./ui.css";
 import "./pagination.css";
+export { Modal } from './Modal';
 
 export type Tone = "neutral" | "success" | "warning" | "danger" | "info" | "accent";
 export function Button({ variant = "secondary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }) {

@@ -31,3 +31,23 @@ Case (
 因此布局页眉暂时明确显示 `产品编辑服务待启用，暂不能保存。`。完成 [主数据切换预检](product-master-cutover.md)、迁移及服务部署后，再去除这行提示，并用至少两个不同 UUID 的产品验证加载、保存、历史及回写状态。不能把本次入口验证视为主数据切换或写入验收通过。
 
 关闭对话框返回原报价窗口。此次未修改产品记录、原生字段权限或生产主数据功能开关。
+
+## 保存反馈与关闭回调（2026-09-24，本地实现待发布）
+
+保存产品资料成功后弹出「产品资料已保存」弹框，按本次保存版本的同步任务显示等待、成功、重试或冲突状态。Web 保存失败时保留输入并显示原有错误提示，不弹出成功反馈。
+
+弹框只有「关闭」按钮，调用现有 FileMaker 脚本，无须修改布局或新建脚本：
+
+```javascript
+window.FileMaker.PerformScript('StarRC_CloseWebViewer', JSON.stringify({
+  action: 'close',
+  source: 'productMaster',
+  productId: savedProductId,
+  saved: true,
+  version: savedVersion
+}));
+```
+
+`saved` 表示 Web 已保存；只有同步任务为 `synced` 才显示「已写回 FileMaker」。后台同步不会因关闭窗口而停止。关闭不再次询问取消编辑；仅另有未保存的客户群报价时保留离开确认。浏览器不允许关闭或脚本调用抛出错误时，弹框内提供错误提示。
+
+本地验收：TypeScript / Vite 构建通过；使用隔离模拟接口在 1068、1440、390px 的亮暗主题下检查弹框；验证关闭 callback 名称和参数，以及等待、重试、冲突和保存失败保留输入。未为验收额外修改生产产品数据。

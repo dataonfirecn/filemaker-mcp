@@ -250,6 +250,8 @@ Token：
 ### Modal
 - 遮罩 `rgba(20,20,19,0.4)`；面板白底、圆角 16px、`--shadow-lg`；宽 440 / 640 / 960。
 - 标题 serif 20/500；底部按钮右对齐，主按钮在最右。
+- 使用共享 `ui/Modal` 的原生 dialog：焦点限制在弹框内，Escape 调用 `onClose`，点击遮罩不关闭；传入 `footer` 配置按钮。
+- 遮罩 token `--color-modal-backdrop`：亮色 `rgba(20,20,19,0.4)`，暗色 `rgba(20,20,19,0.65)`。
 
 ### Empty / Loading / Error
 - EmptyState：20px 线条图标（muted）→ serif 20px 标题 → 13px 说明 → 可选按钮；居中，无插画。

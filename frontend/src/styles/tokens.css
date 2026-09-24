@@ -8,6 +8,7 @@
  */
 
 :root {
+  --color-modal-backdrop: rgba(20, 20, 19, 0.4);
   /* ---- 颜色：背景层次 ---- */
   --color-bg:             #F5F4EE;  /* 页面底（象牙色） */
   --color-sidebar:        #EFEDE4;  /* 侧边导航 */
@@ -93,6 +94,7 @@
 }
 
 [data-theme="dark"] {
+  --color-modal-backdrop: rgba(20, 20, 19, 0.65);
   color-scheme: dark;
 
   --color-bg:             #262624;
