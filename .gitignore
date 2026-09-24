@@ -46,3 +46,7 @@ part-detail-current.jpeg
 
 # Local backups
 frontend/src/components/.pm-backup-*/
+
+# Local AI working scratch
+artifacts/
+Claude outputs/
